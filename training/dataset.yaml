@@ -1,8 +1,0 @@
-# Update the paths below to point to your dataset
-path: /path/to/dataset
-train: images/train
-val: images/val
-
-# Classes
-names:
-  0: license-plate

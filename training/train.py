@@ -10,7 +10,7 @@ import argparse
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLO model.")
-    parser.add_argument("--data", required=True, help="Path to dataset.yaml")
+    parser.add_argument("--data", required=True, help="Path to data.yaml in dataset in YOLOv11 format.")
     parser.add_argument("--model", default="yolo11n.pt", help="Pretrained model")
     parser.add_argument(
         "--epochs",
@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
     parser.add_argument("--project", default="runs/train", help="Output directory")
     parser.add_argument("--name", default="plate-detector", help="Run name")
+    parser.add_argument("--device", default="cpu", help="Run name")
     return parser.parse_args()
 
 
