@@ -1,0 +1,4 @@
+# training outputs
+runs/
+__pycache__/
+*.pt
