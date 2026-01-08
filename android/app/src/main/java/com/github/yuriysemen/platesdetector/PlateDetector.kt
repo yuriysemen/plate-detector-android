@@ -42,6 +42,8 @@ class PlateDetector(
 ) {
 
     private val interpreter: Interpreter
+    private val runLock = Any()
+    @Volatile private var closed = false
 
     private val inputW: Int
     private val inputH: Int
@@ -98,71 +100,79 @@ class PlateDetector(
     }
 
     fun close() {
-        interpreter.close()
+        synchronized(runLock) {
+            if (closed) return
+            closed = true
+            interpreter.close()
+        }
     }
 
     /**
      * (Optional) return all detections for classFilter above threshold.
      */
     fun detectAll(bitmapUpright: Bitmap, scoreThreshold: Float = 0.35f): List<Detection> {
-        val lb = letterbox(bitmapUpright, inputW, inputH)
-        bitmapToInput(lb.letterboxed)
+        synchronized(runLock) {
+            if (closed) return emptyList()
 
-        val outputs: MutableMap<Int, Any> = HashMap()
-        outputs[0] = detections
+            val lb = letterbox(bitmapUpright, inputW, inputH)
+            bitmapToInput(lb.letterboxed)
 
-        interpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputs)
+            val outputs: MutableMap<Int, Any> = HashMap()
+            outputs[0] = detections
 
-        val list = ArrayList<Detection>(16)
+            interpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputs)
 
-        for (i in 0 until maxDetections) {
-            val d = detections[0][i]
-            val score = d[4]
-            if (score < scoreThreshold) continue
+            val list = ArrayList<Detection>(16)
 
-            val cls = d[5].roundToInt()
-            if (cls != classFilter) continue
+            for (i in 0 until maxDetections) {
+                val d = detections[0][i]
+                val score = d[4]
+                if (score < scoreThreshold) continue
 
-            var x1: Float
-            var y1: Float
-            var x2: Float
-            var y2: Float
-            when (coordFormat) {
-                CoordFormat.XYXY_SCORE_CLASS -> {
-                    x1 = d[0]; y1 = d[1]; x2 = d[2]; y2 = d[3]
+                val cls = d[5].roundToInt()
+                if (cls != classFilter) continue
+
+                var x1: Float
+                var y1: Float
+                var x2: Float
+                var y2: Float
+                when (coordFormat) {
+                    CoordFormat.XYXY_SCORE_CLASS -> {
+                        x1 = d[0]; y1 = d[1]; x2 = d[2]; y2 = d[3]
+                    }
+                    CoordFormat.YXYX_SCORE_CLASS -> {
+                        y1 = d[0]; x1 = d[1]; y2 = d[2]; x2 = d[3]
+                    }
                 }
-                CoordFormat.YXYX_SCORE_CLASS -> {
-                    y1 = d[0]; x1 = d[1]; y2 = d[2]; x2 = d[3]
+
+                val normalized = isLikelyNormalized(x1, y1, x2, y2)
+                if (normalized) {
+                    x1 *= inputW; x2 *= inputW
+                    y1 *= inputH; y2 *= inputH
                 }
+
+                val leftIn = min(x1, x2)
+                val rightIn = max(x1, x2)
+                val topIn = min(y1, y2)
+                val bottomIn = max(y1, y2)
+
+                val left = (leftIn - lb.padX) / lb.scale
+                val top = (topIn - lb.padY) / lb.scale
+                val right = (rightIn - lb.padX) / lb.scale
+                val bottom = (bottomIn - lb.padY) / lb.scale
+
+                list += Detection(
+                    leftPx = clamp(left, 0f, bitmapUpright.width.toFloat()),
+                    topPx = clamp(top, 0f, bitmapUpright.height.toFloat()),
+                    rightPx = clamp(right, 0f, bitmapUpright.width.toFloat()),
+                    bottomPx = clamp(bottom, 0f, bitmapUpright.height.toFloat()),
+                    score = score,
+                    classId = cls
+                )
             }
 
-            val normalized = isLikelyNormalized(x1, y1, x2, y2)
-            if (normalized) {
-                x1 *= inputW; x2 *= inputW
-                y1 *= inputH; y2 *= inputH
-            }
-
-            val leftIn = min(x1, x2)
-            val rightIn = max(x1, x2)
-            val topIn = min(y1, y2)
-            val bottomIn = max(y1, y2)
-
-            val left = (leftIn - lb.padX) / lb.scale
-            val top = (topIn - lb.padY) / lb.scale
-            val right = (rightIn - lb.padX) / lb.scale
-            val bottom = (bottomIn - lb.padY) / lb.scale
-
-            list += Detection(
-                leftPx = clamp(left, 0f, bitmapUpright.width.toFloat()),
-                topPx = clamp(top, 0f, bitmapUpright.height.toFloat()),
-                rightPx = clamp(right, 0f, bitmapUpright.width.toFloat()),
-                bottomPx = clamp(bottom, 0f, bitmapUpright.height.toFloat()),
-                score = score,
-                classId = cls
-            )
+            return list.sortedByDescending { it.score }
         }
-
-        return list.sortedByDescending { it.score }
     }
 
     // -----------------------
