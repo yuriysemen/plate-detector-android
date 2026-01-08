@@ -11,9 +11,15 @@ import argparse
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLO model.")
     parser.add_argument("--data", required=True, help="Path to dataset.yaml")
-    parser.add_argument("--model", default="yolov8n.pt", help="Pretrained model")
-    parser.add_argument("--epochs", type=int, default=100, help="Number of epochs")
+    parser.add_argument("--model", default="yolo11n.pt", help="Pretrained model")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=20,
+        help="Number of epochs (recommended >100)",
+    )
     parser.add_argument("--imgsz", type=int, default=640, help="Image size")
+    parser.add_argument("--batch", type=int, default=16, help="Batch size")
     parser.add_argument("--project", default="runs/train", help="Output directory")
     parser.add_argument("--name", default="plate-detector", help="Run name")
     return parser.parse_args()
@@ -34,6 +40,7 @@ def main() -> None:
         data=args.data,
         epochs=args.epochs,
         imgsz=args.imgsz,
+        batch=args.batch,
         project=args.project,
         name=args.name,
     )
