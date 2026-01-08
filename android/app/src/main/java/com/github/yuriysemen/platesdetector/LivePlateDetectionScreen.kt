@@ -9,6 +9,8 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -334,6 +336,13 @@ private fun LiveDetectionUi(
     var lastFrameW by remember { mutableStateOf(0) }
     var lastFrameH by remember { mutableStateOf(0) }
     var lastMs by remember { mutableStateOf(0L) }
+    var hadDetections by remember { mutableStateOf(false) }
+    var lastBeepAt by remember { mutableStateOf(0L) }
+
+    val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 80) }
+    DisposableEffect(Unit) {
+        onDispose { toneGenerator.release() }
+    }
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(
@@ -385,6 +394,14 @@ private fun LiveDetectionUi(
                             detector = detector,
                             scoreThreshold = spec.conf,
                             onResult = { dets, w, h, ms ->
+                                val now = SystemClock.elapsedRealtime()
+                                val shouldBeep = dets.isNotEmpty() &&
+                                    (!hadDetections || now - lastBeepAt >= 1_000L)
+                                if (shouldBeep) {
+                                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+                                    lastBeepAt = now
+                                }
+                                hadDetections = dets.isNotEmpty()
                                 lastDetections = dets
                                 lastFrameW = w
                                 lastFrameH = h
