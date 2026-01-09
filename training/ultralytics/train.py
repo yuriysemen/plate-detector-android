@@ -1,4 +1,4 @@
-"""YOLO training entrypoint.
+"""YOLO training_ultralytics entrypoint.
 
 This script is intentionally minimal so it can be used locally or in Colab.
 """
