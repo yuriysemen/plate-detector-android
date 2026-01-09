@@ -45,7 +45,7 @@ import androidx.core.content.edit
 // Model listing & prefs
 // ------------------------
 
-private data class ModelSpec(
+internal data class ModelSpec(
     val id: String,                // file name without extension
     val title: String,             // same as id
     val assetPath: String,         // e.g. "models/yolo11n_640.tflite"
@@ -123,13 +123,18 @@ private fun availableModels(context: Context): List<ModelSpec> {
 // ------------------------
 
 @Composable
-fun LivePlateDetectionScreen() {
+fun LivePlateDetectionScreen(
+    modelProvider: (Context) -> List<ModelSpec> = ::availableModels,
+    cameraContent: @Composable (ModelSpec, Boolean, (List<Detection>, Int, Int, Long) -> Unit) -> Unit =
+        { spec, enabled, onResult -> DefaultCameraContent(spec, enabled, onResult) },
+    hasPermissionOverride: Boolean? = null
+) {
     val context = LocalContext.current
 
     // allow "retry" (even though assets won't change at runtime, it prevents stale UI)
     var reloadKey by rememberSaveable { mutableIntStateOf(0) }
 
-    val models = remember(reloadKey) { availableModels(context) }
+    val models = remember(reloadKey) { modelProvider(context) }
 
     // If no models: show error and DO NOT init any detector.
     if (models.isEmpty()) {
@@ -167,7 +172,9 @@ fun LivePlateDetectionScreen() {
                 ModelPrefs.clearSelected(context)
                 selectedId = null
                 showPicker = true
-            }
+            },
+            cameraContent = cameraContent,
+            hasPermissionOverride = hasPermissionOverride
         )
     }
 }
@@ -296,14 +303,17 @@ private fun ModelPickerScreen(
 @Composable
 private fun LiveDetectionUi(
     spec: ModelSpec,
-    onChangeModel: () -> Unit
+    onChangeModel: () -> Unit,
+    cameraContent: @Composable (ModelSpec, Boolean, (List<Detection>, Int, Int, Long) -> Unit) -> Unit,
+    hasPermissionOverride: Boolean? = null
 ) {
     val context = LocalContext.current
 
     var hasPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                    PackageManager.PERMISSION_GRANTED
+            hasPermissionOverride
+                ?: (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED)
         )
     }
 
@@ -311,23 +321,12 @@ private fun LiveDetectionUi(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasPermission = granted }
 
-    LaunchedEffect(Unit) {
-        if (!hasPermission) {
+    LaunchedEffect(hasPermissionOverride) {
+        if (hasPermissionOverride != null) {
+            hasPermission = hasPermissionOverride
+        } else if (!hasPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
-    }
-
-    // Create detector only here (never when models are absent)
-    val detector = remember(spec.id) {
-        PlateDetector(
-            context = context,
-            assetName = spec.assetPath,
-            coordFormat = spec.coordFormat,
-            debugLogs = true
-        )
-    }
-    DisposableEffect(spec.id) {
-        onDispose { detector.close() }
     }
 
     var enabled by rememberSaveable { mutableStateOf(true) }
@@ -389,25 +388,23 @@ private fun LiveDetectionUi(
                 } else {
                     // Key by model id to ensure full rebind for analyzer when model changes
                     key(spec.id) {
-                        CameraPreviewWithAnalysis(
-                            enabled = enabled,
-                            detector = detector,
-                            scoreThreshold = spec.conf,
-                            onResult = { dets, w, h, ms ->
-                                val now = SystemClock.elapsedRealtime()
-                                val shouldBeep = dets.isNotEmpty() &&
-                                    (!hadDetections || now - lastBeepAt >= 1_000L)
-                                if (shouldBeep) {
-                                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
-                                    lastBeepAt = now
-                                }
-                                hadDetections = dets.isNotEmpty()
-                                lastDetections = dets
-                                lastFrameW = w
-                                lastFrameH = h
-                                lastMs = ms
+                        cameraContent(
+                            spec,
+                            enabled
+                        ) { dets, w, h, ms ->
+                            val now = SystemClock.elapsedRealtime()
+                            val shouldBeep = dets.isNotEmpty() &&
+                                (!hadDetections || now - lastBeepAt >= 1_000L)
+                            if (shouldBeep) {
+                                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+                                lastBeepAt = now
                             }
-                        )
+                            hadDetections = dets.isNotEmpty()
+                            lastDetections = dets
+                            lastFrameW = w
+                            lastFrameH = h
+                            lastMs = ms
+                        }
                     }
 
                     // Overlay
@@ -567,6 +564,33 @@ private fun CameraPreviewWithAnalysis(
     AndroidView(
         factory = { previewView },
         modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+private fun DefaultCameraContent(
+    spec: ModelSpec,
+    enabled: Boolean,
+    onResult: (List<Detection>, Int, Int, Long) -> Unit
+) {
+    val context = LocalContext.current
+    val detector = remember(spec.id) {
+        PlateDetector(
+            context = context,
+            assetName = spec.assetPath,
+            coordFormat = spec.coordFormat,
+            debugLogs = true
+        )
+    }
+    DisposableEffect(spec.id) {
+        onDispose { detector.close() }
+    }
+
+    CameraPreviewWithAnalysis(
+        enabled = enabled,
+        detector = detector,
+        scoreThreshold = spec.conf,
+        onResult = onResult
     )
 }
 
