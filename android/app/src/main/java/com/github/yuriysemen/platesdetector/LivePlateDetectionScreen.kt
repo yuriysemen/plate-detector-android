@@ -45,7 +45,7 @@ import androidx.core.content.edit
 // Model listing & prefs
 // ------------------------
 
-internal data class ModelSpec(
+data class ModelSpec(
     val id: String,                // file name without extension
     val title: String,             // same as id
     val assetPath: String,         // e.g. "models/yolo11n_640.tflite"
