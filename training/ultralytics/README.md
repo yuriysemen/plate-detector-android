@@ -1,11 +1,15 @@
 # Training (YOLO)
 
 This folder hosts the training project for the license-plate detector model.
+Training artifacts (runs/, weights/, exported models) are generated locally and
+are intentionally not tracked by git.
 
 ## Contents
 - `train.py` - minimal training entrypoint for YOLO.
 - `dataset.yaml` - dataset configuration placeholder.
 - `requirements.txt` - Python dependencies for training.
+- `export_ptlite.py` - helper script to convert a trained `.pt` checkpoint into
+  a mobile-friendly `.ptlite` file for the PyTorch Lite runtime.
 
 ## Quick start (local or Colab)
 1. Prepare python virtual environment:
@@ -26,13 +30,21 @@ This folder hosts the training project for the license-plate detector model.
    ```bash
    yolo detect train data=<path_to_dataset>/data.yaml model=yolo11n.pt imgsz=640 epochs=20 batch=16 name=<training-model-name>
    ```
-5. Export it in *.tflite format:
+5. Export it in *.tflite format (for TensorFlow Lite runtime):
    ```bash
    yolo export model=runs/detect/<training-model-name>/weights/best.pt format=tflite imgsz=640 nms=True conf=0.25 iou=0.45 max_det=300
    ```
    As a result You will receive model in folder at runs/detect/<training-model-name>/weights/bet_saved_model that
    will contain base.onnx (outside of this folder) and a file that is compatible with android app - 'best_float16.tflite'.
    You will need to rename this file to reflect the model meaning and copy into android app. That after rebuilding the app - You can use it.
+6. Export it in *.ptlite format (for PyTorch Lite runtime):
+   ```bash
+   python export_ptlite.py --weights runs/detect/<training-model-name>/weights/best.pt --imgsz 640
+   ```
+   The script saves a `best.ptlite` file next to the checkpoint unless `--output` is provided.
+   Copy the resulting `.ptlite` into the Android app assets (or wherever your app expects model assets)
+   and update the app-side model name accordingly. If you keep assets in the repo, this is usually
+   under `android/app/src/main/assets/`.
 
 > If you have some other device that could be used except CPU to train the model - it will not be recognised automatically. You should properly state `device` parameter to use available devices.
 
