@@ -11,7 +11,11 @@ import argparse
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YOLO model.")
     parser.add_argument("--data", required=True, help="Path to data.yaml in dataset in YOLOv11 format.")
-    parser.add_argument("--model", default="yolo11n.pt", help="Pretrained model")
+    parser.add_argument(
+        "--model",
+        default="yolo11n.pt",
+        help="Pretrained checkpoint to finetune (e.g. yolo11n.pt).",
+    )
     parser.add_argument(
         "--epochs",
         type=int,
@@ -20,9 +24,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--imgsz", type=int, default=640, help="Image size")
     parser.add_argument("--batch", type=int, default=16, help="Batch size")
-    parser.add_argument("--project", default="runs/train", help="Output directory")
+    parser.add_argument(
+        "--project",
+        default="runs/train",
+        help="Output directory where YOLO writes run artifacts.",
+    )
     parser.add_argument("--name", default="plate-detector", help="Run name")
-    parser.add_argument("--device", default="cpu", help="Run name")
+    parser.add_argument(
+        "--device",
+        default="cpu",
+        help="Device to use for training (cpu, cuda, mps).",
+    )
     return parser.parse_args()
 
 
@@ -36,12 +48,15 @@ def main() -> None:
             "ultralytics is not installed. Run `pip install -r requirements.txt`."
         ) from exc
 
+    # Instantiate the YOLO model and start training. The training output is
+    # written under <project>/<name>/ (e.g. runs/train/plate-detector).
     model = YOLO(args.model)
     model.train(
         data=args.data,
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=args.batch,
+        device=args.device,
         project=args.project,
         name=args.name,
     )
