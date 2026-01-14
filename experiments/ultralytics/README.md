@@ -44,3 +44,12 @@ Suggested workflow:
 ## Output
 
 The export step creates a TFLite model in the current working directory. Adjust `epochs`, `imgsz`, or `batch` in either file to suit your experiment.
+
+## Validation visualization
+
+Both the script and notebook include a small sanity check that loads the first validation image, runs inference, and draws:
+
+* **Expected** bounding boxes from YOLO labels (green dashed).
+* **Predicted** boxes from the model (red dashed).
+
+This is a quick way to verify the model’s output on real validation data before exporting to TFLite.
