@@ -15,5 +15,7 @@ The Android app expects one or more `.tflite` files in the assets directory. Whe
 
 ## Project structure (high level)
 - `android/` — Android application source.
-- `training/` — Model training project (first iteration lives under `training/ultralytics`).
-- `experiments/` — Planned for future training iterations and experiments (not added yet).
+- `training/` — Primary model training project (current iteration lives under `training/ultralytics`).
+- `experiments/` — Experimental training scripts and dataset notes, including:
+  - `experiments/ultralytics/` for alternative training/export scripts.
+  - `experiments/dataset_1/` for dataset format expectations.

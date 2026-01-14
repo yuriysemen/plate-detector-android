@@ -6,7 +6,6 @@ are intentionally not tracked by git.
 
 ## Contents
 - `train.py` - minimal training entrypoint for YOLO.
-- `dataset.yaml` - dataset configuration placeholder.
 - `requirements.txt` - Python dependencies for training.
 - `export_ptlite.py` - helper script to convert a trained `.pt` checkpoint into
   a mobile-friendly `.ptlite` file for the PyTorch Lite runtime.
@@ -21,10 +20,10 @@ are intentionally not tracked by git.
    ```bash
    pip install -r requirements.txt
    ```
-3. Prepare data set in YOLO v11 outside of repository code. Usually it is large, so, it is not good to commit it into repo as a code. 
+3. Prepare a YOLOv11 dataset outside of the repository (datasets are typically large and should not be committed).
 4. Run training in python implementation:
    ```bash
-   python train.py --data <path_to_dataset>/data.yaml --model yolo11n.pt --epochs 20 --devices cpu or mps>
+   python train.py --data <path_to_dataset>/data.yaml --model yolo11n.pt --epochs 20 --device cpu
    ```
    Or run training directly from console.
    ```bash
@@ -34,9 +33,9 @@ are intentionally not tracked by git.
    ```bash
    yolo export model=runs/detect/<training-model-name>/weights/best.pt format=tflite imgsz=640 nms=True conf=0.25 iou=0.45 max_det=300
    ```
-   As a result You will receive model in folder at runs/detect/<training-model-name>/weights/bet_saved_model that
-   will contain base.onnx (outside of this folder) and a file that is compatible with android app - 'best_float16.tflite'.
-   You will need to rename this file to reflect the model meaning and copy into android app. That after rebuilding the app - You can use it.
+   The export writes artifacts under `runs/detect/<training-model-name>/weights/best_saved_model/` and produces a
+   `best_float16.tflite` (or similar) file that is compatible with the Android app.
+   Rename the file to reflect the model and copy it into the Android app assets. After rebuilding the app, you can select it.
 6. Export it in *.ptlite format (for PyTorch Lite runtime):
    ```bash
    python export_ptlite.py --weights runs/detect/<training-model-name>/weights/best.pt --imgsz 640
@@ -46,7 +45,7 @@ are intentionally not tracked by git.
    and update the app-side model name accordingly. If you keep assets in the repo, this is usually
    under `android/app/src/main/assets/`.
 
-> If you have some other device that could be used except CPU to train the model - it will not be recognised automatically. You should properly state `device` parameter to use available devices.
+> If you want to use a device other than CPU, pass `--device` explicitly (for example, `cuda` or `mps`).
 
 > Tip: in Google Colab, upload this `training/` folder or clone the repo and run the same commands.
 
