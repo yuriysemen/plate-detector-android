@@ -1,8 +1,8 @@
-# Dataset (YOLO) — License Plate Detection
+# Dataset (Detection) — License Plate Detection
 
 This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions.
 
-This document explains the expected dataset layout and how to obtain/build a compatible dataset.
+This document explains the expected dataset layout and how to obtain/build a compatible dataset for *detection* experiments (starting with YOLO). Future OCR experiments may introduce additional datasets and formats. Store the dataset under the `dataset_YOLO/` folder at the repository root.
 
 ## Expected image size and split sizes
 
@@ -19,7 +19,7 @@ This document explains the expected dataset layout and how to obtain/build a com
 
 ## 1) Dataset structure
 
-Create the following directory structure (YOLO format):
+Create the following directory structure (YOLO format). This is the baseline format used by detection experiments in this repository.
 
 ```
 dataset/

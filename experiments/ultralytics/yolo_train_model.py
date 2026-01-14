@@ -17,7 +17,7 @@ from ultralytics import YOLO
 # Load a pretrained YOLOv11 nano checkpoint and train on the local dataset.
 model = YOLO("yolo11n.pt")
 model.train(
-    data="../dataset_1/data.yaml",
+    data="../dataset_YOLO/data.yaml",
     imgsz=640,
     epochs=1,
     batch=16,

@@ -1,11 +1,11 @@
 # plate-detector-android
-Train a YOLO-based license plate detector in Google Colab and deploy it as a TFLite model in an Android app for real-time on-device detection.
+An Android app for on-device license-plate detection, paired with a set of model-training experiments that export TensorFlow Lite (TFLite) models. The repository is intentionally organized to let me compare different training pipelines over time. YOLO is the first (and currently implemented) experiment, with room for additional approaches later.
 
 ## Getting a model for the Android app
 The Android app expects one or more `.tflite` files in the assets directory. When you start working on the app:
 
-1. Train/export a model using the training pipeline under `training/ultralytics`.
-   - Follow the steps in `training/ultralytics/README.md` to run YOLO training and export a TensorFlow Lite model.
+1. Choose a training experiment (for example, `training/ultralytics` or `experiments/ultralytics`) and produce a `.tflite` model.
+   - Each experiment README explains how it trains, exports, and validates the model.
 2. Copy the exported `.tflite` file into the Android assets folder:
    - Preferred location: `android/app/src/main/assets/models/`
    - Fallback location (if no `models/` folder exists): `android/app/src/main/assets/`
@@ -15,7 +15,11 @@ The Android app expects one or more `.tflite` files in the assets directory. Whe
 
 ## Project structure (high level)
 - `android/` — Android application source.
-- `training/` — Primary model training project (current iteration lives under `training/ultralytics`).
-- `experiments/` — Experimental training scripts and dataset notes, including:
+- `training/` — Ready-to-run training pipelines implemented in Python.
+- `experiments/` — Exploratory training experiments. Some experiments may be promoted into `training/` after they prove useful; others remain here for history and comparison.
   - `experiments/ultralytics/` for alternative training/export scripts.
-  - `experiments/dataset_1/` for dataset format expectations.
+- `dataset_YOLO/` for the initial YOLO dataset layout and format expectations.
+
+## Roadmap (planned)
+- **Character-level recognition (OCR)**: add a separate model and pipeline to detect the license-plate number itself.
+- **Event metadata**: emit notifications that specify *when* a plate is detected and *which* plate text was recognized. The event format and payload are still being designed and will be documented once the OCR pipeline lands.
