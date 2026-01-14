@@ -1,6 +1,6 @@
 # Ultralytics YOLO Experiments
 
-This folder contains a Python script and a Jupyter notebook that train a YOLOv11 model on the local dataset and export a TFLite model for Android usage.
+This folder contains three Python scripts and a Jupyter notebook that train a YOLOv11 model on the local dataset, export a TFLite model, and optionally validate predictions for Android usage.
 
 ## Prerequisites
 
@@ -11,22 +11,24 @@ This folder contains a Python script and a Jupyter notebook that train a YOLOv11
 Install dependencies (file name matches the repo):
 
 ```bash
-pip install -r rquirements.txt
+pip install -r requirements.txt
 ```
 
-## Option A: Run the Python script
+## Option A: Run the Python scripts
 
-Use the script when you want a quick, reproducible run from the terminal.
+Use the scripts when you want a quick, reproducible run from the terminal.
 
 ```bash
-python yolo.py
+python yolo_train_model.py
+python yolo_export_model.py
+python yolo_test_model.py
 ```
 
 What it does:
 
-1. Selects the best available device (MPS, CUDA, or CPU).
-2. Trains `yolo11n.pt` for one epoch on `../dataset_1/data.yaml`.
-3. Exports a TFLite model with NMS enabled.
+1. `yolo_train_model.py` selects the best available device (MPS, CUDA, or CPU) and trains `yolo11n.pt` for one epoch on `../dataset_1/data.yaml`.
+2. `yolo_export_model.py` exports a TFLite model with NMS enabled.
+3. `yolo_test_model.py` runs a quick validation visualization on the first validation image.
 
 ## Option B: Run the Jupyter notebook
 
