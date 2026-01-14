@@ -8,37 +8,31 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+from ultralytics import YOLO
+
+
 # Ensure HTTPS requests (model download, dataset fetch, etc.) use certifi's CA bundle.
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-
-# Pick the best available device: Apple MPS, CUDA GPU, or CPU fallback.
-device = "mps" if torch.backends.mps.is_available() else (0 if torch.cuda.is_available() else "cpu")
-print("device:", device)
-
-from ultralytics import YOLO
-
-# Load a pretrained YOLOv11 nano checkpoint and train on the local dataset.
-model = YOLO("yolo11n.pt")
-model.train(
-    data="../dataset_1/data.yaml",
-    imgsz=640,
-    epochs=1,
-    batch=16,
-    device=device,
-)
-
-
-# Export the trained model to a mobile-friendly TFLite format with NMS enabled.
-m = YOLO("yolo11n.pt")
-m.export(format="tflite", imgsz=640, half=True, nms=True)
 
 
 def load_first_validation_sample(data_yaml_path: Path) -> tuple[Path, Path]:
     """Return the first validation image path and its label file path."""
     data = yaml.safe_load(data_yaml_path.read_text())
     val_key = "val" if "val" in data else "valid"
+
+    # Find where the package is installed
     val_images_dir = (data_yaml_path.parent / data[val_key]).resolve()
+
+    exists = val_images_dir.exists() & val_images_dir.is_dir()
+
+    if not exists:
+        val_images_dir = (data_yaml_path.parent / data[val_key][1:]).resolve()
+        exists = val_images_dir.exists() & val_images_dir.is_dir()
+
+    if not exists:
+        raise FileNotFoundError(f"No validation images found in {val_images_dir}")
+
     image_candidates = sorted(
         path
         for path in val_images_dir.iterdir()
@@ -67,6 +61,8 @@ def parse_yolo_labels(label_path: Path, image_width: int, image_height: int) -> 
         boxes.append((x_min, y_min, box_width, box_height))
     return boxes
 
+device = "mps" if torch.backends.mps.is_available() else (0 if torch.cuda.is_available() else "cpu")
+print("device:", device)
 
 # Visual sanity check on the first validation image (ground truth vs. predictions).
 data_yaml_path = (Path(__file__).resolve().parent / "../dataset_1/data.yaml").resolve()
