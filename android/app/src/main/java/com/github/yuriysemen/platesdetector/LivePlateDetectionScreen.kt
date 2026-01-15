@@ -2,6 +2,7 @@ package com.github.yuriysemen.platesdetector
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -24,7 +25,6 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -40,35 +40,33 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
+import androidx.documentfile.provider.DocumentFile
+import android.net.Uri
 
 // ------------------------
 // Model listing & prefs
 // ------------------------
 
 private data class ModelSpec(
-    val id: String,                // file name without extension
-    val title: String,             // same as id
-    val assetPath: String,         // e.g. "models/yolo11n_640.tflite"
+    val id: String,                // stable key (uri string)
+    val title: String,             // display name
+    val modelUri: Uri,
     val coordFormat: CoordFormat,  // fixed
     val conf: Float                // threshold, editable in picker
 )
 
 private object ModelPrefs {
     private const val PREFS = "model_prefs"
-    private const val KEY_MODEL_ID = "selected_model_id"
+    private const val KEY_MODEL_URI = "selected_model_uri"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun getSelectedId(context: Context): String? =
-        prefs(context).getString(KEY_MODEL_ID, null)
+    fun getSelectedUri(context: Context): String? =
+        prefs(context).getString(KEY_MODEL_URI, null)
 
-    fun setSelectedId(context: Context, id: String) {
-        prefs(context).edit { putString(KEY_MODEL_ID, id) }
-    }
-
-    fun clearSelected(context: Context) {
-        prefs(context).edit { remove(KEY_MODEL_ID) }
+    fun setSelectedUri(context: Context, uri: String) {
+        prefs(context).edit { putString(KEY_MODEL_URI, uri) }
     }
 
     // conf per model, default 0.5
@@ -82,40 +80,19 @@ private object ModelPrefs {
     }
 }
 
-private fun availableModels(context: Context): List<ModelSpec> {
-    fun listTflite(dir: String?): List<Pair<String, String>> {
-        // returns list of (fileName, assetPath)
-        return try {
-            val files = context.assets.list(dir ?: "").orEmpty()
-            files
-                .filter { it.endsWith(".tflite", ignoreCase = true) }
-                .sorted()
-                .map { file ->
-                    val path = if (dir.isNullOrEmpty()) file else "$dir/$file"
-                    file to path
-                }
-        } catch (_: Throwable) {
-            emptyList()
-        }
-    }
-
-    val inModelsDir = listTflite("models")
-    val inRoot = if (inModelsDir.isEmpty()) listTflite(null) else emptyList()
-
-    val all = (inModelsDir + inRoot)
-        // avoid duplicates if any
-        .distinctBy { it.second }
-
-    return all.map { (fileName, assetPath) ->
-        val id = fileName.substringBeforeLast(".")
-        ModelSpec(
-            id = id,
-            title = id,
-            assetPath = assetPath,
-            coordFormat = CoordFormat.XYXY_SCORE_CLASS,
-            conf = ModelPrefs.getConf(context, id)
-        )
-    }
+private fun selectedModel(context: Context): ModelSpec? {
+    val uriString = ModelPrefs.getSelectedUri(context) ?: return null
+    val uri = Uri.parse(uriString)
+    val doc = DocumentFile.fromSingleUri(context, uri)
+    val title = doc?.name?.substringBeforeLast(".") ?: (uri.lastPathSegment ?: "model")
+    val id = uriString
+    return ModelSpec(
+        id = id,
+        title = title,
+        modelUri = uri,
+        coordFormat = CoordFormat.XYXY_SCORE_CLASS,
+        conf = ModelPrefs.getConf(context, id)
+    )
 }
 
 // ------------------------
@@ -126,50 +103,38 @@ private fun availableModels(context: Context): List<ModelSpec> {
 fun LivePlateDetectionScreen() {
     val context = LocalContext.current
 
-    // allow "retry" (even though assets won't change at runtime, it prevents stale UI)
-    var reloadKey by rememberSaveable { mutableIntStateOf(0) }
+    var modelSpec by remember { mutableStateOf(selectedModel(context)) }
 
-    val models = remember(reloadKey) { availableModels(context) }
+    val pickModelLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            ModelPrefs.setSelectedUri(context, uri.toString())
+            modelSpec = selectedModel(context)
+        }
+    }
 
-    // If no models: show error and DO NOT init any detector.
-    if (models.isEmpty()) {
+    if (modelSpec == null) {
         NoModelsScreen(
-            onRetry = { reloadKey++ }
+            onPickModel = {
+                pickModelLauncher.launch(arrayOf("*/*"))
+            }
         )
         return
     }
 
-    var selectedId by rememberSaveable {
-        mutableStateOf(ModelPrefs.getSelectedId(context))
-    }
+    val runtimeSpec = modelSpec!!.copy(conf = ModelPrefs.getConf(context, modelSpec!!.id))
 
-    // If first launch and nothing selected, open picker.
-    var showPicker by rememberSaveable { mutableStateOf(selectedId == null) }
-
-    val selected = models.firstOrNull { it.id == selectedId }
-
-    if (showPicker || selected == null) {
-        ModelPickerScreen(
-            models = models,
-            onPick = { spec ->
-                ModelPrefs.setSelectedId(context, spec.id)
-                selectedId = spec.id
-                showPicker = false
-            }
-        )
-    } else {
-        // Important: spec.conf may change in prefs in picker, so load fresh conf for runtime.
-        val runtimeSpec = selected.copy(conf = ModelPrefs.getConf(context, selected.id))
-
-        LiveDetectionUi(
-            spec = runtimeSpec,
-            onChangeModel = {
-                ModelPrefs.clearSelected(context)
-                selectedId = null
-                showPicker = true
-            }
-        )
-    }
+    LiveDetectionUi(
+        spec = runtimeSpec,
+        onChangeModel = {
+            pickModelLauncher.launch(arrayOf("*/*"))
+        }
+    )
 }
 
 // ------------------------
@@ -177,7 +142,7 @@ fun LivePlateDetectionScreen() {
 // ------------------------
 
 @Composable
-private fun NoModelsScreen(onRetry: () -> Unit) {
+private fun NoModelsScreen(onPickModel: () -> Unit) {
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(
             modifier = Modifier
@@ -188,106 +153,15 @@ private fun NoModelsScreen(onRetry: () -> Unit) {
         ) {
             Text("No TFLite models found", style = MaterialTheme.typography.titleLarge)
             Text(
-                "The app did not find any *.tflite models in:\n" +
-                        "1) app/src/main/assets/models/\n" +
-                        "2) app/src/main/assets/\n\n" +
-                        "Add at least one model file (e.g. yolo11n_640.tflite) and rebuild the app.",
+                "No external *.tflite model has been selected yet.\n\n" +
+                        "Choose a model file (e.g. yolo11n_640.tflite) from device storage.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
             Spacer(Modifier.height(8.dp))
 
-            OutlinedButton(onClick = onRetry) {
-                Text("Retry")
-            }
-
-            Text(
-                "Note: If you load models via assets, consider adding noCompress for .tflite in Gradle.",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
-
-@Composable
-private fun ModelPickerScreen(
-    models: List<ModelSpec>,
-    onPick: (ModelSpec) -> Unit
-) {
-    val context = LocalContext.current
-
-    var selectedId by rememberSaveable { mutableStateOf(models.first().id) }
-    var conf by rememberSaveable { mutableStateOf(0.5f) }
-
-    // when selected model changes, load its saved conf (default 0.5)
-    LaunchedEffect(selectedId) {
-        conf = ModelPrefs.getConf(context, selectedId)
-    }
-
-    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Select model", style = MaterialTheme.typography.titleLarge)
-
-            models.forEach { m ->
-                OutlinedCard(
-                    onClick = { selectedId = m.id },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = (selectedId == m.id),
-                            onClick = { selectedId = m.id }
-                        )
-                        Column {
-                            Text(m.title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "asset: ${m.assetPath}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider()
-
-            Text(
-                text = "Confidence threshold: ${"%.2f".format(conf)}",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Slider(
-                value = conf,
-                onValueChange = { conf = it },
-                valueRange = 0.05f..0.95f
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        conf = 0.5f
-                        ModelPrefs.setConf(context, selectedId, conf)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Default 0.50") }
-
-                Button(
-                    onClick = {
-                        ModelPrefs.setConf(context, selectedId, conf)
-                        val base = models.first { it.id == selectedId }
-                        onPick(base.copy(conf = conf))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Continue") }
+            OutlinedButton(onClick = onPickModel) {
+                Text("Choose model file")
             }
         }
     }
@@ -299,6 +173,8 @@ private fun LiveDetectionUi(
     onChangeModel: () -> Unit
 ) {
     val context = LocalContext.current
+
+    var conf by rememberSaveable(spec.id) { mutableStateOf(spec.conf) }
 
     var hasPermission by remember {
         mutableStateOf(
@@ -321,7 +197,7 @@ private fun LiveDetectionUi(
     val detector = remember(spec.id) {
         PlateDetector(
             context = context,
-            assetName = spec.assetPath,
+            modelUri = spec.modelUri,
             coordFormat = spec.coordFormat,
             debugLogs = true
         )
@@ -359,11 +235,11 @@ private fun LiveDetectionUi(
                         text = if (lastFrameW > 0 && lastFrameH > 0)
                             "Detected: ${lastDetections.size} | ${lastMs} ms | Frame: ${lastFrameW}x${lastFrameH} | conf≥${
                                 "%.2f".format(
-                                    spec.conf
+                                    conf
                                 )
                             }"
                         else
-                            "Detected: — | conf≥${"%.2f".format(spec.conf)}"
+                            "Detected: — | conf≥${"%.2f".format(conf)}"
                     )
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -371,6 +247,20 @@ private fun LiveDetectionUi(
                             Text("Change model")
                         }
                     }
+
+                    Text(
+                        text = "Confidence threshold: ${"%.2f".format(conf)}",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Slider(
+                        value = conf,
+                        onValueChange = { value ->
+                            conf = value
+                            ModelPrefs.setConf(context, spec.id, value)
+                        },
+                        valueRange = 0.05f..0.95f
+                    )
                 }
             }
 
@@ -392,7 +282,7 @@ private fun LiveDetectionUi(
                         CameraPreviewWithAnalysis(
                             enabled = enabled,
                             detector = detector,
-                            scoreThreshold = spec.conf,
+                            scoreThreshold = conf,
                             onResult = { dets, w, h, ms ->
                                 val now = SystemClock.elapsedRealtime()
                                 val shouldBeep = dets.isNotEmpty() &&
