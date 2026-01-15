@@ -14,7 +14,7 @@ print("device:", device)
 
 
 # Export the trained model to a mobile-friendly TFLite format with NMS enabled.
-m = YOLO("yolo11n.pt")
+m = YOLO("./runs/detect/train4/weights/best.pt")  # Update path to build model before exporting
 m.export(format="tflite", imgsz=640, half=True, nms=True)
 
 print("Model exported into tflite format: './yolo11n_saved_model' folder.")

@@ -65,13 +65,14 @@ device = "mps" if torch.backends.mps.is_available() else (0 if torch.cuda.is_ava
 print("device:", device)
 
 # Visual sanity check on the first validation image (ground truth vs. predictions).
-data_yaml_path = (Path(__file__).resolve().parent / "../dataset_YOLO/data.yaml").resolve()
+data_yaml_path = (Path(__file__).resolve().parent / "../../datasets/dataset_YOLO/data.yaml").resolve()
 image_path, label_path = load_first_validation_sample(data_yaml_path)
 image = Image.open(image_path).convert("RGB")
 image_width, image_height = image.size
 
-weights_path = Path("runs/detect/train/weights/best.pt")
-eval_model = YOLO(str(weights_path)) if weights_path.exists() else YOLO("yolo11n.pt")
+# Pats should be updated. Please look where training saved results (console output at training finished)
+weights_path = Path("runs/detect/train4/weights/best.pt")
+eval_model = YOLO(str(weights_path))
 results = eval_model.predict(source=str(image_path), imgsz=640, device=device, conf=0.25)
 predicted_boxes = results[0].boxes.xyxy.cpu().tolist() if results[0].boxes else []
 expected_boxes = parse_yolo_labels(label_path, image_width, image_height)
