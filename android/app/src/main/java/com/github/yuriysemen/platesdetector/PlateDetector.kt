@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.net.Uri
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -32,9 +33,14 @@ enum class CoordFormat {
     YXYX_SCORE_CLASS
 }
 
+sealed class ModelSource {
+    data class Asset(val path: String) : ModelSource()
+    data class ContentUri(val uri: Uri) : ModelSource()
+}
+
 class PlateDetector(
     private val context: Context,
-    private val assetName: String = "yolo11n_640.tflite",
+    private val modelSource: ModelSource = ModelSource.Asset("yolo11n_640.tflite"),
     threads: Int = 4,
     private val coordFormat: CoordFormat = CoordFormat.XYXY_SCORE_CLASS,
     private val classFilter: Int = 0,
@@ -56,7 +62,7 @@ class PlateDetector(
     private val detections: Array<Array<FloatArray>> // [1, N, 6]
 
     init {
-        val modelBuffer = loadModelFile(context, assetName)
+        val modelBuffer = loadModelFile(context, modelSource)
         val opts = Interpreter.Options().apply {
             setNumThreads(threads)
         }
@@ -92,7 +98,7 @@ class PlateDetector(
         intValues = IntArray(inputW * inputH)
 
         if (debugLogs) {
-            Log.d("PlateDetector", "Loaded model=$assetName")
+            Log.d("PlateDetector", "Loaded model=$modelSource")
             Log.d("PlateDetector", "Input shape=${inShape.contentToString()} type=$inputType")
             Log.d("PlateDetector", "Output[0] shape=${outShape0.contentToString()} type=${outTensor0.dataType()}")
             Log.d("PlateDetector", "coordFormat=$coordFormat classFilter=$classFilter maxDet=$maxDetections")
@@ -235,7 +241,14 @@ class PlateDetector(
     // Utilities
     // -----------------------
 
-    private fun loadModelFile(context: Context, assetName: String): ByteBuffer {
+    private fun loadModelFile(context: Context, modelSource: ModelSource): ByteBuffer {
+        return when (modelSource) {
+            is ModelSource.Asset -> loadAssetModel(context, modelSource.path)
+            is ModelSource.ContentUri -> loadUriModel(context, modelSource.uri)
+        }
+    }
+
+    private fun loadAssetModel(context: Context, assetName: String): ByteBuffer {
         // Preferred: memory-map (requires "noCompress tflite" to work reliably)
         return try {
             val afd = context.assets.openFd(assetName)
@@ -247,6 +260,26 @@ class PlateDetector(
             // Fallback: readBytes (works even if compressed)
             if (debugLogs) Log.w("PlateDetector", "openFd failed, fallback to readBytes: ${t.message}")
             val bytes = context.assets.open(assetName).use { it.readBytes() }
+            ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
+                put(bytes)
+                rewind()
+            }
+        }
+    }
+
+    private fun loadUriModel(context: Context, uri: Uri): ByteBuffer {
+        // Preferred: memory-map for file-backed URIs
+        return try {
+            val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+                ?: error("Cannot open $uri")
+            FileInputStream(pfd.fileDescriptor).use { fis ->
+                val channel = fis.channel
+                channel.map(FileChannel.MapMode.READ_ONLY, 0, pfd.statSize)
+            }
+        } catch (t: Throwable) {
+            if (debugLogs) Log.w("PlateDetector", "openFileDescriptor failed, fallback to readBytes: ${t.message}")
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Cannot read $uri")
             ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
                 put(bytes)
                 rewind()
