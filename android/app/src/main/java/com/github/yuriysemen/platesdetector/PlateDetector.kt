@@ -8,10 +8,8 @@ import android.net.Uri
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.channels.FileChannel
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -237,30 +235,12 @@ class PlateDetector(
     // -----------------------
 
     private fun loadModelFile(context: Context, modelUri: Uri): ByteBuffer {
-        return try {
-            context.contentResolver.openFileDescriptor(modelUri, "r")?.use { pfd ->
-                val size = pfd.statSize
-                FileInputStream(pfd.fileDescriptor).use { fis ->
-                    val channel = fis.channel
-                    if (size > 0) {
-                        channel.map(FileChannel.MapMode.READ_ONLY, 0, size)
-                    } else {
-                        val bytes = fis.readBytes()
-                        ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-                            put(bytes)
-                            rewind()
-                        }
-                    }
-                }
-            } ?: error("Unable to open model file: $modelUri")
-        } catch (t: Throwable) {
-            if (debugLogs) Log.w("PlateDetector", "openFileDescriptor failed, fallback: ${t.message}")
-            val bytes = context.contentResolver.openInputStream(modelUri)?.use { it.readBytes() }
-                ?: error("Unable to read model file: $modelUri")
-            ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-                put(bytes)
-                rewind()
-            }
+        val bytes = context.contentResolver.openInputStream(modelUri)?.use { it.readBytes() }
+            ?: error("Unable to read model file: $modelUri")
+        require(bytes.isNotEmpty()) { "Model file is empty: $modelUri" }
+        return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
+            put(bytes)
+            rewind()
         }
     }
 
