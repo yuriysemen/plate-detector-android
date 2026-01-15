@@ -171,9 +171,12 @@ private fun availableModels(context: Context): List<ModelSpec> {
 private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
     return runCatching {
         val buffer = loadUriBytes(context, uri)
-        Interpreter(buffer).use { interpreter ->
+        val interpreter = Interpreter(buffer)
+        try {
             interpreter.getInputTensor(0)
             interpreter.getOutputTensor(0)
+        } finally {
+            interpreter.close()
         }
         true
     }.getOrElse { false }
