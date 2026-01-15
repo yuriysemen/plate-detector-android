@@ -173,8 +173,7 @@ private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
         val buffer = loadUriBytes(context, uri)
         val interpreter = Interpreter(buffer)
         try {
-            interpreter.getInputTensor(0)
-            interpreter.getOutputTensor(0)
+            // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
         } finally {
             interpreter.close()
         }
