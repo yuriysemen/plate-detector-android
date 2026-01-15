@@ -65,7 +65,7 @@ device = "mps" if torch.backends.mps.is_available() else (0 if torch.cuda.is_ava
 print("device:", device)
 
 # Visual sanity check on the first validation image (ground truth vs. predictions).
-data_yaml_path = (Path(__file__).resolve().parent / "../dataset_1/data.yaml").resolve()
+data_yaml_path = (Path(__file__).resolve().parent / "../dataset_YOLO/data.yaml").resolve()
 image_path, label_path = load_first_validation_sample(data_yaml_path)
 image = Image.open(image_path).convert("RGB")
 image_width, image_height = image.size

@@ -1,6 +1,6 @@
-# Training (YOLO)
+# Training (Ultralytics Experiment)
 
-This folder hosts the training project for the license-plate detector model.
+This folder hosts a ready-to-run training process implemented in Python for the license-plate detector model using Ultralytics YOLO. It is the first option in the repository, with additional training approaches planned.
 Training artifacts (runs/, weights/, exported models) are generated locally and
 are intentionally not tracked by git.
 
