@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.min
@@ -85,6 +86,12 @@ private object ModelPrefs {
     fun addExternalUri(context: Context, uriString: String) {
         val updated = getExternalUris(context).toMutableSet()
         updated.add(uriString)
+        prefs(context).edit { putStringSet(KEY_EXTERNAL_URIS, updated) }
+    }
+
+    fun removeExternalUri(context: Context, uriString: String) {
+        val updated = getExternalUris(context).toMutableSet()
+        updated.remove(uriString)
         prefs(context).edit { putStringSet(KEY_EXTERNAL_URIS, updated) }
     }
 
@@ -141,6 +148,11 @@ private fun availableModels(context: Context): List<ModelSpec> {
         }
         .map { uri ->
             val uriString = uri.toString()
+            if (!isValidTfliteModel(context, uri)) {
+                Log.w("ModelPicker", "Invalid model file, removing from prefs: $uriString")
+                ModelPrefs.removeExternalUri(context, uriString)
+                return@map null
+            }
             val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: uriString
             val id = ModelPrefs.externalIdForUri(uriString)
             ModelSpec(
@@ -151,8 +163,38 @@ private fun availableModels(context: Context): List<ModelSpec> {
                 conf = ModelPrefs.getConf(context, id)
             )
         }
+        .filterNotNull()
 
     return assetModels + externalModels
+}
+
+private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
+    return runCatching {
+        val buffer = loadUriBytes(context, uri)
+        Interpreter(buffer).use { interpreter ->
+            interpreter.getInputTensor(0)
+            interpreter.getOutputTensor(0)
+        }
+        true
+    }.getOrElse { false }
+}
+
+private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
+    return runCatching {
+        val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: error("Cannot open $uri")
+        java.io.FileInputStream(pfd.fileDescriptor).use { fis ->
+            val channel = fis.channel
+            channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, pfd.statSize)
+        }
+    }.getOrElse {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Cannot read $uri")
+        java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
+            put(bytes)
+            rewind()
+        }
+    }
 }
 
 private fun queryDisplayName(context: Context, uri: Uri): String? {
@@ -194,6 +236,10 @@ fun LivePlateDetectionScreen() {
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
+        }
+        if (!isValidTfliteModel(context, uri)) {
+            Log.w("ModelPicker", "Selected file is not a valid TFLite model: $uri")
+            return
         }
         val uriString = uri.toString()
         ModelPrefs.addExternalUri(context, uriString)
