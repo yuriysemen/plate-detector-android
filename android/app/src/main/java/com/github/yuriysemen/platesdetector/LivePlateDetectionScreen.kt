@@ -44,6 +44,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
+import java.nio.ByteBuffer
 
 // ------------------------
 // Model listing & prefs
