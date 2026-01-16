@@ -20,6 +20,14 @@ The Android app expects one or more `.tflite` files in the assets directory. Whe
   - `experiments/ultralytics/` for alternative training/export scripts.
 - `dataset_YOLO/` for the initial YOLO dataset layout and format expectations.
 
+## Release artifacts (unsigned)
+The GitHub Actions release workflow builds release artifacts without signing them. As a result:
+
+- The Android App Bundle is still generated: `android/app/build/outputs/bundle/release/app-release.aab`.
+- The APK output is **unsigned** and named `android/app/build/outputs/apk/release/app-release-unsigned.apk`.
+
+If you need a signed APK for distribution (Play Store, internal testing, etc.), add a signing config in `android/app/build.gradle.kts` and update the workflow accordingly.
+
 ## Roadmap (planned)
 - **Character-level recognition (OCR)**: add a separate model and pipeline to detect the license-plate number itself.
 - **Event metadata**: emit notifications that specify *when* a plate is detected and *which* plate text was recognized. The event format and payload are still being designed and will be documented once the OCR pipeline lands.
