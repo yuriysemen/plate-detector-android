@@ -19,7 +19,11 @@ model = YOLO("yolo11n.pt")
 model.train(
     data="../../datasets/dataset_YOLO/data.yaml",
     imgsz=640,
-    epochs=1,
+    epochs=50,
     batch=16,
     device=device,
 )
+
+# In case if model training is not completed, got to resume training.
+# model = YOLO("runs/detect/train6/weights/last.pt")
+# model.train(resume=True)

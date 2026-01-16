@@ -2,6 +2,7 @@ package com.github.yuriysemen.platesdetector
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,6 +14,8 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.SystemClock
 import android.util.Log
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -36,10 +39,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
+import java.nio.ByteBuffer
 
 // ------------------------
 // Model listing & prefs
@@ -48,7 +53,7 @@ import androidx.core.content.edit
 private data class ModelSpec(
     val id: String,                // file name without extension
     val title: String,             // same as id
-    val assetPath: String,         // e.g. "models/yolo11n_640.tflite"
+    val source: ModelSource,       // asset or external file
     val coordFormat: CoordFormat,  // fixed
     val conf: Float                // threshold, editable in picker
 )
@@ -56,6 +61,7 @@ private data class ModelSpec(
 private object ModelPrefs {
     private const val PREFS = "model_prefs"
     private const val KEY_MODEL_ID = "selected_model_id"
+    private const val KEY_EXTERNAL_URIS = "external_model_uris"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -69,6 +75,25 @@ private object ModelPrefs {
 
     fun clearSelected(context: Context) {
         prefs(context).edit { remove(KEY_MODEL_ID) }
+    }
+
+    private fun externalId(uriString: String) = "external:$uriString"
+
+    fun externalIdForUri(uriString: String) = externalId(uriString)
+
+    fun getExternalUris(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_EXTERNAL_URIS, emptySet())?.toSet().orEmpty()
+
+    fun addExternalUri(context: Context, uriString: String) {
+        val updated = getExternalUris(context).toMutableSet()
+        updated.add(uriString)
+        prefs(context).edit { putStringSet(KEY_EXTERNAL_URIS, updated) }
+    }
+
+    fun removeExternalUri(context: Context, uriString: String) {
+        val updated = getExternalUris(context).toMutableSet()
+        updated.remove(uriString)
+        prefs(context).edit { putStringSet(KEY_EXTERNAL_URIS, updated) }
     }
 
     // conf per model, default 0.5
@@ -106,16 +131,86 @@ private fun availableModels(context: Context): List<ModelSpec> {
         // avoid duplicates if any
         .distinctBy { it.second }
 
-    return all.map { (fileName, assetPath) ->
+    val assetModels = all.map { (fileName, assetPath) ->
         val id = fileName.substringBeforeLast(".")
         ModelSpec(
             id = id,
             title = id,
-            assetPath = assetPath,
+            source = ModelSource.Asset(assetPath),
             coordFormat = CoordFormat.XYXY_SCORE_CLASS,
             conf = ModelPrefs.getConf(context, id)
         )
     }
+
+    val externalModels = ModelPrefs.getExternalUris(context)
+        .sorted()
+        .mapNotNull { uriString ->
+            runCatching { Uri.parse(uriString) }.getOrNull()
+        }
+        .map { uri ->
+            val uriString = uri.toString()
+            if (!isValidTfliteModel(context, uri)) {
+                Log.w("ModelPicker", "Invalid model file, removing from prefs: $uriString")
+                ModelPrefs.removeExternalUri(context, uriString)
+                return@map null
+            }
+            val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: uriString
+            val id = ModelPrefs.externalIdForUri(uriString)
+            ModelSpec(
+                id = id,
+                title = displayName,
+                source = ModelSource.ContentUri(uri),
+                coordFormat = CoordFormat.XYXY_SCORE_CLASS,
+                conf = ModelPrefs.getConf(context, id)
+            )
+        }
+        .filterNotNull()
+
+    return assetModels + externalModels
+}
+
+private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
+    return runCatching {
+        val buffer = loadUriBytes(context, uri)
+        val interpreter = Interpreter(buffer)
+        try {
+            // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
+        } finally {
+            interpreter.close()
+        }
+        true
+    }.getOrElse { false }
+}
+
+private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
+    return runCatching {
+        val pfd = context.contentResolver.openFileDescriptor(uri, "r")
+            ?: error("Cannot open $uri")
+        java.io.FileInputStream(pfd.fileDescriptor).use { fis ->
+            val channel = fis.channel
+            channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, pfd.statSize)
+        }
+    }.getOrElse {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Cannot read $uri")
+        java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
+            put(bytes)
+            rewind()
+        }
+    }
+}
+
+private fun queryDisplayName(context: Context, uri: Uri): String? {
+    return runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                cursor.getString(nameIndex)
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
 }
 
 // ------------------------
@@ -131,20 +226,49 @@ fun LivePlateDetectionScreen() {
 
     val models = remember(reloadKey) { availableModels(context) }
 
-    // If no models: show error and DO NOT init any detector.
-    if (models.isEmpty()) {
-        NoModelsScreen(
-            onRetry = { reloadKey++ }
-        )
-        return
-    }
-
     var selectedId by rememberSaveable {
         mutableStateOf(ModelPrefs.getSelectedId(context))
     }
 
     // If first launch and nothing selected, open picker.
     var showPicker by rememberSaveable { mutableStateOf(selectedId == null) }
+
+    fun handlePickedUri(uri: Uri) {
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        if (!isValidTfliteModel(context, uri)) {
+            Log.w("ModelPicker", "Selected file is not a valid TFLite model: $uri")
+            return
+        }
+        val uriString = uri.toString()
+        ModelPrefs.addExternalUri(context, uriString)
+        val id = ModelPrefs.externalIdForUri(uriString)
+        ModelPrefs.setSelectedId(context, id)
+        selectedId = id
+        showPicker = false
+        reloadKey++
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            handlePickedUri(uri)
+        }
+    }
+
+    // If no models: show error and DO NOT init any detector.
+    if (models.isEmpty()) {
+        NoModelsScreen(
+            onRetry = { reloadKey++ },
+            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
+        )
+        return
+    }
 
     val selected = models.firstOrNull { it.id == selectedId }
 
@@ -155,7 +279,8 @@ fun LivePlateDetectionScreen() {
                 ModelPrefs.setSelectedId(context, spec.id)
                 selectedId = spec.id
                 showPicker = false
-            }
+            },
+            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
         )
     } else {
         // Important: spec.conf may change in prefs in picker, so load fresh conf for runtime.
@@ -177,7 +302,7 @@ fun LivePlateDetectionScreen() {
 // ------------------------
 
 @Composable
-private fun NoModelsScreen(onRetry: () -> Unit) {
+private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(
             modifier = Modifier
@@ -191,7 +316,8 @@ private fun NoModelsScreen(onRetry: () -> Unit) {
                 "The app did not find any *.tflite models in:\n" +
                         "1) app/src/main/assets/models/\n" +
                         "2) app/src/main/assets/\n\n" +
-                        "Add at least one model file (e.g. yolo11n_640.tflite) and rebuild the app.",
+                        "Add at least one model file (e.g. yolo11n_640.tflite) and rebuild the app,\n" +
+                        "or pick a model file from your device.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -199,6 +325,10 @@ private fun NoModelsScreen(onRetry: () -> Unit) {
 
             OutlinedButton(onClick = onRetry) {
                 Text("Retry")
+            }
+
+            Button(onClick = onPickFile) {
+                Text("Pick model file")
             }
 
             Text(
@@ -212,7 +342,8 @@ private fun NoModelsScreen(onRetry: () -> Unit) {
 @Composable
 private fun ModelPickerScreen(
     models: List<ModelSpec>,
-    onPick: (ModelSpec) -> Unit
+    onPick: (ModelSpec) -> Unit,
+    onPickFile: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -234,6 +365,10 @@ private fun ModelPickerScreen(
         ) {
             Text("Select model", style = MaterialTheme.typography.titleLarge)
 
+            OutlinedButton(onClick = onPickFile) {
+                Text("Add model from file")
+            }
+
             models.forEach { m ->
                 OutlinedCard(
                     onClick = { selectedId = m.id },
@@ -250,7 +385,7 @@ private fun ModelPickerScreen(
                         Column {
                             Text(m.title, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "asset: ${m.assetPath}",
+                                sourceLabel(m),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -321,7 +456,7 @@ private fun LiveDetectionUi(
     val detector = remember(spec.id) {
         PlateDetector(
             context = context,
-            assetName = spec.assetPath,
+            modelSource = spec.source,
             coordFormat = spec.coordFormat,
             debugLogs = true
         )
@@ -640,4 +775,11 @@ private fun yuv420888ToNv21(image: ImageProxy): ByteArray {
     }
 
     return nv21
+}
+
+private fun sourceLabel(model: ModelSpec): String {
+    return when (val source = model.source) {
+        is ModelSource.Asset -> "asset: ${source.path}"
+        is ModelSource.ContentUri -> "file: ${model.title}"
+    }
 }

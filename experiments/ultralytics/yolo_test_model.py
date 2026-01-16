@@ -71,7 +71,7 @@ image = Image.open(image_path).convert("RGB")
 image_width, image_height = image.size
 
 # Pats should be updated. Please look where training saved results (console output at training finished)
-weights_path = Path("runs/detect/train4/weights/best.pt")
+weights_path = Path("runs/detect/train6/weights/best.pt")
 eval_model = YOLO(str(weights_path))
 results = eval_model.predict(source=str(image_path), imgsz=640, device=device, conf=0.25)
 predicted_boxes = results[0].boxes.xyxy.cpu().tolist() if results[0].boxes else []
