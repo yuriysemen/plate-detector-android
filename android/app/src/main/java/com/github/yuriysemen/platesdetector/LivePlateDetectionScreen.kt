@@ -258,6 +258,11 @@ private val cocoClassNames = listOf(
 private fun classNameFor(classId: Int): String =
     cocoClassNames.getOrNull(classId) ?: "class $classId"
 
+private fun classColorFor(classId: Int): Color {
+    val hue = (classId * 37) % 360
+    return Color.hsv(hue.toFloat(), 0.85f, 0.95f)
+}
+
 private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
     return runCatching {
         val buffer = loadUriBytes(context, uri)
@@ -666,13 +671,14 @@ private fun LiveDetectionUi(
                         val labelTextSize = 14.dp.toPx()
 
                         for (det in lastDetections) {
+                            val classColor = classColorFor(det.classId)
                             val left = offX + det.leftPx * scale
                             val top = offY + det.topPx * scale
                             val right = offX + det.rightPx * scale
                             val bottom = offY + det.bottomPx * scale
 
                             drawRect(
-                                color = Color.Green,
+                                color = classColor,
                                 topLeft = Offset(left, top),
                                 size = Size(right - left, bottom - top),
                                 style = stroke
