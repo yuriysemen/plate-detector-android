@@ -682,22 +682,29 @@ private fun LiveDetectionUi(
                             drawIntoCanvas { canvas ->
                                 labelPaint.textSize = labelTextSize
                                 val textWidth = labelPaint.measureText(label)
-                                val textHeight = labelPaint.fontMetrics.run { bottom - top }
+                                val fontMetrics = labelPaint.fontMetrics
+                                val textHeight = fontMetrics.descent - fontMetrics.ascent
                                 val textLeft = left.coerceAtLeast(0f)
-                                val textTop = (top - textHeight - labelPadding)
+                                val textBoxTop = (top - textHeight - labelPadding * 2)
                                     .coerceAtLeast(0f)
+                                val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
+                                    .coerceAtMost(viewH)
+                                val textBoxRight = (textLeft + textWidth + labelPadding * 2)
+                                    .coerceAtMost(viewW)
+                                val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
+                                    .coerceAtMost(viewH)
 
                                 canvas.nativeCanvas.drawRect(
                                     textLeft,
-                                    textTop,
-                                    (textLeft + textWidth + labelPadding * 2).coerceAtMost(viewW),
-                                    (textTop + textHeight + labelPadding).coerceAtMost(viewH),
+                                    textBoxTop,
+                                    textBoxRight,
+                                    textBoxBottom,
                                     labelBackgroundPaint
                                 )
                                 canvas.nativeCanvas.drawText(
                                     label,
                                     textLeft + labelPadding,
-                                    textTop + textHeight,
+                                    textBaseline,
                                     labelPaint
                                 )
                             }
