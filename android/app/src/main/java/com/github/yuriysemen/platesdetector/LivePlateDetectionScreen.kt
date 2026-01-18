@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.AudioManager
@@ -34,7 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -168,6 +171,92 @@ private fun availableModels(context: Context): List<ModelSpec> {
 
     return assetModels + externalModels
 }
+
+private val cocoClassNames = listOf(
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "dining table",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush"
+)
+
+private fun classNameFor(classId: Int): String =
+    cocoClassNames.getOrNull(classId) ?: "class $classId"
 
 private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
     return runCatching {
@@ -478,6 +567,19 @@ private fun LiveDetectionUi(
     DisposableEffect(Unit) {
         onDispose { toneGenerator.release() }
     }
+    val labelPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.WHITE
+            isAntiAlias = true
+            style = Paint.Style.FILL
+        }
+    }
+    val labelBackgroundPaint = remember {
+        Paint().apply {
+            color = android.graphics.Color.argb(160, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+    }
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(
@@ -560,6 +662,8 @@ private fun LiveDetectionUi(
                         val offY = (viewH - dispH) / 2f
 
                         val stroke = Stroke(width = 3.dp.toPx())
+                        val labelPadding = 4.dp.toPx()
+                        val labelTextSize = 14.dp.toPx()
 
                         for (det in lastDetections) {
                             val left = offX + det.leftPx * scale
@@ -573,6 +677,30 @@ private fun LiveDetectionUi(
                                 size = Size(right - left, bottom - top),
                                 style = stroke
                             )
+
+                            val label = "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
+                            drawIntoCanvas { canvas ->
+                                labelPaint.textSize = labelTextSize
+                                val textWidth = labelPaint.measureText(label)
+                                val textHeight = labelPaint.fontMetrics.run { bottom - top }
+                                val textLeft = left.coerceAtLeast(0f)
+                                val textTop = (top - textHeight - labelPadding)
+                                    .coerceAtLeast(0f)
+
+                                canvas.nativeCanvas.drawRect(
+                                    textLeft,
+                                    textTop,
+                                    (textLeft + textWidth + labelPadding * 2).coerceAtMost(viewW),
+                                    (textTop + textHeight + labelPadding).coerceAtMost(viewH),
+                                    labelBackgroundPaint
+                                )
+                                canvas.nativeCanvas.drawText(
+                                    label,
+                                    textLeft + labelPadding,
+                                    textTop + textHeight,
+                                    labelPaint
+                                )
+                            }
                         }
                     }
                 }

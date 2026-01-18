@@ -43,7 +43,7 @@ class PlateDetector(
     private val modelSource: ModelSource = ModelSource.Asset("yolo11n_640.tflite"),
     threads: Int = 4,
     private val coordFormat: CoordFormat = CoordFormat.XYXY_SCORE_CLASS,
-    private val classFilter: Int = 0,
+    private val classFilter: Int? = null,
     private val debugLogs: Boolean = false
 ) {
 
@@ -136,7 +136,7 @@ class PlateDetector(
                 if (score < scoreThreshold) continue
 
                 val cls = d[5].roundToInt()
-                if (cls != classFilter) continue
+                if (classFilter != null && cls != classFilter) continue
 
                 var x1: Float
                 var y1: Float
