@@ -559,8 +559,6 @@ private fun LiveDetectionUi(
         onDispose { detector.close() }
     }
 
-    var enabled by rememberSaveable { mutableStateOf(true) }
-
     var lastDetections by remember { mutableStateOf<List<Detection>>(emptyList()) }
     var lastFrameW by remember { mutableStateOf(0) }
     var lastFrameH by remember { mutableStateOf(0) }
@@ -632,7 +630,6 @@ private fun LiveDetectionUi(
                     // Key by model id to ensure full rebind for analyzer when model changes
                     key(spec.id) {
                         CameraPreviewWithAnalysis(
-                            enabled = enabled,
                             detector = detector,
                             scoreThreshold = spec.conf,
                             onResult = { dets, w, h, ms ->
@@ -719,17 +716,6 @@ private fun LiveDetectionUi(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = { enabled = !enabled },
-                    modifier = Modifier.weight(1f)
-                ) { Text(if (enabled) "Pause" else "Resume") }
-
-                OutlinedButton(
-                    onClick = { lastDetections = emptyList() },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Reset") }
-            }
         }
     }
 }
@@ -740,7 +726,6 @@ private fun LiveDetectionUi(
 
 @Composable
 private fun CameraPreviewWithAnalysis(
-    enabled: Boolean,
     detector: PlateDetector,
     scoreThreshold: Float,
     onResult: (List<Detection>, Int, Int, Long) -> Unit
@@ -748,8 +733,6 @@ private fun CameraPreviewWithAnalysis(
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
-    // Avoid stale captures inside analyzer
-    val enabledState by rememberUpdatedState(enabled)
     val detectorState by rememberUpdatedState(detector)
     val thresholdState by rememberUpdatedState(scoreThreshold)
     val onResultState by rememberUpdatedState(onResult)
@@ -787,7 +770,7 @@ private fun CameraPreviewWithAnalysis(
                 var rotated: Bitmap? = null
 
                 try {
-                    val shouldProcess = enabledState && !busy && (now - lastRun >= throttleMs)
+                    val shouldProcess = !busy && (now - lastRun >= throttleMs)
                     if (!shouldProcess) return@setAnalyzer
 
                     busy = true
