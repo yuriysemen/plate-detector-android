@@ -55,7 +55,7 @@ import androidx.compose.material.icons.filled.Menu
 // Model listing & prefs
 // ------------------------
 
-private data class ModelSpec(
+data class ModelSpec(
     val id: String,                // file name without extension
     val title: String,             // same as id
     val source: ModelSource,       // asset or external file
@@ -435,69 +435,6 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
     }
 }
 
-@Composable
-private fun SettingsScreen(
-    models: List<ModelSpec>,
-    onPick: (ModelSpec) -> Unit,
-    onPickFile: () -> Unit
-) {
-    var selectedId by rememberSaveable { mutableStateOf(models.first().id) }
-
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing,
-        containerColor = Color.Black,
-        contentColor = Color.White
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Settings", style = MaterialTheme.typography.titleLarge)
-
-            Text("Change model", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedButton(onClick = onPickFile) {
-                Text("Add model from file")
-            }
-
-            models.forEach { m ->
-                OutlinedCard(
-                    onClick = { selectedId = m.id },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = (selectedId == m.id),
-                            onClick = { selectedId = m.id }
-                        )
-                        Column {
-                            Text(m.title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                sourceLabel(m),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Button(onClick = {
-                val base = models.first { it.id == selectedId }
-                onPick(base)
-            }) {
-                Text("Use selected model")
-            }
-        }
-    }
-}
 
 @Composable
 private fun LiveDetectionUi(
@@ -882,7 +819,7 @@ private fun yuv420888ToNv21(image: ImageProxy): ByteArray {
     return nv21
 }
 
-private fun sourceLabel(model: ModelSpec): String {
+fun sourceLabel(model: ModelSpec): String {
     return when (val source = model.source) {
         is ModelSource.Asset -> "asset: ${source.path}"
         is ModelSource.ContentUri -> "file: ${model.title}"
