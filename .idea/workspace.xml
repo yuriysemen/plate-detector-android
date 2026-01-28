@@ -5,75 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/index.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/release-notes/android-delivery.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/workflows/android-release.yml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/build.gradle.kts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/proguard-rules.pro" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/androidTest/java/com/github/yuriysemen/platesdetector/ExampleInstrumentedTest.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/AndroidManifest.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/assets/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/MainActivity.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/PlateDetector.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ui/theme/Color.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ui/theme/Theme.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ui/theme/Type.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_launcher_background.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/drawable/ic_launcher_foreground.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-hdpi/ic_launcher.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-mdpi/ic_launcher.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/colors.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/strings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/values/themes.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/xml/backup_rules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/res/xml/data_extraction_rules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/test/java/com/github/yuriysemen/platesdetector/ExampleUnitTest.kt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/build.gradle.kts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle.properties" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle/libs.versions.toml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.jar" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradlew" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradlew.bat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/10in_tablet_02_detection.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/10in_tablet_04_settings.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/10in_tablet_05_about.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/Car_Plate_Detector_feature_graphic_1024x500.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/Car_Plate_Detector_icon_512_RGB.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/listing details.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/tablet-1.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/tablet-2.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/play_assets/tablet-3.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/settings.gradle.kts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/datasets/dataset_YOLO/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/datasets/dataset_YOLO/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/requirements.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/yolo.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/yolo_export_model.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/yolo_test_model.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/experiments/ultralytics/yolo_train_model.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/.idea/workspace.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/misc.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/ultralytics.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/export_ptlite.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/requirements.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/training/ultralytics/train.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.md" beforeDir="false" afterPath="$PROJECT_DIR$/index.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -145,7 +77,7 @@
       <updated>1767875576208</updated>
       <workItem from="1768501440095" duration="23102000" />
       <workItem from="1769518047073" duration="7764000" />
-      <workItem from="1769605945749" duration="383000" />
+      <workItem from="1769605945749" duration="565000" />
     </task>
     <servers />
   </component>
