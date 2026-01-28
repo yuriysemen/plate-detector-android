@@ -88,3 +88,4 @@ fastlane/test_output
 .idea/workspace.xml
 .idea/navEditor.xml
 .idea/assetWizardSettings.xml
+/my-release-key.base64
