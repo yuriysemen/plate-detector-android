@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -481,6 +482,13 @@ private fun LiveDetectionUi(
     onDetectionStopped: () -> Unit
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
+
+    val detectionEnabled = !stopDetectionRequested
+    DisposableEffect(detectionEnabled) {
+        view.keepScreenOn = detectionEnabled
+        onDispose { view.keepScreenOn = false }
+    }
 
     var hasPermission by remember {
         mutableStateOf(
@@ -573,7 +581,7 @@ private fun LiveDetectionUi(
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         scoreThreshold = spec.conf,
-                        isDetectionEnabled = !stopDetectionRequested,
+                        isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
                         onResult = { dets, w, h, ms ->
                             val now = SystemClock.elapsedRealtime()
