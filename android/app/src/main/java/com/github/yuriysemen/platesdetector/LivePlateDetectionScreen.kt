@@ -373,6 +373,7 @@ fun LivePlateDetectionScreen() {
     if (showSettings || selected == null || !isModelEnabled) {
         SettingsScreen(
             models = models,
+            selectedModelId = selectedId ?: models.first().id,
             onPick = { spec ->
                 ModelPrefs.setSelectedId(context, spec.id)
                 selectedId = spec.id

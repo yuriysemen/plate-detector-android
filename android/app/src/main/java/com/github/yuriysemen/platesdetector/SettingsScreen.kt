@@ -32,10 +32,11 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsScreen(
     models: List<ModelSpec>,
+    selectedModelId: String,
     onPick: (ModelSpec) -> Unit,
     onPickFile: () -> Unit
 ) {
-    var selectedId by rememberSaveable { mutableStateOf(models.first().id) }
+    var selectedId by rememberSaveable { mutableStateOf(selectedModelId) }
     val applySelection = {
         val base = models.first { it.id == selectedId }
         onPick(base)
