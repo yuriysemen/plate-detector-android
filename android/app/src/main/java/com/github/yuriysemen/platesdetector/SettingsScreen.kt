@@ -3,16 +3,18 @@ package com.github.yuriysemen.platesdetector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,18 +60,7 @@ fun SettingsScreen(
         ) {
             Text("Settings", style = MaterialTheme.typography.titleLarge)
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Select model", style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = onPickFile) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add model"
-                    )
-                }
-            }
+            Text("Select model", style = MaterialTheme.typography.titleMedium)
 
             OutlinedCard(
                 modifier = Modifier
@@ -102,6 +93,15 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            TextButton(onClick = onPickFile) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Choose custom model"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Custom Model")
             }
         }
     }
