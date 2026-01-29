@@ -328,6 +328,7 @@ fun LivePlateDetectionScreen() {
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
+    var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
 
     fun handlePickedUri(uri: Uri) {
         runCatching {
@@ -345,6 +346,7 @@ fun LivePlateDetectionScreen() {
         val id = ModelPrefs.externalIdForUri(uriString)
         ModelPrefs.setSelectedId(context, id)
         selectedId = id
+        isModelEnabled = true
         showSettings = false
         reloadKey++
     }
@@ -368,12 +370,13 @@ fun LivePlateDetectionScreen() {
 
     val selected = models.firstOrNull { it.id == selectedId }
 
-    if (showSettings || selected == null) {
+    if (showSettings || selected == null || !isModelEnabled) {
         SettingsScreen(
             models = models,
             onPick = { spec ->
                 ModelPrefs.setSelectedId(context, spec.id)
                 selectedId = spec.id
+                isModelEnabled = true
                 showSettings = false
             },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
@@ -384,7 +387,10 @@ fun LivePlateDetectionScreen() {
 
         LiveDetectionUi(
             spec = runtimeSpec,
-            onOpenSettings = { showSettings = true }
+            onOpenSettings = {
+                isModelEnabled = false
+                showSettings = true
+            }
         )
     }
 }
