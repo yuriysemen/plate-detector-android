@@ -75,13 +75,21 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedId = m.id }
+                                .clickable {
+                                    if (selectedId != m.id) {
+                                        selectedId = m.id
+                                    }
+                                }
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             RadioButton(
                                 selected = (selectedId == m.id),
-                                onClick = { selectedId = m.id }
+                                onClick = {
+                                    if (selectedId != m.id) {
+                                        selectedId = m.id
+                                    }
+                                }
                             )
                             Column {
                                 Text(m.title, style = MaterialTheme.typography.titleMedium)

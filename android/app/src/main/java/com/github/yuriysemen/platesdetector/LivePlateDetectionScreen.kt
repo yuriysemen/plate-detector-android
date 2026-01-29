@@ -67,6 +67,7 @@ private object ModelPrefs {
     private const val PREFS = "model_prefs"
     private const val KEY_MODEL_ID = "selected_model_id"
     private const val KEY_EXTERNAL_URIS = "external_model_uris"
+    private const val KEY_SHOW_LABELS = "show_class_labels"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -109,6 +110,13 @@ private object ModelPrefs {
 
     fun setConf(context: Context, id: String, conf: Float) {
         prefs(context).edit { putFloat(confKey(id), conf) }
+    }
+
+    fun getShowLabels(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SHOW_LABELS, false)
+
+    fun setShowLabels(context: Context, show: Boolean) {
+        prefs(context).edit { putBoolean(KEY_SHOW_LABELS, show) }
     }
 }
 
@@ -325,6 +333,9 @@ fun LivePlateDetectionScreen() {
     var selectedId by rememberSaveable {
         mutableStateOf(ModelPrefs.getSelectedId(context))
     }
+    var showClassNames by rememberSaveable {
+        mutableStateOf(ModelPrefs.getShowLabels(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -347,6 +358,8 @@ fun LivePlateDetectionScreen() {
         val id = ModelPrefs.externalIdForUri(uriString)
         ModelPrefs.setSelectedId(context, id)
         selectedId = id
+        ModelPrefs.setShowLabels(context, false)
+        showClassNames = false
         isModelEnabled = true
         showSettings = false
         reloadKey++
@@ -376,8 +389,13 @@ fun LivePlateDetectionScreen() {
             models = models,
             selectedModelId = selectedId ?: models.first().id,
             onPick = { spec ->
+                val isNewModel = selectedId != spec.id
                 ModelPrefs.setSelectedId(context, spec.id)
                 selectedId = spec.id
+                if (isNewModel) {
+                    ModelPrefs.setShowLabels(context, false)
+                    showClassNames = false
+                }
                 isModelEnabled = true
                 showSettings = false
                 stopDetectionRequested = false
@@ -391,6 +409,11 @@ fun LivePlateDetectionScreen() {
         LiveDetectionUi(
             spec = runtimeSpec,
             stopDetectionRequested = stopDetectionRequested,
+            showClassNames = showClassNames,
+            onShowClassNamesChange = { show ->
+                ModelPrefs.setShowLabels(context, show)
+                showClassNames = show
+            },
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
@@ -452,6 +475,8 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
 private fun LiveDetectionUi(
     spec: ModelSpec,
     stopDetectionRequested: Boolean,
+    showClassNames: Boolean,
+    onShowClassNamesChange: (Boolean) -> Unit,
     onRequestOpenSettings: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
@@ -558,6 +583,9 @@ private fun LiveDetectionUi(
                                 toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
                                 lastBeepAt = now
                             }
+                            if (!showClassNames && dets.any { it.classId > 0 }) {
+                                onShowClassNamesChange(true)
+                            }
                             hadDetections = dets.isNotEmpty()
                             lastDetections = dets
                             lastFrameW = w
@@ -599,35 +627,38 @@ private fun LiveDetectionUi(
                             style = stroke
                         )
 
-                        val label = "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
-                        drawIntoCanvas { canvas ->
-                            labelPaint.textSize = labelTextSize
-                            val textWidth = labelPaint.measureText(label)
-                            val fontMetrics = labelPaint.fontMetrics
-                            val textHeight = fontMetrics.descent - fontMetrics.ascent
-                            val textLeft = left.coerceAtLeast(0f)
-                            val textBoxTop = (top - textHeight - labelPadding * 2)
-                                .coerceAtLeast(0f)
-                            val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
-                                .coerceAtMost(viewH)
-                            val textBoxRight = (textLeft + textWidth + labelPadding * 2)
-                                .coerceAtMost(viewW)
-                            val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
-                                .coerceAtMost(viewH)
+                        if (showClassNames) {
+                            val label =
+                                "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
+                            drawIntoCanvas { canvas ->
+                                labelPaint.textSize = labelTextSize
+                                val textWidth = labelPaint.measureText(label)
+                                val fontMetrics = labelPaint.fontMetrics
+                                val textHeight = fontMetrics.descent - fontMetrics.ascent
+                                val textLeft = left.coerceAtLeast(0f)
+                                val textBoxTop = (top - textHeight - labelPadding * 2)
+                                    .coerceAtLeast(0f)
+                                val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
+                                    .coerceAtMost(viewH)
+                                val textBoxRight = (textLeft + textWidth + labelPadding * 2)
+                                    .coerceAtMost(viewW)
+                                val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
+                                    .coerceAtMost(viewH)
 
-                            canvas.nativeCanvas.drawRect(
-                                textLeft,
-                                textBoxTop,
-                                textBoxRight,
-                                textBoxBottom,
-                                labelBackgroundPaint
-                            )
-                            canvas.nativeCanvas.drawText(
-                                label,
-                                textLeft + labelPadding,
-                                textBaseline,
-                                labelPaint
-                            )
+                                canvas.nativeCanvas.drawRect(
+                                    textLeft,
+                                    textBoxTop,
+                                    textBoxRight,
+                                    textBoxBottom,
+                                    labelBackgroundPaint
+                                )
+                                canvas.nativeCanvas.drawText(
+                                    label,
+                                    textLeft + labelPadding,
+                                    textBaseline,
+                                    labelPaint
+                                )
+                            }
                         }
                     }
                 }
