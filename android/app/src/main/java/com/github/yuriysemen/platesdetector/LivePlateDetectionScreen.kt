@@ -329,6 +329,7 @@ fun LivePlateDetectionScreen() {
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
+    var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
     fun handlePickedUri(uri: Uri) {
         runCatching {
@@ -379,6 +380,7 @@ fun LivePlateDetectionScreen() {
                 selectedId = spec.id
                 isModelEnabled = true
                 showSettings = false
+                stopDetectionRequested = false
             },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
         )
@@ -388,9 +390,12 @@ fun LivePlateDetectionScreen() {
 
         LiveDetectionUi(
             spec = runtimeSpec,
-            onOpenSettings = {
+            stopDetectionRequested = stopDetectionRequested,
+            onRequestOpenSettings = { stopDetectionRequested = true },
+            onDetectionStopped = {
                 isModelEnabled = false
                 showSettings = true
+                stopDetectionRequested = false
             }
         )
     }
@@ -446,7 +451,9 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
 @Composable
 private fun LiveDetectionUi(
     spec: ModelSpec,
-    onOpenSettings: () -> Unit
+    stopDetectionRequested: Boolean,
+    onRequestOpenSettings: () -> Unit,
+    onDetectionStopped: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -486,6 +493,13 @@ private fun LiveDetectionUi(
     var lastMs by remember { mutableStateOf(0L) }
     var hadDetections by remember { mutableStateOf(false) }
     var lastBeepAt by remember { mutableStateOf(0L) }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(stopDetectionRequested, isProcessing) {
+        if (stopDetectionRequested && !isProcessing) {
+            onDetectionStopped()
+        }
+    }
 
     val toneGenerator = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 80) }
     DisposableEffect(Unit) {
@@ -534,6 +548,8 @@ private fun LiveDetectionUi(
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         scoreThreshold = spec.conf,
+                        isDetectionEnabled = !stopDetectionRequested,
+                        onProcessingChanged = { isProcessing = it },
                         onResult = { dets, w, h, ms ->
                             val now = SystemClock.elapsedRealtime()
                             val shouldBeep = dets.isNotEmpty() &&
@@ -624,7 +640,7 @@ private fun LiveDetectionUi(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onOpenSettings) {
+                IconButton(onClick = onRequestOpenSettings) {
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "Open settings",
@@ -653,6 +669,8 @@ private fun LiveDetectionUi(
 private fun CameraPreviewWithAnalysis(
     detector: PlateDetector,
     scoreThreshold: Float,
+    isDetectionEnabled: Boolean,
+    onProcessingChanged: (Boolean) -> Unit,
     onResult: (List<Detection>, Int, Int, Long) -> Unit
 ) {
     val context = LocalContext.current
@@ -660,7 +678,9 @@ private fun CameraPreviewWithAnalysis(
 
     val detectorState by rememberUpdatedState(detector)
     val thresholdState by rememberUpdatedState(scoreThreshold)
+    val detectionEnabledState by rememberUpdatedState(isDetectionEnabled)
     val onResultState by rememberUpdatedState(onResult)
+    val onProcessingChangedState by rememberUpdatedState(onProcessingChanged)
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -695,11 +715,14 @@ private fun CameraPreviewWithAnalysis(
                 var rotated: Bitmap? = null
 
                 try {
+                    if (!detectionEnabledState) return@setAnalyzer
+
                     val shouldProcess = !busy && (now - lastRun >= throttleMs)
                     if (!shouldProcess) return@setAnalyzer
 
                     busy = true
                     lastRun = now
+                    mainExecutor.execute { onProcessingChangedState(true) }
 
                     val t0 = System.nanoTime()
 
@@ -720,6 +743,7 @@ private fun CameraPreviewWithAnalysis(
                     Log.e("CameraAnalysis", "Analyzer failed", t)
                 } finally {
                     busy = false
+                    mainExecutor.execute { onProcessingChangedState(false) }
                     imageProxy.close()
 
                     // reduce memory pressure, avoid double recycle
