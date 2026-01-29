@@ -35,16 +35,12 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     models: List<ModelSpec>,
     selectedModelId: String,
-    showClassNames: Boolean,
-    onShowClassNamesChange: (Boolean) -> Unit,
     onPick: (ModelSpec) -> Unit,
     onPickFile: () -> Unit
 ) {
     var selectedId by rememberSaveable { mutableStateOf(selectedModelId) }
-    var showLabels by rememberSaveable { mutableStateOf(showClassNames) }
     val applySelection = {
         val base = models.first { it.id == selectedId }
-        onShowClassNamesChange(showLabels)
         onPick(base)
     }
 
@@ -82,8 +78,6 @@ fun SettingsScreen(
                                 .clickable {
                                     if (selectedId != m.id) {
                                         selectedId = m.id
-                                        showLabels = false
-                                        onShowClassNamesChange(false)
                                     }
                                 }
                                 .padding(12.dp),
@@ -94,8 +88,6 @@ fun SettingsScreen(
                                 onClick = {
                                     if (selectedId != m.id) {
                                         selectedId = m.id
-                                        showLabels = false
-                                        onShowClassNamesChange(false)
                                     }
                                 }
                             )
@@ -118,49 +110,6 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Custom Model")
-            }
-
-            Text("Labels", style = MaterialTheme.typography.titleMedium)
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showLabels = false
-                            onShowClassNamesChange(false)
-                        },
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    RadioButton(
-                        selected = !showLabels,
-                        onClick = {
-                            showLabels = false
-                            onShowClassNamesChange(false)
-                        }
-                    )
-                    Text("Without title", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showLabels = true
-                            onShowClassNamesChange(true)
-                        },
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    RadioButton(
-                        selected = showLabels,
-                        onClick = {
-                            showLabels = true
-                            onShowClassNamesChange(true)
-                        }
-                    )
-                    Text("Show cocoClassName", style = MaterialTheme.typography.bodyMedium)
-                }
             }
         }
     }

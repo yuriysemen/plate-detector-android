@@ -388,11 +388,6 @@ fun LivePlateDetectionScreen() {
         SettingsScreen(
             models = models,
             selectedModelId = selectedId ?: models.first().id,
-            showClassNames = showClassNames,
-            onShowClassNamesChange = { show ->
-                ModelPrefs.setShowLabels(context, show)
-                showClassNames = show
-            },
             onPick = { spec ->
                 val isNewModel = selectedId != spec.id
                 ModelPrefs.setSelectedId(context, spec.id)
