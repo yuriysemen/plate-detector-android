@@ -1,5 +1,12 @@
 # plate-detector-android
-An Android app for on-device license-plate detection, paired with a set of model-training experiments that export TensorFlow Lite (TFLite) models. The repository is intentionally organized to let me compare different training pipelines over time. YOLO is the first (and currently implemented) experiment, with room for additional approaches later.
+An Android app for on-device license-plate detection, paired with a set of model-training experiments that export TensorFlow Lite (TFLite) models. The repository is intentionally organized to let me compare different training pipelines over time.
+YOLO is the first (and currently implemented) experiment, with room for additional approaches later. OCR (reading plate text) is planned.
+
+## Features
+- Real-time license plate detection (on-device)
+- Bounding box overlay
+- Optional beep alert on detection
+- Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
 
 ## Getting a model for the Android app
 The Android app expects one or more `.tflite` files in the assets directory. When you start working on the app:
@@ -71,3 +78,18 @@ When those secrets are set, the workflow produces:
 ## Roadmap (planned)
 - **Character-level recognition (OCR)**: add a separate model and pipeline to detect the license-plate number itself.
 - **Event metadata**: emit notifications that specify *when* a plate is detected and *which* plate text was recognized. The event format and payload are still being designed and will be documented once the OCR pipeline lands.
+
+## Privacy
+The app is designed to run fully on-device:
+- Camera frames are processed locally in memory.
+- No camera frames are uploaded to a server.
+- No analytics / tracking is required for core functionality.
+
+See: [Privacy Policy](privacy-policy.md)
+
+## License
+This repository is licensed under **AGPL-3.0-only**. See [LICENSE](LICENSE).
+
+Ultralytics YOLO (used for training/export) is AGPL-3.0. Model artifacts produced through that pipeline are treated as AGPL-3.0 by default per Ultralytics licensing.
+
+See: [Third-Party Notices](THIRD_PARTY_NOTICES.md)

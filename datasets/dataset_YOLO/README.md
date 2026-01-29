@@ -100,7 +100,8 @@ val: ./valid/images
 test: ./test/images
 
 nc: 1
-names: ['License_Plate']
+names:
+  0: 'license_plate'
 ```
 
 Notes:
