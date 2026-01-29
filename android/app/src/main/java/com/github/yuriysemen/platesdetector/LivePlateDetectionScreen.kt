@@ -26,9 +26,9 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -48,12 +48,14 @@ import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
 import java.nio.ByteBuffer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 
 // ------------------------
 // Model listing & prefs
 // ------------------------
 
-private data class ModelSpec(
+data class ModelSpec(
     val id: String,                // file name without extension
     val title: String,             // same as id
     val source: ModelSource,       // asset or external file
@@ -324,8 +326,8 @@ fun LivePlateDetectionScreen() {
         mutableStateOf(ModelPrefs.getSelectedId(context))
     }
 
-    // If first launch and nothing selected, open picker.
-    var showPicker by rememberSaveable { mutableStateOf(selectedId == null) }
+    // If first launch and nothing selected, open settings.
+    var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
 
     fun handlePickedUri(uri: Uri) {
         runCatching {
@@ -343,7 +345,7 @@ fun LivePlateDetectionScreen() {
         val id = ModelPrefs.externalIdForUri(uriString)
         ModelPrefs.setSelectedId(context, id)
         selectedId = id
-        showPicker = false
+        showSettings = false
         reloadKey++
     }
 
@@ -366,13 +368,13 @@ fun LivePlateDetectionScreen() {
 
     val selected = models.firstOrNull { it.id == selectedId }
 
-    if (showPicker || selected == null) {
-        ModelPickerScreen(
+    if (showSettings || selected == null) {
+        SettingsScreen(
             models = models,
             onPick = { spec ->
                 ModelPrefs.setSelectedId(context, spec.id)
                 selectedId = spec.id
-                showPicker = false
+                showSettings = false
             },
             onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
         )
@@ -382,11 +384,7 @@ fun LivePlateDetectionScreen() {
 
         LiveDetectionUi(
             spec = runtimeSpec,
-            onChangeModel = {
-                ModelPrefs.clearSelected(context)
-                selectedId = null
-                showPicker = true
-            }
+            onOpenSettings = { showSettings = true }
         )
     }
 }
@@ -397,7 +395,11 @@ fun LivePlateDetectionScreen() {
 
 @Composable
 private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
-    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+    Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = Color.Black,
+        contentColor = Color.White
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -433,99 +435,11 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
     }
 }
 
-@Composable
-private fun ModelPickerScreen(
-    models: List<ModelSpec>,
-    onPick: (ModelSpec) -> Unit,
-    onPickFile: () -> Unit
-) {
-    val context = LocalContext.current
-
-    var selectedId by rememberSaveable { mutableStateOf(models.first().id) }
-    var conf by rememberSaveable { mutableStateOf(0.5f) }
-
-    // when selected model changes, load its saved conf (default 0.5)
-    LaunchedEffect(selectedId) {
-        conf = ModelPrefs.getConf(context, selectedId)
-    }
-
-    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Select model", style = MaterialTheme.typography.titleLarge)
-
-            OutlinedButton(onClick = onPickFile) {
-                Text("Add model from file")
-            }
-
-            models.forEach { m ->
-                OutlinedCard(
-                    onClick = { selectedId = m.id },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        RadioButton(
-                            selected = (selectedId == m.id),
-                            onClick = { selectedId = m.id }
-                        )
-                        Column {
-                            Text(m.title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                sourceLabel(m),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
-
-            HorizontalDivider()
-
-            Text(
-                text = "Confidence threshold: ${"%.2f".format(conf)}",
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Slider(
-                value = conf,
-                onValueChange = { conf = it },
-                valueRange = 0.05f..0.95f
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        conf = 0.5f
-                        ModelPrefs.setConf(context, selectedId, conf)
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Default 0.50") }
-
-                Button(
-                    onClick = {
-                        ModelPrefs.setConf(context, selectedId, conf)
-                        val base = models.first { it.id == selectedId }
-                        onPick(base.copy(conf = conf))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) { Text("Continue") }
-            }
-        }
-    }
-}
 
 @Composable
 private fun LiveDetectionUi(
     spec: ModelSpec,
-    onChangeModel: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -584,138 +498,142 @@ private fun LiveDetectionUi(
         }
     }
 
-    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
-        Column(
+    Scaffold(
+        contentWindowInsets = WindowInsets(0),
+        containerColor = Color.Black,
+        contentColor = Color.White
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(Color.Black)
         ) {
-            Card {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Model: ${spec.title}", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        text = if (lastFrameW > 0 && lastFrameH > 0)
-                            "Detected: ${lastDetections.size} | ${lastMs} ms | Frame: ${lastFrameW}x${lastFrameH} | conf≥${
-                                "%.2f".format(
-                                    spec.conf
-                                )
-                            }"
-                        else
-                            "Detected: — | conf≥${"%.2f".format(spec.conf)}"
+            if (!hasPermission) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(WindowInsets.safeDrawing.asPaddingValues())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Camera permission required.")
+                    OutlinedButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+                        Text("Request permission")
+                    }
+                }
+            } else {
+                // Key by model id to ensure full rebind for analyzer when model changes
+                key(spec.id) {
+                    CameraPreviewWithAnalysis(
+                        detector = detector,
+                        scoreThreshold = spec.conf,
+                        onResult = { dets, w, h, ms ->
+                            val now = SystemClock.elapsedRealtime()
+                            val shouldBeep = dets.isNotEmpty() &&
+                                (!hadDetections || now - lastBeepAt >= 1_000L)
+                            if (shouldBeep) {
+                                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+                                lastBeepAt = now
+                            }
+                            hadDetections = dets.isNotEmpty()
+                            lastDetections = dets
+                            lastFrameW = w
+                            lastFrameH = h
+                            lastMs = ms
+                        }
                     )
+                }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = onChangeModel) {
-                            Text("Change model")
+                // Overlay
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    if (lastFrameW <= 0 || lastFrameH <= 0) return@Canvas
+
+                    val viewW = size.width
+                    val viewH = size.height
+
+                    // Fit-center mapping (matches PreviewView.ScaleType.FIT_CENTER)
+                    val scale = min(viewW / lastFrameW, viewH / lastFrameH)
+                    val dispW = lastFrameW * scale
+                    val dispH = lastFrameH * scale
+                    val offX = (viewW - dispW) / 2f
+                    val offY = (viewH - dispH) / 2f
+
+                    val stroke = Stroke(width = 3.dp.toPx())
+                    val labelPadding = 4.dp.toPx()
+                    val labelTextSize = 14.dp.toPx()
+
+                    for (det in lastDetections) {
+                        val classColor = classColorFor(det.classId)
+                        val left = offX + det.leftPx * scale
+                        val top = offY + det.topPx * scale
+                        val right = offX + det.rightPx * scale
+                        val bottom = offY + det.bottomPx * scale
+
+                        drawRect(
+                            color = classColor,
+                            topLeft = Offset(left, top),
+                            size = Size(right - left, bottom - top),
+                            style = stroke
+                        )
+
+                        val label = "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
+                        drawIntoCanvas { canvas ->
+                            labelPaint.textSize = labelTextSize
+                            val textWidth = labelPaint.measureText(label)
+                            val fontMetrics = labelPaint.fontMetrics
+                            val textHeight = fontMetrics.descent - fontMetrics.ascent
+                            val textLeft = left.coerceAtLeast(0f)
+                            val textBoxTop = (top - textHeight - labelPadding * 2)
+                                .coerceAtLeast(0f)
+                            val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
+                                .coerceAtMost(viewH)
+                            val textBoxRight = (textLeft + textWidth + labelPadding * 2)
+                                .coerceAtMost(viewW)
+                            val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
+                                .coerceAtMost(viewH)
+
+                            canvas.nativeCanvas.drawRect(
+                                textLeft,
+                                textBoxTop,
+                                textBoxRight,
+                                textBoxBottom,
+                                labelBackgroundPaint
+                            )
+                            canvas.nativeCanvas.drawText(
+                                label,
+                                textLeft + labelPadding,
+                                textBaseline,
+                                labelPaint
+                            )
                         }
                     }
                 }
             }
 
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .padding(WindowInsets.safeDrawing.asPaddingValues())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (!hasPermission) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Camera permission required.")
-                        OutlinedButton(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                            Text("Request permission")
-                        }
-                    }
-                } else {
-                    // Key by model id to ensure full rebind for analyzer when model changes
-                    key(spec.id) {
-                        CameraPreviewWithAnalysis(
-                            detector = detector,
-                            scoreThreshold = spec.conf,
-                            onResult = { dets, w, h, ms ->
-                                val now = SystemClock.elapsedRealtime()
-                                val shouldBeep = dets.isNotEmpty() &&
-                                    (!hadDetections || now - lastBeepAt >= 1_000L)
-                                if (shouldBeep) {
-                                    toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
-                                    lastBeepAt = now
-                                }
-                                hadDetections = dets.isNotEmpty()
-                                lastDetections = dets
-                                lastFrameW = w
-                                lastFrameH = h
-                                lastMs = ms
-                            }
-                        )
-                    }
-
-                    // Overlay
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        if (lastFrameW <= 0 || lastFrameH <= 0) return@Canvas
-
-                        val viewW = size.width
-                        val viewH = size.height
-
-                        // Fit-center mapping (matches PreviewView.ScaleType.FIT_CENTER)
-                        val scale = min(viewW / lastFrameW, viewH / lastFrameH)
-                        val dispW = lastFrameW * scale
-                        val dispH = lastFrameH * scale
-                        val offX = (viewW - dispW) / 2f
-                        val offY = (viewH - dispH) / 2f
-
-                        val stroke = Stroke(width = 3.dp.toPx())
-                        val labelPadding = 4.dp.toPx()
-                        val labelTextSize = 14.dp.toPx()
-
-                        for (det in lastDetections) {
-                            val classColor = classColorFor(det.classId)
-                            val left = offX + det.leftPx * scale
-                            val top = offY + det.topPx * scale
-                            val right = offX + det.rightPx * scale
-                            val bottom = offY + det.bottomPx * scale
-
-                            drawRect(
-                                color = classColor,
-                                topLeft = Offset(left, top),
-                                size = Size(right - left, bottom - top),
-                                style = stroke
-                            )
-
-                            val label = "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
-                            drawIntoCanvas { canvas ->
-                                labelPaint.textSize = labelTextSize
-                                val textWidth = labelPaint.measureText(label)
-                                val fontMetrics = labelPaint.fontMetrics
-                                val textHeight = fontMetrics.descent - fontMetrics.ascent
-                                val textLeft = left.coerceAtLeast(0f)
-                                val textBoxTop = (top - textHeight - labelPadding * 2)
-                                    .coerceAtLeast(0f)
-                                val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
-                                    .coerceAtMost(viewH)
-                                val textBoxRight = (textLeft + textWidth + labelPadding * 2)
-                                    .coerceAtMost(viewW)
-                                val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
-                                    .coerceAtMost(viewH)
-
-                                canvas.nativeCanvas.drawRect(
-                                    textLeft,
-                                    textBoxTop,
-                                    textBoxRight,
-                                    textBoxBottom,
-                                    labelBackgroundPaint
-                                )
-                                canvas.nativeCanvas.drawText(
-                                    label,
-                                    textLeft + labelPadding,
-                                    textBaseline,
-                                    labelPaint
-                                )
-                            }
-                        }
-                    }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Open settings",
+                        tint = Color.White
+                    )
                 }
-            }
 
+                Text(
+                    text = if (lastFrameW > 0 && lastFrameH > 0)
+                        "Detected: ${lastDetections.size} | ${lastMs} ms"
+                    else
+                        "Detected: —",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White
+                )
+            }
         }
     }
 }
@@ -901,7 +819,7 @@ private fun yuv420888ToNv21(image: ImageProxy): ByteArray {
     return nv21
 }
 
-private fun sourceLabel(model: ModelSpec): String {
+fun sourceLabel(model: ModelSpec): String {
     return when (val source = model.source) {
         is ModelSource.Asset -> "asset: ${source.path}"
         is ModelSource.ContentUri -> "file: ${model.title}"
