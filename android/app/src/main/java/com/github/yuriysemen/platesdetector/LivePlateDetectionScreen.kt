@@ -573,6 +573,9 @@ fun LivePlateDetectionScreen() {
                 ModelPrefs.clearConf(context, spec.id)
                 reloadKey++
             },
+            confidenceForModel = { modelId ->
+                ModelPrefs.getConf(context, modelId)
+            },
             onConfidenceChange = { modelId, conf ->
                 ModelPrefs.setConf(context, modelId, conf)
             }
@@ -805,38 +808,40 @@ private fun LiveDetectionUi(
                             style = stroke
                         )
 
-                        if (showClassNames) {
-                            val label =
-                                "${classNameFor(det.classId)} ${(det.score * 100).toInt()}%"
-                            drawIntoCanvas { canvas ->
-                                labelPaint.textSize = labelTextSize
-                                val textWidth = labelPaint.measureText(label)
-                                val fontMetrics = labelPaint.fontMetrics
-                                val textHeight = fontMetrics.descent - fontMetrics.ascent
-                                val textLeft = left.coerceAtLeast(0f)
-                                val textBoxTop = (top - textHeight - labelPadding * 2)
-                                    .coerceAtLeast(0f)
-                                val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
-                                    .coerceAtMost(viewH)
-                                val textBoxRight = (textLeft + textWidth + labelPadding * 2)
-                                    .coerceAtMost(viewW)
-                                val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
-                                    .coerceAtMost(viewH)
+                        val confidenceLabel = "${(det.score * 100).toInt()}%"
+                        val label = if (showClassNames) {
+                            "${classNameFor(det.classId)} $confidenceLabel"
+                        } else {
+                            confidenceLabel
+                        }
+                        drawIntoCanvas { canvas ->
+                            labelPaint.textSize = labelTextSize
+                            val textWidth = labelPaint.measureText(label)
+                            val fontMetrics = labelPaint.fontMetrics
+                            val textHeight = fontMetrics.descent - fontMetrics.ascent
+                            val textLeft = left.coerceAtLeast(0f)
+                            val textBoxTop = (top - textHeight - labelPadding * 2)
+                                .coerceAtLeast(0f)
+                            val textBoxBottom = (textBoxTop + textHeight + labelPadding * 2)
+                                .coerceAtMost(viewH)
+                            val textBoxRight = (textLeft + textWidth + labelPadding * 2)
+                                .coerceAtMost(viewW)
+                            val textBaseline = (textBoxTop + labelPadding - fontMetrics.ascent)
+                                .coerceAtMost(viewH)
 
-                                canvas.nativeCanvas.drawRect(
-                                    textLeft,
-                                    textBoxTop,
-                                    textBoxRight,
-                                    textBoxBottom,
-                                    labelBackgroundPaint
-                                )
-                                canvas.nativeCanvas.drawText(
-                                    label,
-                                    textLeft + labelPadding,
-                                    textBaseline,
-                                    labelPaint
-                                )
-                            }
+                            canvas.nativeCanvas.drawRect(
+                                textLeft,
+                                textBoxTop,
+                                textBoxRight,
+                                textBoxBottom,
+                                labelBackgroundPaint
+                            )
+                            canvas.nativeCanvas.drawText(
+                                label,
+                                textLeft + labelPadding,
+                                textBaseline,
+                                labelPaint
+                            )
                         }
                     }
                 }

@@ -42,12 +42,13 @@ fun SettingsScreen(
     onPick: (ModelSpec) -> Unit,
     onPickFile: () -> Unit,
     onDelete: (ModelSpec) -> Unit,
+    confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
 
-    fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: model.conf
+    fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
     val applySelection = {
         val base = models.firstOrNull { it.id == selectedId } ?: models.firstOrNull()
