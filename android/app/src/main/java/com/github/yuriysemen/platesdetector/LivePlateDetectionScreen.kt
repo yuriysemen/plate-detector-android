@@ -572,6 +572,9 @@ fun LivePlateDetectionScreen() {
                 deleteModel(context, spec)
                 ModelPrefs.clearConf(context, spec.id)
                 reloadKey++
+            },
+            onConfidenceChange = { modelId, conf ->
+                ModelPrefs.setConf(context, modelId, conf)
             }
         )
     } else {

@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,9 +41,14 @@ fun SettingsScreen(
     selectedModelId: String,
     onPick: (ModelSpec) -> Unit,
     onPickFile: () -> Unit,
-    onDelete: (ModelSpec) -> Unit
+    onDelete: (ModelSpec) -> Unit,
+    onConfidenceChange: (modelId: String, conf: Float) -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
+    var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
+
+    fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: model.conf
+
     val applySelection = {
         val base = models.firstOrNull { it.id == selectedId } ?: models.firstOrNull()
         if (base != null) {
@@ -123,6 +129,23 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            val selected = models.firstOrNull { it.id == selectedId }
+            if (selected != null) {
+                val currentConf = confFor(selected)
+                Text(
+                    "Confidence threshold: ${"%.2f".format(currentConf)}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Slider(
+                    value = currentConf,
+                    onValueChange = { newValue ->
+                        confOverrides = confOverrides + (selected.id to newValue)
+                        onConfidenceChange(selected.id, newValue)
+                    },
+                    valueRange = 0.05f..0.95f
+                )
             }
 
             TextButton(onClick = onPickFile) {
