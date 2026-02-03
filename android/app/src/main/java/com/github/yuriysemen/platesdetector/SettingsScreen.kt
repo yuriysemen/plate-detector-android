@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
@@ -24,24 +25,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun SettingsScreen(
     models: List<ModelSpec>,
     selectedModelId: String,
     onPick: (ModelSpec) -> Unit,
-    onPickFile: () -> Unit
+    onPickFile: () -> Unit,
+    onDelete: (ModelSpec) -> Unit
 ) {
-    var selectedId by rememberSaveable { mutableStateOf(selectedModelId) }
+    var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     val applySelection = {
-        val base = models.first { it.id == selectedId }
-        onPick(base)
+        val base = models.firstOrNull { it.id == selectedId } ?: models.firstOrNull()
+        if (base != null) {
+            onPick(base)
+        }
     }
 
     BackHandler {
@@ -91,12 +97,28 @@ fun SettingsScreen(
                                     }
                                 }
                             )
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(m.title, style = MaterialTheme.typography.titleMedium)
                                 Text(
                                     sourceLabel(m),
                                     style = MaterialTheme.typography.bodySmall
                                 )
+                                if (!m.description.isNullOrBlank()) {
+                                    Text(
+                                        m.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            if (m.isDeletable) {
+                                IconButton(onClick = { onDelete(m) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete model"
+                                    )
+                                }
                             }
                         }
                     }

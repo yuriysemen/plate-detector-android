@@ -1,4 +1,8 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +13,76 @@ plugins {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+val modelReleaseBaseUrl = "https://github.com/yuriysemen/plate-detector-android/releases/latest/download"
+
+val defaultModelFiles = listOf(
+    "plate_numbers.tflite",
+    "plate_numbers.txt"
+)
+
+val modelFilesFromProperty = providers.gradleProperty("MODEL_FILES")
+    .orNull
+    ?.split(",")
+    ?.map { it.trim() }
+    ?.filter { it.isNotEmpty() }
+    ?.takeIf { it.isNotEmpty() }
+
+val modelFiles = modelFilesFromProperty ?: defaultModelFiles
+
+val modelDownloadToken = providers.gradleProperty("MODEL_DOWNLOAD_TOKEN").orNull
+    ?: System.getenv("MODEL_DOWNLOAD_TOKEN")
+    ?: System.getenv("GITHUB_TOKEN")
+
+val defaultModelsDir = layout.buildDirectory.dir("generated/assets/defaultModels")
+
+val downloadDefaultModels by tasks.registering {
+    val outputDir = defaultModelsDir.get().asFile
+    outputs.dir(outputDir)
+    doLast {
+        val modelsDir = File(outputDir, "models").apply { mkdirs() }
+        val baseUrl = modelReleaseBaseUrl.trimEnd('/')
+
+        modelFiles.forEach { fileName ->
+            val destFile = File(modelsDir, fileName)
+            if (destFile.exists() && destFile.length() > 0L) return@forEach
+
+            val tmpFile = File(modelsDir, "${fileName}.download")
+            val url = "$baseUrl/$fileName"
+            val connection = URL(url).openConnection() as HttpURLConnection
+            try {
+                connection.instanceFollowRedirects = true
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                connection.setRequestProperty("User-Agent", "PlateDetector-Android-Gradle")
+                if (!modelDownloadToken.isNullOrBlank()) {
+                    connection.setRequestProperty("Authorization", "token $modelDownloadToken")
+                }
+                connection.connect()
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    if (modelDownloadToken.isNullOrBlank()) {
+                        error("Failed to download $url (HTTP $code). Set MODEL_DOWNLOAD_TOKEN for private releases.")
+                    }
+                    error("Failed to download $url (HTTP $code)")
+                }
+                connection.inputStream.use { input ->
+                    FileOutputStream(tmpFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                if (!tmpFile.renameTo(destFile)) {
+                    error("Failed to move ${tmpFile.name} to ${destFile.name}")
+                }
+            } catch (t: Throwable) {
+                runCatching { tmpFile.delete() }
+                throw t
+            } finally {
+                connection.disconnect()
+            }
+        }
     }
 }
 
@@ -67,6 +141,11 @@ android {
     androidResources {
         noCompress += "tflite"
     }
+    sourceSets["main"].assets.srcDir(defaultModelsDir)
+}
+
+tasks.named("preBuild") {
+    dependsOn(downloadDefaultModels)
 }
 
 dependencies {

@@ -13,10 +13,10 @@ import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.os.SystemClock
-import android.util.Log
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -45,6 +45,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
@@ -55,14 +57,6 @@ import androidx.compose.material.icons.filled.Menu
 // ------------------------
 // Model listing & prefs
 // ------------------------
-
-data class ModelSpec(
-    val id: String,                // file name without extension
-    val title: String,             // same as id
-    val source: ModelSource,       // asset or external file
-    val coordFormat: CoordFormat,  // fixed
-    val conf: Float                // threshold, editable in picker
-)
 
 private object ModelPrefs {
     private const val PREFS = "model_prefs"
@@ -91,12 +85,6 @@ private object ModelPrefs {
     fun getExternalUris(context: Context): Set<String> =
         prefs(context).getStringSet(KEY_EXTERNAL_URIS, emptySet())?.toSet().orEmpty()
 
-    fun addExternalUri(context: Context, uriString: String) {
-        val updated = getExternalUris(context).toMutableSet()
-        updated.add(uriString)
-        prefs(context).edit { putStringSet(KEY_EXTERNAL_URIS, updated) }
-    }
-
     fun removeExternalUri(context: Context, uriString: String) {
         val updated = getExternalUris(context).toMutableSet()
         updated.remove(uriString)
@@ -113,6 +101,10 @@ private object ModelPrefs {
         prefs(context).edit { putFloat(confKey(id), conf) }
     }
 
+    fun clearConf(context: Context, id: String) {
+        prefs(context).edit { remove(confKey(id)) }
+    }
+
     fun getShowLabels(context: Context): Boolean =
         prefs(context).getBoolean(KEY_SHOW_LABELS, false)
 
@@ -121,7 +113,17 @@ private object ModelPrefs {
     }
 }
 
+private fun customModelsDir(context: Context): File =
+    File(context.filesDir, "models/custom")
+
 private fun availableModels(context: Context): List<ModelSpec> {
+    val defaults = listAssetModels(context)
+    val custom = listCustomModels(context)
+    val legacy = listLegacyExternalModels(context)
+    return defaults + custom + legacy
+}
+
+private fun listAssetModels(context: Context): List<ModelSpec> {
     fun listTflite(dir: String?): List<Pair<String, String>> {
         // returns list of (fileName, assetPath)
         return try {
@@ -142,21 +144,49 @@ private fun availableModels(context: Context): List<ModelSpec> {
     val inRoot = if (inModelsDir.isEmpty()) listTflite(null) else emptyList()
 
     val all = (inModelsDir + inRoot)
-        // avoid duplicates if any
         .distinctBy { it.second }
 
-    val assetModels = all.map { (fileName, assetPath) ->
-        val id = fileName.substringBeforeLast(".")
+    return all.map { (fileName, assetPath) ->
+        val base = fileName.substringBeforeLast(".")
+        val descPath = assetPath.substringBeforeLast(".") + ".txt"
+        val id = "asset:$base"
         ModelSpec(
             id = id,
-            title = id,
+            title = base,
             source = ModelSource.Asset(assetPath),
             coordFormat = CoordFormat.XYXY_SCORE_CLASS,
-            conf = ModelPrefs.getConf(context, id)
+            conf = ModelPrefs.getConf(context, id),
+            description = readAssetDescription(context, descPath),
+            origin = ModelOrigin.DEFAULT
         )
     }
+}
 
-    val externalModels = ModelPrefs.getExternalUris(context)
+private fun listCustomModels(context: Context): List<ModelSpec> {
+    val dir = customModelsDir(context)
+    val files = dir.listFiles()
+        ?.filter { it.extension.equals("tflite", ignoreCase = true) }
+        ?.sortedBy { it.name.lowercase() }
+        .orEmpty()
+
+    return files.map { file ->
+        val base = file.nameWithoutExtension
+        val id = "custom:$base"
+        val descriptionFile = File(dir, "$base.txt")
+        ModelSpec(
+            id = id,
+            title = base,
+            source = ModelSource.FilePath(file),
+            coordFormat = CoordFormat.XYXY_SCORE_CLASS,
+            conf = ModelPrefs.getConf(context, id),
+            description = readDescription(descriptionFile),
+            origin = ModelOrigin.CUSTOM
+        )
+    }
+}
+
+private fun listLegacyExternalModels(context: Context): List<ModelSpec> {
+    return ModelPrefs.getExternalUris(context)
         .sorted()
         .mapNotNull { uriString ->
             runCatching { Uri.parse(uriString) }.getOrNull()
@@ -175,12 +205,105 @@ private fun availableModels(context: Context): List<ModelSpec> {
                 title = displayName,
                 source = ModelSource.ContentUri(uri),
                 coordFormat = CoordFormat.XYXY_SCORE_CLASS,
-                conf = ModelPrefs.getConf(context, id)
+                conf = ModelPrefs.getConf(context, id),
+                description = null,
+                origin = ModelOrigin.LEGACY_EXTERNAL
             )
         }
         .filterNotNull()
+}
 
-    return assetModels + externalModels
+private fun readDescription(file: File): String? {
+    if (!file.exists()) return null
+    return runCatching { file.readText().trim() }
+        .getOrNull()
+        ?.takeIf { it.isNotEmpty() }
+}
+
+private fun readAssetDescription(context: Context, path: String): String? {
+    return runCatching {
+        context.assets.open(path).use { it.readBytes().toString(Charsets.UTF_8).trim() }
+    }.getOrNull()?.takeIf { it.isNotEmpty() }
+}
+
+private fun sanitizeFileName(name: String): String {
+    val cleaned = name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    return cleaned.ifBlank { "model_${System.currentTimeMillis()}" }
+}
+
+private fun uniqueFileName(dir: File, fileName: String): String {
+    val base = fileName.substringBeforeLast(".")
+    val ext = fileName.substringAfterLast(".", "")
+    var candidate = fileName
+    var index = 1
+    while (File(dir, candidate).exists()) {
+        candidate = if (ext.isEmpty()) {
+            "${base}_$index"
+        } else {
+            "${base}_$index.$ext"
+        }
+        index++
+    }
+    return candidate
+}
+
+private fun importCustomModel(context: Context, uri: Uri): String? {
+    val displayName = queryDisplayName(context, uri)
+    val safeName = sanitizeFileName(displayName ?: "model.tflite")
+    val fileName = if (safeName.endsWith(".tflite", ignoreCase = true)) safeName else "$safeName.tflite"
+    val dir = customModelsDir(context).apply { mkdirs() }
+    val targetName = uniqueFileName(dir, fileName)
+    val destFile = File(dir, targetName)
+
+    runCatching {
+        copyUriToFile(context, uri, destFile)
+    }.onFailure {
+        runCatching { destFile.delete() }
+        return null
+    }
+
+    if (!isValidTfliteModel(destFile)) {
+        runCatching { destFile.delete() }
+        return null
+    }
+
+    val base = destFile.nameWithoutExtension
+    val descriptionFile = File(dir, "$base.txt")
+    if (!descriptionFile.exists()) {
+        runCatching {
+            descriptionFile.writeText(
+                "Custom model imported from ${displayName ?: "file"}."
+            )
+        }
+    }
+
+    return "custom:$base"
+}
+
+private fun deleteModel(context: Context, model: ModelSpec): Boolean {
+    return when (val source = model.source) {
+        is ModelSource.FilePath -> {
+            val file = source.file
+            val description = File(file.parentFile, "${file.nameWithoutExtension}.txt")
+            val deleted = runCatching { file.delete() }.getOrDefault(false)
+            runCatching { if (description.exists()) description.delete() }
+            deleted
+        }
+        is ModelSource.ContentUri -> {
+            val uriString = source.uri.toString()
+            ModelPrefs.removeExternalUri(context, uriString)
+            true
+        }
+        is ModelSource.Asset -> false
+    }
+}
+
+private fun copyUriToFile(context: Context, uri: Uri, destFile: File) {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        FileOutputStream(destFile).use { output ->
+            input.copyTo(output)
+        }
+    } ?: error("Cannot read $uri")
 }
 
 private val cocoClassNames = listOf(
@@ -287,6 +410,19 @@ private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
     }.getOrElse { false }
 }
 
+private fun isValidTfliteModel(file: File): Boolean {
+    return runCatching {
+        val buffer = loadFileBytes(file)
+        val interpreter = Interpreter(buffer)
+        try {
+            // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
+        } finally {
+            interpreter.close()
+        }
+        true
+    }.getOrElse { false }
+}
+
 private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
     return runCatching {
         val pfd = context.contentResolver.openFileDescriptor(uri, "r")
@@ -298,6 +434,21 @@ private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
     }.getOrElse {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Cannot read $uri")
+        java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
+            put(bytes)
+            rewind()
+        }
+    }
+}
+
+private fun loadFileBytes(file: File): ByteBuffer {
+    return runCatching {
+        java.io.FileInputStream(file).use { fis ->
+            val channel = fis.channel
+            channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, file.length())
+        }
+    }.getOrElse {
+        val bytes = file.readBytes()
         java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
             put(bytes)
             rewind()
@@ -326,7 +477,7 @@ private fun queryDisplayName(context: Context, uri: Uri): String? {
 fun LivePlateDetectionScreen() {
     val context = LocalContext.current
 
-    // allow "retry" (even though assets won't change at runtime, it prevents stale UI)
+    // allow "retry" to refresh downloaded/custom models
     var reloadKey by rememberSaveable { mutableIntStateOf(0) }
 
     val models = remember(reloadKey) { availableModels(context) }
@@ -343,6 +494,22 @@ fun LivePlateDetectionScreen() {
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
+    LaunchedEffect(models) {
+        if (models.isEmpty()) {
+            if (selectedId != null) {
+                selectedId = null
+                ModelPrefs.clearSelected(context)
+            }
+            return@LaunchedEffect
+        }
+        val current = selectedId
+        val valid = models.firstOrNull { it.id == current }?.id ?: models.first().id
+        if (valid != current) {
+            selectedId = valid
+            ModelPrefs.setSelectedId(context, valid)
+        }
+    }
+
     fun handlePickedUri(uri: Uri) {
         runCatching {
             context.contentResolver.takePersistableUriPermission(
@@ -350,13 +517,11 @@ fun LivePlateDetectionScreen() {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
-        if (!isValidTfliteModel(context, uri)) {
+        val id = importCustomModel(context, uri)
+        if (id == null) {
             Log.w("ModelPicker", "Selected file is not a valid TFLite model: $uri")
             return
         }
-        val uriString = uri.toString()
-        ModelPrefs.addExternalUri(context, uriString)
-        val id = ModelPrefs.externalIdForUri(uriString)
         ModelPrefs.setSelectedId(context, id)
         selectedId = id
         ModelPrefs.setShowLabels(context, false)
@@ -401,7 +566,13 @@ fun LivePlateDetectionScreen() {
                 showSettings = false
                 stopDetectionRequested = false
             },
-            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
+            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+            onDelete = { spec ->
+                if (!spec.isDeletable) return@SettingsScreen
+                deleteModel(context, spec)
+                ModelPrefs.clearConf(context, spec.id)
+                reloadKey++
+            }
         )
     } else {
         // Important: spec.conf may change in prefs in picker, so load fresh conf for runtime.
@@ -430,7 +601,10 @@ fun LivePlateDetectionScreen() {
 // ------------------------
 
 @Composable
-private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
+private fun NoModelsScreen(
+    onRetry: () -> Unit,
+    onPickFile: () -> Unit
+) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = Color.Black,
@@ -445,11 +619,9 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
         ) {
             Text("No TFLite models found", style = MaterialTheme.typography.titleLarge)
             Text(
-                "The app did not find any *.tflite models in:\n" +
-                        "1) app/src/main/assets/models/\n" +
-                        "2) app/src/main/assets/\n\n" +
-                        "Add at least one model file (e.g. yolo11n_640.tflite) and rebuild the app,\n" +
-                        "or pick a model file from your device.",
+                "The app did not find any bundled models.\n\n" +
+                        "Default models are packaged into the app at build time.\n" +
+                        "If you do not see them, rebuild the app or import a model file from your device.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -462,11 +634,6 @@ private fun NoModelsScreen(onRetry: () -> Unit, onPickFile: () -> Unit) {
             Button(onClick = onPickFile) {
                 Text("Pick model file")
             }
-
-            Text(
-                "Note: If you load models via assets, consider adding noCompress for .tflite in Gradle.",
-                style = MaterialTheme.typography.bodySmall
-            )
         }
     }
 }
@@ -890,8 +1057,9 @@ private fun yuv420888ToNv21(image: ImageProxy): ByteArray {
 }
 
 fun sourceLabel(model: ModelSpec): String {
-    return when (val source = model.source) {
-        is ModelSource.Asset -> "asset: ${source.path}"
-        is ModelSource.ContentUri -> "file: ${model.title}"
+    return when (model.origin) {
+        ModelOrigin.DEFAULT -> "default model"
+        ModelOrigin.CUSTOM -> "custom model"
+        ModelOrigin.LEGACY_EXTERNAL -> "external file"
     }
 }

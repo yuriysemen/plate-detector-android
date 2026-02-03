@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -24,19 +25,6 @@ data class Detection(
     val score: Float,
     val classId: Int
 )
-
-enum class CoordFormat {
-    /** [x1, y1, x2, y2, score, class] */
-    XYXY_SCORE_CLASS,
-
-    /** [y1, x1, y2, x2, score, class] */
-    YXYX_SCORE_CLASS
-}
-
-sealed class ModelSource {
-    data class Asset(val path: String) : ModelSource()
-    data class ContentUri(val uri: Uri) : ModelSource()
-}
 
 class PlateDetector(
     private val context: Context,
@@ -245,6 +233,7 @@ class PlateDetector(
         return when (modelSource) {
             is ModelSource.Asset -> loadAssetModel(context, modelSource.path)
             is ModelSource.ContentUri -> loadUriModel(context, modelSource.uri)
+            is ModelSource.FilePath -> loadFileModel(modelSource.file)
         }
     }
 
@@ -280,6 +269,23 @@ class PlateDetector(
             if (debugLogs) Log.w("PlateDetector", "openFileDescriptor failed, fallback to readBytes: ${t.message}")
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: error("Cannot read $uri")
+            ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
+                put(bytes)
+                rewind()
+            }
+        }
+    }
+
+    private fun loadFileModel(file: File): ByteBuffer {
+        require(file.exists()) { "Model file not found: ${file.absolutePath}" }
+        return try {
+            FileInputStream(file).use { fis ->
+                val channel = fis.channel
+                channel.map(FileChannel.MapMode.READ_ONLY, 0, file.length())
+            }
+        } catch (t: Throwable) {
+            if (debugLogs) Log.w("PlateDetector", "file map failed, fallback to readBytes: ${t.message}")
+            val bytes = file.readBytes()
             ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
                 put(bytes)
                 rewind()
