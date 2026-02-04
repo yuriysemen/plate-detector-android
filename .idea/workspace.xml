@@ -5,22 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/plate-detector-android.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/my-release-key.base64" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/10in_tablet_02_detection.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/10in_tablet_04_settings.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/10in_tablet_05_about.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/Car_Plate_Detector_feature_graphic_1024x500.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/Car_Plate_Detector_icon_512_RGB.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/listing details.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/tablet-1.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/tablet-2.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/android/play_assets/tablet-3.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/SettingsScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/SettingsScreen.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,35 +30,37 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.yolo.executor": "Debug",
-    "Python.yolo_export_model.executor": "Run",
-    "Python.yolo_test_model.executor": "Run",
-    "Python.yolo_train_model.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "codex/use-all-detected-objects-and-add-labels",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/uri/LinkedInProjects/plate-detector-android/android/play_assets",
-    "nodejs_package_manager_path": "npm",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.yolo.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.yolo_export_model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.yolo_test_model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.yolo_train_model.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/uri/LinkedInProjects/plate-detector-android&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/android/play_assets" />
       <recent name="$PROJECT_DIR$/experiments/ultralytics" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/android" />
       <recent name="$PROJECT_DIR$/datasets" />
       <recent name="$PROJECT_DIR$/dataset_YOLO" />
@@ -92,27 +83,15 @@
       <updated>1767875576208</updated>
       <workItem from="1768501440095" duration="23102000" />
       <workItem from="1769518047073" duration="7764000" />
+      <workItem from="1770031677304" duration="594000" />
+      <workItem from="1770142835227" duration="556000" />
+      <workItem from="1770143509724" duration="4000" />
+      <workItem from="1770145187836" duration="5722000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
-  </component>
-  <component name="XDebuggerManager">
-    <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/experiments/ultralytics/yolo_train_model.py</url>
-          <line>70</line>
-          <option name="timeStamp" value="3" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/experiments/ultralytics/yolo_train_model.py</url>
-          <line>39</line>
-          <option name="timeStamp" value="4" />
-        </line-breakpoint>
-      </breakpoints>
-    </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/plate_detector_android$yolo_test_model.coverage" NAME="yolo_test_model Coverage Results" MODIFIED="1768549762771" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/experiments/ultralytics" />
