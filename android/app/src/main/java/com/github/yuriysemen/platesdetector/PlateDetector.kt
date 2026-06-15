@@ -23,7 +23,9 @@ data class Detection(
     val rightPx: Float,
     val bottomPx: Float,
     val score: Float,
-    val classId: Int
+    val classId: Int,
+    val ocrText: String? = null,
+    val ocrConfidence: Float? = null
 )
 
 class PlateDetector(

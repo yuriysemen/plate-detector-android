@@ -168,6 +168,7 @@ dependencies {
     implementation(libs.androidx.camera.view) // PreviewView
 
     implementation(libs.tensorflow.lite)
+    implementation(libs.mlkit.text.recognition)
 
     testImplementation(libs.junit)
 

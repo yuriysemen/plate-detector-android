@@ -8,6 +8,7 @@ lifecycle = "2.10.0"
 
 camerax = "1.5.2" # stable :contentReference[oaicite:1]{index=1}
 tflite = "2.17.0"
+mlkitTextRecognition = "16.0.1"
 
 composeBom = "2025.12.01"
 coroutines = "1.10.2"
@@ -49,6 +50,7 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "a
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

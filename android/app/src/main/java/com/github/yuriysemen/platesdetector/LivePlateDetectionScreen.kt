@@ -63,6 +63,7 @@ private object ModelPrefs {
     private const val KEY_MODEL_ID = "selected_model_id"
     private const val KEY_EXTERNAL_URIS = "external_model_uris"
     private const val KEY_SHOW_LABELS = "show_class_labels"
+    private const val KEY_ENABLE_OCR = "enable_ocr"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -110,6 +111,13 @@ private object ModelPrefs {
 
     fun setShowLabels(context: Context, show: Boolean) {
         prefs(context).edit { putBoolean(KEY_SHOW_LABELS, show) }
+    }
+
+    fun getEnableOCR(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ENABLE_OCR, true)
+
+    fun setEnableOCR(context: Context, enable: Boolean) {
+        prefs(context).edit { putBoolean(KEY_ENABLE_OCR, enable) }
     }
 }
 
@@ -488,6 +496,9 @@ fun LivePlateDetectionScreen() {
     var showClassNames by rememberSaveable {
         mutableStateOf(ModelPrefs.getShowLabels(context))
     }
+    var enableOCR by rememberSaveable {
+        mutableStateOf(ModelPrefs.getEnableOCR(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -592,6 +603,11 @@ fun LivePlateDetectionScreen() {
                 ModelPrefs.setShowLabels(context, show)
                 showClassNames = show
             },
+            enableOCR = enableOCR,
+            onEnableOCRChange = { enable ->
+                ModelPrefs.setEnableOCR(context, enable)
+                enableOCR = enable
+            },
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
@@ -651,6 +667,8 @@ private fun LiveDetectionUi(
     stopDetectionRequested: Boolean,
     showClassNames: Boolean,
     onShowClassNamesChange: (Boolean) -> Unit,
+    enableOCR: Boolean,
+    onEnableOCRChange: (Boolean) -> Unit,
     onRequestOpenSettings: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
@@ -691,6 +709,14 @@ private fun LiveDetectionUi(
     }
     DisposableEffect(spec.id) {
         onDispose { detector.close() }
+    }
+
+    // Create OCR instance
+    val plateOCR = remember {
+        PlateOCR(debugLogs = true)
+    }
+    DisposableEffect(Unit) {
+        onDispose { plateOCR.close() }
     }
 
     var lastDetections by remember { mutableStateOf<List<Detection>>(emptyList()) }
@@ -753,6 +779,8 @@ private fun LiveDetectionUi(
                 key(spec.id) {
                     CameraPreviewWithAnalysis(
                         detector = detector,
+                        plateOCR = plateOCR,
+                        enableOCR = enableOCR,
                         scoreThreshold = spec.conf,
                         isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
@@ -809,11 +837,19 @@ private fun LiveDetectionUi(
                         )
 
                         val confidenceLabel = "${(det.score * 100).toInt()}%"
-                        val label = if (showClassNames) {
+                        val classLabel = if (showClassNames) {
                             "${classNameFor(det.classId)} $confidenceLabel"
                         } else {
                             confidenceLabel
                         }
+
+                        // Build label with OCR text if available
+                        val label = if (det.ocrText != null && det.ocrText.isNotEmpty()) {
+                            "$classLabel | ${det.ocrText}"
+                        } else {
+                            classLabel
+                        }
+
                         drawIntoCanvas { canvas ->
                             labelPaint.textSize = labelTextSize
                             val textWidth = labelPaint.measureText(label)
@@ -847,29 +883,58 @@ private fun LiveDetectionUi(
                 }
             }
 
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(WindowInsets.safeDrawing.asPaddingValues())
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = onRequestOpenSettings) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Open settings",
-                        tint = Color.White
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = onRequestOpenSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Open settings",
+                            tint = Color.White
+                        )
+                    }
+
+                    Text(
+                        text = if (lastFrameW > 0 && lastFrameH > 0)
+                            "Detected: ${lastDetections.size} | ${lastMs} ms"
+                        else
+                            "Detected: —",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White
                     )
                 }
 
-                Text(
-                    text = if (lastFrameW > 0 && lastFrameH > 0)
-                        "Detected: ${lastDetections.size} | ${lastMs} ms"
-                    else
-                        "Detected: —",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = enableOCR,
+                        onCheckedChange = onEnableOCRChange,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.White,
+                            uncheckedColor = Color.White,
+                            checkmarkColor = Color.Black
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Enable OCR",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
@@ -882,6 +947,8 @@ private fun LiveDetectionUi(
 @Composable
 private fun CameraPreviewWithAnalysis(
     detector: PlateDetector,
+    plateOCR: PlateOCR,
+    enableOCR: Boolean,
     scoreThreshold: Float,
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
@@ -891,6 +958,8 @@ private fun CameraPreviewWithAnalysis(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
     val detectorState by rememberUpdatedState(detector)
+    val plateOCRState by rememberUpdatedState(plateOCR)
+    val enableOCRState by rememberUpdatedState(enableOCR)
     val thresholdState by rememberUpdatedState(scoreThreshold)
     val detectionEnabledState by rememberUpdatedState(isDetectionEnabled)
     val onResultState by rememberUpdatedState(onResult)
@@ -943,10 +1012,40 @@ private fun CameraPreviewWithAnalysis(
                     bmp = imageProxy.toBitmapSafe()
                     rotated = bmp.rotate(imageProxy.imageInfo.rotationDegrees)
 
-                    val dets = detectorState.detectAll(
+                    var dets = detectorState.detectAll(
                         rotated,
                         scoreThreshold = thresholdState
                     )
+
+                    // Perform OCR on detected plates if enabled
+                    if (enableOCRState && dets.isNotEmpty()) {
+                        dets = dets.map { detection ->
+                            try {
+                                val croppedPlate = plateOCRState.cropToBounds(
+                                    rotated,
+                                    detection.leftPx,
+                                    detection.topPx,
+                                    detection.rightPx,
+                                    detection.bottomPx
+                                )
+                                val ocrResult = plateOCRState.recognizePlate(croppedPlate)
+                                if (croppedPlate !== rotated) {
+                                    runCatching { croppedPlate.recycle() }
+                                }
+                                if (ocrResult != null) {
+                                    detection.copy(
+                                        ocrText = ocrResult.text,
+                                        ocrConfidence = ocrResult.confidence
+                                    )
+                                } else {
+                                    detection
+                                }
+                            } catch (e: Exception) {
+                                Log.e("CameraAnalysis", "OCR failed for detection", e)
+                                detection
+                            }
+                        }
+                    }
 
                     val ms = (System.nanoTime() - t0) / 1_000_000
 
