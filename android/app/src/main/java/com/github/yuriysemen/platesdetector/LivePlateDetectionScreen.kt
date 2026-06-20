@@ -24,6 +24,9 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -674,8 +677,22 @@ private fun LiveDetectionUi(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    val detectionEnabled = !stopDetectionRequested
+    var isInForeground by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> isInForeground = true
+                Lifecycle.Event.ON_STOP -> isInForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val detectionEnabled = !stopDetectionRequested && isInForeground
     DisposableEffect(detectionEnabled) {
         view.keepScreenOn = detectionEnabled
         onDispose { view.keepScreenOn = false }
@@ -932,7 +949,7 @@ private fun CameraPreviewWithAnalysis(
     onResult: (List<Detection>, Int, Int, Long) -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val detectorState by rememberUpdatedState(detector)
     val plateOCRState by rememberUpdatedState(plateOCR)
