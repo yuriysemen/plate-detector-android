@@ -9,6 +9,7 @@
 - [x] Tap-to-focus (`detectTapGestures` → `FocusMeteringAction`) with animated focus ring
 - [x] Zoom level indicator in top bar
 - [x] Torch toggle (flashlight button in top bar; auto-off on background; hidden when no flash unit)
+- [x] Zoom shortcut buttons — 1×/2×/3× pill buttons at bottom center; filtered to camera's max zoom; highlights active level
 
 ### Detection
 - [x] TFLite YOLO inference on each camera frame (~8 fps)
@@ -39,7 +40,6 @@
 
 ### Camera — easy
 - [ ] **Front/back camera toggle** — change `CameraSelector`, rebind. ~1h
-- [ ] **Zoom shortcut buttons** — 1×/2×/3× buttons, like Samsung. ~1h
 
 ### Camera — medium
 - [ ] **Exposure compensation** — EV slider in Settings or overlay. Query `CameraInfo.exposureState` for supported range. ~half day

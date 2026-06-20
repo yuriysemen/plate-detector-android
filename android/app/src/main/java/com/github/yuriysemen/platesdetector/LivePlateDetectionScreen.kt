@@ -62,10 +62,16 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.min
 import androidx.core.content.edit
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
@@ -992,6 +998,49 @@ private fun LiveDetectionUi(
                         ).forEach { (corner, lines) ->
                             drawLine(ringColor, corner, lines.first, strokeWidth = bStroke.width)
                             drawLine(ringColor, corner, lines.second, strokeWidth = bStroke.width)
+                        }
+                    }
+                }
+            }
+
+            // Zoom shortcut buttons (bottom center, Samsung-style)
+            val cam = camera
+            val maxZoom = cam?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
+            val visibleZoomLevels = listOf(1f, 2f, 3f).filter { it <= maxZoom + 0.1f }
+            if (cam != null && visibleZoomLevels.size > 1) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(WindowInsets.navigationBars.asPaddingValues())
+                        .padding(bottom = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    visibleZoomLevels.forEach { level ->
+                        val isSelected = abs(zoomRatio - level) < 0.15f
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) Color.White else Color.Black.copy(alpha = 0.5f)
+                                )
+                                .clickable {
+                                    val target = level.coerceIn(
+                                        cam.cameraInfo.zoomState.value?.minZoomRatio ?: 1f,
+                                        maxZoom
+                                    )
+                                    cam.cameraControl.setZoomRatio(target)
+                                    zoomRatio = target
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${level.toInt()}×",
+                                color = if (isSelected) Color.Black else Color.White,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
                         }
                     }
                 }
