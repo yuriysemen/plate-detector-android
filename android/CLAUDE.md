@@ -65,6 +65,18 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 
 **Processing guard:** detection is disabled when the app is not in the foreground (`ON_STOP` lifecycle event), preventing background inference.
 
+## Commit preparation
+
+Before committing, when asked to "commit this" or "make it ready for a commit", update the relevant docs to reflect what was done:
+
+| File | Update when |
+|---|---|
+| `ROADMAP.md` | Move completed items from Backlog → Done; remove the item from Backlog |
+| `ARCHITECTURE.md` | Any new component, data flow change, or notable UI behaviour added |
+| `CLAUDE.md` | Changes to the build process, architecture overview, or project-level guidance |
+
+Do **not** update docs automatically during feature work — only when explicitly asked to prepare for a commit.
+
 ## Model training (outside Android)
 
 See `training/ultralytics/` for the Python training pipeline (YOLOv11 → TFLite export). The dataset layout expected is YOLO format; see `datasets/dataset_YOLO/data.yaml`.
