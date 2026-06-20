@@ -14,6 +14,7 @@ import android.graphics.YuvImage
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
+import androidx.core.net.toUri
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
@@ -54,6 +55,7 @@ import java.util.concurrent.Executors
 import kotlin.math.min
 import androidx.core.content.edit
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 
@@ -200,7 +202,7 @@ private fun listLegacyExternalModels(context: Context): List<ModelSpec> {
     return ModelPrefs.getExternalUris(context)
         .sorted()
         .mapNotNull { uriString ->
-            runCatching { Uri.parse(uriString) }.getOrNull()
+            runCatching { uriString.toUri() }.getOrNull()
         }
         .map { uri ->
             val uriString = uri.toString()
@@ -445,7 +447,7 @@ private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
     }.getOrElse {
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: error("Cannot read $uri")
-        java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
+        ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
             put(bytes)
             rewind()
         }
@@ -460,7 +462,7 @@ private fun loadFileBytes(file: File): ByteBuffer {
         }
     }.getOrElse {
         val bytes = file.readBytes()
-        java.nio.ByteBuffer.allocateDirect(bytes.size).order(java.nio.ByteOrder.nativeOrder()).apply {
+        ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
             put(bytes)
             rewind()
         }
@@ -772,10 +774,11 @@ private fun LiveDetectionUi(
         contentWindowInsets = WindowInsets(0),
         containerColor = Color.Black,
         contentColor = Color.White
-    ) {
+    ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(padding)
                 .background(Color.Black)
         ) {
             if (!hasPermission) {
