@@ -64,6 +64,7 @@ import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
 import androidx.core.content.edit
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -760,11 +761,19 @@ private fun LiveDetectionUi(
     val focusRingAlpha = remember { Animatable(0f) }
     var zoomRatio by remember { mutableFloatStateOf(1f) }
     var torchEnabled by remember { mutableStateOf(false) }
+    var exposureIndex by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(spec.id) { zoomRatio = 1f }
+    LaunchedEffect(spec.id) {
+        zoomRatio = 1f
+        exposureIndex = 0
+    }
 
     LaunchedEffect(camera, torchEnabled) {
         camera?.cameraControl?.enableTorch(torchEnabled)
+    }
+
+    LaunchedEffect(camera, exposureIndex) {
+        camera?.cameraControl?.setExposureCompensationIndex(exposureIndex)
     }
 
     LaunchedEffect(detectionEnabled) {
@@ -1003,44 +1012,82 @@ private fun LiveDetectionUi(
                 }
             }
 
-            // Zoom shortcut buttons (bottom center, Samsung-style)
+            // Bottom controls: EV slider + zoom shortcut buttons
             val cam = camera
             val maxZoom = cam?.cameraInfo?.zoomState?.value?.maxZoomRatio ?: 1f
             val visibleZoomLevels = listOf(1f, 2f, 3f).filter { it <= maxZoom + 0.1f }
-            if (cam != null && visibleZoomLevels.size > 1) {
-                Row(
+            val exposureState = cam?.cameraInfo?.exposureState
+            if (cam != null) {
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(WindowInsets.navigationBars.asPaddingValues())
-                        .padding(bottom = 24.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(bottom = 24.dp, start = 24.dp, end = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    visibleZoomLevels.forEach { level ->
-                        val isSelected = abs(zoomRatio - level) < 0.15f
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) Color.White else Color.Black.copy(alpha = 0.5f)
-                                )
-                                .clickable {
-                                    val target = level.coerceIn(
-                                        cam.cameraInfo.zoomState.value?.minZoomRatio ?: 1f,
-                                        maxZoom
-                                    )
-                                    cam.cameraControl.setZoomRatio(target)
-                                    zoomRatio = target
-                                },
-                            contentAlignment = Alignment.Center
+                    // EV compensation slider
+                    if (exposureState?.isExposureCompensationSupported == true) {
+                        val evRange = exposureState.exposureCompensationRange
+                        val evStep = exposureState.exposureCompensationStep.toFloat()
+                        val evValue = exposureIndex * evStep
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "${level.toInt()}×",
-                                color = if (isSelected) Color.Black else Color.White,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                text = "EV ${if (evValue >= 0f) "+" else ""}${"%.1f".format(evValue)}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.width(56.dp)
                             )
+                            Slider(
+                                value = exposureIndex.toFloat(),
+                                onValueChange = { exposureIndex = it.roundToInt() },
+                                valueRange = evRange.lower.toFloat()..evRange.upper.toFloat(),
+                                modifier = Modifier.weight(1f),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = Color.White,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
+                    }
+
+                    // Zoom shortcut buttons
+                    if (visibleZoomLevels.size > 1) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            visibleZoomLevels.forEach { level ->
+                                val isSelected = abs(zoomRatio - level) < 0.15f
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) Color.White else Color.Black.copy(alpha = 0.5f)
+                                        )
+                                        .clickable {
+                                            val target = level.coerceIn(
+                                                cam.cameraInfo.zoomState.value?.minZoomRatio ?: 1f,
+                                                maxZoom
+                                            )
+                                            cam.cameraControl.setZoomRatio(target)
+                                            zoomRatio = target
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${level.toInt()}×",
+                                        color = if (isSelected) Color.Black else Color.White,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
                         }
                     }
                 }
