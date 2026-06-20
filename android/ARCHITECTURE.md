@@ -64,6 +64,11 @@ The overlay `Canvas` (sibling of the camera view in a `Box`) handles:
 - Pinch-to-zoom via `detectTransformGestures` → `camera.cameraControl.setZoomRatio()`
 - Tap-to-focus via `detectTapGestures` → `FocusMeteringAction` + animated focus ring
 
+The top bar in `LiveDetectionUi` exposes:
+- **Settings button** (hamburger) — opens `SettingsScreen`
+- **Stats text** — zoom ratio, detection count, inference latency
+- **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
+
 Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecycle event) and `keepScreenOn` is tied to the same flag.
 
 ## Key types

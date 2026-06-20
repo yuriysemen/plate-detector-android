@@ -67,7 +67,10 @@ import androidx.core.content.edit
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FlashlightOff
+import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Menu
+import kotlin.time.Duration.Companion.milliseconds
 
 // ------------------------
 // Model listing & prefs
@@ -424,10 +427,8 @@ private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
     return runCatching {
         val buffer = loadUriBytes(context, uri)
         val interpreter = Interpreter(buffer)
-        try {
+        interpreter.use { _ ->
             // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
-        } finally {
-            interpreter.close()
         }
         true
     }.getOrElse { false }
@@ -437,10 +438,8 @@ private fun isValidTfliteModel(file: File): Boolean {
     return runCatching {
         val buffer = loadFileBytes(file)
         val interpreter = Interpreter(buffer)
-        try {
+        interpreter.use { _ ->
             // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
-        } finally {
-            interpreter.close()
         }
         true
     }.getOrElse { false }
@@ -751,25 +750,34 @@ private fun LiveDetectionUi(
     var camera by remember { mutableStateOf<Camera?>(null) }
     var meteringPointFactory by remember { mutableStateOf<MeteringPointFactory?>(null) }
     var focusTapOffset by remember { mutableStateOf(Offset.Zero) }
-    var focusTapKey by remember { mutableStateOf(0) }
+    var focusTapKey by remember { mutableIntStateOf(0) }
     val focusRingAlpha = remember { Animatable(0f) }
-    var zoomRatio by remember { mutableStateOf(1f) }
+    var zoomRatio by remember { mutableFloatStateOf(1f) }
+    var torchEnabled by remember { mutableStateOf(false) }
 
     LaunchedEffect(spec.id) { zoomRatio = 1f }
+
+    LaunchedEffect(camera, torchEnabled) {
+        camera?.cameraControl?.enableTorch(torchEnabled)
+    }
+
+    LaunchedEffect(detectionEnabled) {
+        if (!detectionEnabled) torchEnabled = false
+    }
 
     LaunchedEffect(focusTapKey) {
         if (focusTapKey == 0) return@LaunchedEffect
         focusRingAlpha.snapTo(1f)
-        delay(800)
+        delay(800.milliseconds)
         focusRingAlpha.animateTo(0f, animationSpec = tween(400))
     }
 
     var lastDetections by remember { mutableStateOf<List<Detection>>(emptyList()) }
-    var lastFrameW by remember { mutableStateOf(0) }
-    var lastFrameH by remember { mutableStateOf(0) }
-    var lastMs by remember { mutableStateOf(0L) }
+    var lastFrameW by remember { mutableIntStateOf(0) }
+    var lastFrameH by remember { mutableIntStateOf(0) }
+    var lastMs by remember { mutableLongStateOf(0L) }
     var hadDetections by remember { mutableStateOf(false) }
-    var lastBeepAt by remember { mutableStateOf(0L) }
+    var lastBeepAt by remember { mutableLongStateOf(0L) }
     var isProcessing by remember { mutableStateOf(false) }
 
     LaunchedEffect(stopDetectionRequested, isProcessing) {
@@ -1010,12 +1018,23 @@ private fun LiveDetectionUi(
 
                     Text(
                         text = if (lastFrameW > 0 && lastFrameH > 0)
-                            "${"%.1f".format(zoomRatio)}× | ${lastDetections.size} det | ${lastMs} ms"
+                            "${"%.1f".format(zoomRatio)}× | ${lastDetections.size} det | $lastMs ms"
                         else
                             "Detected: —",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White
                     )
+
+                    val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
+                    if (hasFlash) {
+                        IconButton(onClick = { torchEnabled = !torchEnabled }) {
+                            Icon(
+                                imageVector = if (torchEnabled) Icons.Default.FlashlightOff else Icons.Default.FlashlightOn,
+                                contentDescription = if (torchEnabled) "Turn off torch" else "Turn on torch",
+                                tint = if (torchEnabled) Color.Yellow else Color.White
+                            )
+                        }
+                    }
                 }
 
             }
