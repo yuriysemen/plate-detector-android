@@ -3,6 +3,12 @@ package com.github.yuriysemen.platesdetector
 import android.net.Uri
 import java.io.File
 
+enum class AnalysisResolution(val label: String, val detail: String) {
+    DEFAULT("Default", "Camera driver decides"),
+    LOW("Low (640×480)", "Fastest, minimal memory usage"),
+    HD("HD (1280×720)", "More detail for distant or small plates")
+}
+
 enum class CoordFormat {
     /** [x1, y1, x2, y2, score, class] */
     XYXY_SCORE_CLASS,

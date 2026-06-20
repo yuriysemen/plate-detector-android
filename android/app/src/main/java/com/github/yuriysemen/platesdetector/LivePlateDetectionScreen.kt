@@ -27,6 +27,8 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -143,6 +145,19 @@ private object ModelPrefs {
 
     fun setEnableOCR(context: Context, enable: Boolean) {
         prefs(context).edit { putBoolean(KEY_ENABLE_OCR, enable) }
+    }
+
+    private const val KEY_ANALYSIS_RESOLUTION = "analysis_resolution"
+
+    fun getAnalysisResolution(context: Context): AnalysisResolution =
+        runCatching {
+            AnalysisResolution.valueOf(
+                prefs(context).getString(KEY_ANALYSIS_RESOLUTION, null) ?: ""
+            )
+        }.getOrDefault(AnalysisResolution.DEFAULT)
+
+    fun setAnalysisResolution(context: Context, res: AnalysisResolution) {
+        prefs(context).edit { putString(KEY_ANALYSIS_RESOLUTION, res.name) }
     }
 }
 
@@ -520,6 +535,9 @@ fun LivePlateDetectionScreen() {
     var enableOCR by rememberSaveable {
         mutableStateOf(ModelPrefs.getEnableOCR(context))
     }
+    var analysisResolution by rememberSaveable {
+        mutableStateOf(ModelPrefs.getAnalysisResolution(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -615,6 +633,11 @@ fun LivePlateDetectionScreen() {
             onEnableOCRChange = { enable ->
                 ModelPrefs.setEnableOCR(context, enable)
                 enableOCR = enable
+            },
+            analysisResolution = analysisResolution,
+            onAnalysisResolutionChange = { res ->
+                ModelPrefs.setAnalysisResolution(context, res)
+                analysisResolution = res
             }
         )
     } else {
@@ -630,6 +653,7 @@ fun LivePlateDetectionScreen() {
                 showClassNames = show
             },
             enableOCR = enableOCR,
+            analysisResolution = analysisResolution,
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
@@ -690,6 +714,7 @@ private fun LiveDetectionUi(
     showClassNames: Boolean,
     onShowClassNamesChange: (Boolean) -> Unit,
     enableOCR: Boolean,
+    analysisResolution: AnalysisResolution,
     onRequestOpenSettings: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
@@ -844,13 +869,14 @@ private fun LiveDetectionUi(
                     }
                 }
             } else {
-                // Key by model id to ensure full rebind for analyzer when model changes
-                key(spec.id) {
+                // Key by model id + resolution to rebind when either changes
+                key(spec.id, analysisResolution) {
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         plateOCR = plateOCR,
                         enableOCR = enableOCR,
                         scoreThreshold = spec.conf,
+                        analysisResolution = analysisResolution,
                         isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
                         onCameraReady = { cam, factory ->
@@ -1148,6 +1174,7 @@ private fun CameraPreviewWithAnalysis(
     plateOCR: PlateOCR,
     enableOCR: Boolean,
     scoreThreshold: Float,
+    analysisResolution: AnalysisResolution,
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
     onCameraReady: (Camera, MeteringPointFactory) -> Unit,
@@ -1183,9 +1210,28 @@ private fun CameraPreviewWithAnalysis(
                 it.surfaceProvider = previewView.surfaceProvider
             }
 
-            val imageAnalysis = ImageAnalysis.Builder()
+            val imageAnalysisBuilder = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
+
+            if (analysisResolution != AnalysisResolution.DEFAULT) {
+                val targetSize = when (analysisResolution) {
+                    AnalysisResolution.LOW -> android.util.Size(640, 480)
+                    AnalysisResolution.HD -> android.util.Size(1280, 720)
+                    AnalysisResolution.DEFAULT -> error("unreachable")
+                }
+                imageAnalysisBuilder.setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                targetSize,
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                            )
+                        )
+                        .build()
+                )
+            }
+
+            val imageAnalysis = imageAnalysisBuilder.build()
 
             val throttleMs = 120L
             var lastRun = 0L

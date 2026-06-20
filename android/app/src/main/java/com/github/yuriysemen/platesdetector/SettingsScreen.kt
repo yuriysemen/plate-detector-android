@@ -47,7 +47,9 @@ fun SettingsScreen(
     confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
     enableOCR: Boolean,
-    onEnableOCRChange: (Boolean) -> Unit
+    onEnableOCRChange: (Boolean) -> Unit,
+    analysisResolution: AnalysisResolution,
+    onAnalysisResolutionChange: (AnalysisResolution) -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
@@ -164,6 +166,29 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Enable OCR", style = MaterialTheme.typography.bodyMedium)
+            }
+
+            Text("Analysis resolution", style = MaterialTheme.typography.titleMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                AnalysisResolution.entries.forEach { res ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onAnalysisResolutionChange(res) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RadioButton(
+                            selected = analysisResolution == res,
+                            onClick = { onAnalysisResolutionChange(res) }
+                        )
+                        Column {
+                            Text(res.label, style = MaterialTheme.typography.bodyMedium)
+                            Text(res.detail, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
 
             TextButton(onClick = onPickFile) {

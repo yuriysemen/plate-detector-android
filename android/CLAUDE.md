@@ -46,7 +46,7 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 
 **Core flow:**
 1. `LivePlateDetectionScreen` — discovers available models, manages prefs, routes between `SettingsScreen` and `LiveDetectionUi`.
-2. `LiveDetectionUi` — sets up CameraX, runs `PlateDetector` on each frame via `ImageAnalysis` (throttled to ~8 fps), optionally chains `PlateOCR` on each detected bounding box. Hosts camera controls: pinch-to-zoom, tap-to-focus, torch toggle (`camera.cameraControl.enableTorch()`; auto-off on background), zoom shortcut buttons (1×/2×/3×), and EV compensation slider (`setExposureCompensationIndex()`).
+2. `LiveDetectionUi` — sets up CameraX, runs `PlateDetector` on each frame via `ImageAnalysis` (throttled to ~8 fps), optionally chains `PlateOCR` on each detected bounding box. Hosts camera controls: pinch-to-zoom, tap-to-focus, torch toggle (`camera.cameraControl.enableTorch()`; auto-off on background), zoom shortcut buttons (1×/2×/3×), and EV compensation slider (`setExposureCompensationIndex()`). Analysis resolution is selected in Settings and applied via `ResolutionSelector` on camera bind.
 3. `CameraPreviewWithAnalysis` — binds CameraX `Preview` + `ImageAnalysis` to the lifecycle. Frame → YUV→NV21→JPEG→Bitmap conversion, rotation, then detection on a single-thread executor.
 4. `PlateDetector` — wraps TFLite `Interpreter`. Accepts `ModelSource` (asset, file path, or content URI), performs letterbox preprocessing, runs inference, decodes `[1, N, 6]` output (`[x1,y1,x2,y2,score,class]`), and unprojects coordinates back to original-image space.
 5. `PlateOCR` — wraps ML Kit `TextRecognizer`. Receives a cropped plate bitmap, returns `OCRResult` with cleaned alphanumeric text.
