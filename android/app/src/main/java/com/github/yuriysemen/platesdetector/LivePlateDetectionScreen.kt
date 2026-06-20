@@ -589,6 +589,11 @@ fun LivePlateDetectionScreen() {
             },
             onConfidenceChange = { modelId, conf ->
                 ModelPrefs.setConf(context, modelId, conf)
+            },
+            enableOCR = enableOCR,
+            onEnableOCRChange = { enable ->
+                ModelPrefs.setEnableOCR(context, enable)
+                enableOCR = enable
             }
         )
     } else {
@@ -604,10 +609,6 @@ fun LivePlateDetectionScreen() {
                 showClassNames = show
             },
             enableOCR = enableOCR,
-            onEnableOCRChange = { enable ->
-                ModelPrefs.setEnableOCR(context, enable)
-                enableOCR = enable
-            },
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
@@ -668,7 +669,6 @@ private fun LiveDetectionUi(
     showClassNames: Boolean,
     onShowClassNamesChange: (Boolean) -> Unit,
     enableOCR: Boolean,
-    onEnableOCRChange: (Boolean) -> Unit,
     onRequestOpenSettings: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
@@ -912,29 +912,6 @@ private fun LiveDetectionUi(
                     )
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = enableOCR,
-                        onCheckedChange = onEnableOCRChange,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.White,
-                            uncheckedColor = Color.White,
-                            checkmarkColor = Color.Black
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Enable OCR",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White
-                    )
-                }
             }
         }
     }
