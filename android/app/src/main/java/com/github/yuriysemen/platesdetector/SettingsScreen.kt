@@ -36,6 +36,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -49,7 +50,9 @@ fun SettingsScreen(
     enableOCR: Boolean,
     onEnableOCRChange: (Boolean) -> Unit,
     analysisResolution: AnalysisResolution,
-    onAnalysisResolutionChange: (AnalysisResolution) -> Unit
+    onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
+    targetFps: Int,
+    onTargetFpsChange: (Int) -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
@@ -167,6 +170,17 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Enable OCR", style = MaterialTheme.typography.bodyMedium)
             }
+
+            Text(
+                "Frame rate: $targetFps fps (~${1000 / targetFps.coerceAtLeast(1)} ms/frame)",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Slider(
+                value = targetFps.toFloat(),
+                onValueChange = { onTargetFpsChange(it.roundToInt()) },
+                valueRange = 1f..15f,
+                steps = 13
+            )
 
             Text("Analysis resolution", style = MaterialTheme.typography.titleMedium)
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {

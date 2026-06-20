@@ -159,6 +159,18 @@ private object ModelPrefs {
     fun setAnalysisResolution(context: Context, res: AnalysisResolution) {
         prefs(context).edit { putString(KEY_ANALYSIS_RESOLUTION, res.name) }
     }
+
+    private const val KEY_TARGET_FPS = "target_fps"
+    const val DEFAULT_FPS = 8
+    const val MIN_FPS = 1
+    const val MAX_FPS = 15
+
+    fun getTargetFps(context: Context): Int =
+        prefs(context).getInt(KEY_TARGET_FPS, DEFAULT_FPS).coerceIn(MIN_FPS, MAX_FPS)
+
+    fun setTargetFps(context: Context, fps: Int) {
+        prefs(context).edit { putInt(KEY_TARGET_FPS, fps.coerceIn(MIN_FPS, MAX_FPS)) }
+    }
 }
 
 private fun customModelsDir(context: Context): File =
@@ -538,6 +550,9 @@ fun LivePlateDetectionScreen() {
     var analysisResolution by rememberSaveable {
         mutableStateOf(ModelPrefs.getAnalysisResolution(context))
     }
+    var targetFps by rememberSaveable {
+        mutableIntStateOf(ModelPrefs.getTargetFps(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -638,6 +653,11 @@ fun LivePlateDetectionScreen() {
             onAnalysisResolutionChange = { res ->
                 ModelPrefs.setAnalysisResolution(context, res)
                 analysisResolution = res
+            },
+            targetFps = targetFps,
+            onTargetFpsChange = { fps ->
+                ModelPrefs.setTargetFps(context, fps)
+                targetFps = fps
             }
         )
     } else {
@@ -654,6 +674,7 @@ fun LivePlateDetectionScreen() {
             },
             enableOCR = enableOCR,
             analysisResolution = analysisResolution,
+            targetFps = targetFps,
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
@@ -715,6 +736,7 @@ private fun LiveDetectionUi(
     onShowClassNamesChange: (Boolean) -> Unit,
     enableOCR: Boolean,
     analysisResolution: AnalysisResolution,
+    targetFps: Int,
     onRequestOpenSettings: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
@@ -877,6 +899,7 @@ private fun LiveDetectionUi(
                         enableOCR = enableOCR,
                         scoreThreshold = spec.conf,
                         analysisResolution = analysisResolution,
+                        targetFps = targetFps,
                         isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
                         onCameraReady = { cam, factory ->
@@ -1175,6 +1198,7 @@ private fun CameraPreviewWithAnalysis(
     enableOCR: Boolean,
     scoreThreshold: Float,
     analysisResolution: AnalysisResolution,
+    targetFps: Int,
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
     onCameraReady: (Camera, MeteringPointFactory) -> Unit,
@@ -1190,6 +1214,7 @@ private fun CameraPreviewWithAnalysis(
     val detectionEnabledState by rememberUpdatedState(isDetectionEnabled)
     val onResultState by rememberUpdatedState(onResult)
     val onProcessingChangedState by rememberUpdatedState(onProcessingChanged)
+    val targetFpsState by rememberUpdatedState(targetFps)
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -1233,12 +1258,12 @@ private fun CameraPreviewWithAnalysis(
 
             val imageAnalysis = imageAnalysisBuilder.build()
 
-            val throttleMs = 120L
             var lastRun = 0L
             var busy = false
 
             imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
                 val now = SystemClock.elapsedRealtime()
+                val throttleMs = (1000L / targetFpsState.coerceAtLeast(1))
                 var bmp: Bitmap? = null
                 var rotated: Bitmap? = null
 

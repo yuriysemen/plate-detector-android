@@ -12,6 +12,7 @@
 - [x] Zoom shortcut buttons — 1×/2×/3× pill buttons at bottom center; filtered to camera's max zoom; highlights active level
 - [x] Exposure compensation — EV slider above zoom buttons; reads `ExposureState` range; shows computed EV value; hidden when unsupported
 - [x] Analysis resolution control — `DEFAULT`/`LOW (640×480)`/`HD (1280×720)` picker in Settings; uses `ResolutionSelector`; camera rebinds on change
+- [x] Frame rate control — 1–15 fps slider in Settings; throttle derived per-frame via `rememberUpdatedState`; takes effect immediately without camera rebind
 
 ### Detection
 - [x] TFLite YOLO inference on each camera frame (~8 fps)
@@ -65,4 +66,3 @@
 
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
-- [ ] **Frame rate control** — expose the 120 ms throttle as a slider
