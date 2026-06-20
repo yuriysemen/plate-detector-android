@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+- Detailed architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Feature tracking and backlog: [ROADMAP.md](ROADMAP.md)
+
 ## Project overview
 
 Android app for real-time on-device license plate detection and OCR. Uses a YOLO TFLite model for bounding-box detection and ML Kit for text recognition. The working directory for the Android project is `android/` (this folder); Gradle commands must be run from here.

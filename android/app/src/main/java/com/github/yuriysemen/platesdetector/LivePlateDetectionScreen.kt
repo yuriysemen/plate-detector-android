@@ -20,9 +20,12 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.Lifecycle
@@ -45,8 +48,15 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
+import java.util.concurrent.TimeUnit
 import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -738,6 +748,22 @@ private fun LiveDetectionUi(
         onDispose { plateOCR.close() }
     }
 
+    var camera by remember { mutableStateOf<Camera?>(null) }
+    var meteringPointFactory by remember { mutableStateOf<MeteringPointFactory?>(null) }
+    var focusTapOffset by remember { mutableStateOf(Offset.Zero) }
+    var focusTapKey by remember { mutableStateOf(0) }
+    val focusRingAlpha = remember { Animatable(0f) }
+    var zoomRatio by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(spec.id) { zoomRatio = 1f }
+
+    LaunchedEffect(focusTapKey) {
+        if (focusTapKey == 0) return@LaunchedEffect
+        focusRingAlpha.snapTo(1f)
+        delay(800)
+        focusRingAlpha.animateTo(0f, animationSpec = tween(400))
+    }
+
     var lastDetections by remember { mutableStateOf<List<Detection>>(emptyList()) }
     var lastFrameW by remember { mutableStateOf(0) }
     var lastFrameH by remember { mutableStateOf(0) }
@@ -804,6 +830,10 @@ private fun LiveDetectionUi(
                         scoreThreshold = spec.conf,
                         isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
+                        onCameraReady = { cam, factory ->
+                            camera = cam
+                            meteringPointFactory = factory
+                        },
                         onResult = { dets, w, h, ms ->
                             val now = SystemClock.elapsedRealtime()
                             val shouldBeep = dets.isNotEmpty() &&
@@ -824,8 +854,35 @@ private fun LiveDetectionUi(
                     )
                 }
 
-                // Overlay
-                Canvas(modifier = Modifier.fillMaxSize()) {
+                // Overlay + gestures
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(camera) {
+                            detectTransformGestures { _, _, zoomChange, _ ->
+                                val cam = camera ?: return@detectTransformGestures
+                                val zoomState = cam.cameraInfo.zoomState.value
+                                    ?: return@detectTransformGestures
+                                val newRatio = (zoomState.zoomRatio * zoomChange)
+                                    .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                                cam.cameraControl.setZoomRatio(newRatio)
+                                zoomRatio = newRatio
+                            }
+                        }
+                        .pointerInput(camera) {
+                            detectTapGestures { offset ->
+                                val cam = camera ?: return@detectTapGestures
+                                val factory = meteringPointFactory ?: return@detectTapGestures
+                                val point = factory.createPoint(offset.x, offset.y)
+                                val action = FocusMeteringAction.Builder(point)
+                                    .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                                    .build()
+                                cam.cameraControl.startFocusAndMetering(action)
+                                focusTapOffset = offset
+                                focusTapKey++
+                            }
+                        }
+                ) {
                     if (lastFrameW <= 0 || lastFrameH <= 0) return@Canvas
 
                     val viewW = size.width
@@ -900,6 +957,35 @@ private fun LiveDetectionUi(
                             )
                         }
                     }
+
+                    // Focus ring — shown after tap-to-focus, fades out
+                    val ringAlpha = focusRingAlpha.value
+                    if (ringAlpha > 0f) {
+                        val ringRadius = 44.dp.toPx()
+                        val ringStroke = Stroke(width = 2.dp.toPx())
+                        val ringColor = Color.White.copy(alpha = ringAlpha)
+                        drawCircle(
+                            color = ringColor,
+                            radius = ringRadius,
+                            center = focusTapOffset,
+                            style = ringStroke
+                        )
+                        // Corner brackets (Samsung-style)
+                        val bracket = 12.dp.toPx()
+                        val bStroke = Stroke(width = 2.5f.dp.toPx())
+                        val cx = focusTapOffset.x
+                        val cy = focusTapOffset.y
+                        val r = ringRadius
+                        listOf(
+                            Offset(cx - r, cy - r) to Pair(Offset(cx - r + bracket, cy - r), Offset(cx - r, cy - r + bracket)),
+                            Offset(cx + r, cy - r) to Pair(Offset(cx + r - bracket, cy - r), Offset(cx + r, cy - r + bracket)),
+                            Offset(cx - r, cy + r) to Pair(Offset(cx - r + bracket, cy + r), Offset(cx - r, cy + r - bracket)),
+                            Offset(cx + r, cy + r) to Pair(Offset(cx + r - bracket, cy + r), Offset(cx + r, cy + r - bracket))
+                        ).forEach { (corner, lines) ->
+                            drawLine(ringColor, corner, lines.first, strokeWidth = bStroke.width)
+                            drawLine(ringColor, corner, lines.second, strokeWidth = bStroke.width)
+                        }
+                    }
                 }
             }
 
@@ -924,7 +1010,7 @@ private fun LiveDetectionUi(
 
                     Text(
                         text = if (lastFrameW > 0 && lastFrameH > 0)
-                            "Detected: ${lastDetections.size} | ${lastMs} ms"
+                            "${"%.1f".format(zoomRatio)}× | ${lastDetections.size} det | ${lastMs} ms"
                         else
                             "Detected: —",
                         style = MaterialTheme.typography.titleMedium,
@@ -949,6 +1035,7 @@ private fun CameraPreviewWithAnalysis(
     scoreThreshold: Float,
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
+    onCameraReady: (Camera, MeteringPointFactory) -> Unit,
     onResult: (List<Detection>, Int, Int, Long) -> Unit
 ) {
     val context = LocalContext.current
@@ -1066,12 +1153,15 @@ private fun CameraPreviewWithAnalysis(
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
+            val boundCamera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
                 preview,
                 imageAnalysis
             )
+            mainExecutor.execute {
+                onCameraReady(boundCamera, previewView.meteringPointFactory)
+            }
         }
 
         cameraProviderFuture.addListener(listener, mainExecutor)
