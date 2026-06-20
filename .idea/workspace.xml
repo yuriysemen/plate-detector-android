@@ -5,13 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/PlateOCR.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/plate-detector-android.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/plate-detector-android.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/android/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/PlateDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/PlateDetector.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/android/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradle.properties" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle.properties" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/android/gradle/libs.versions.toml" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle/libs.versions.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -67,7 +66,7 @@
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "ml.llm.LLMThirdPartyAiProvidersConfigurable",
+    "settings.editor.selected.configurable": "ml.llm.AcpAgentsConfigurable",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }

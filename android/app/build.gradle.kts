@@ -2,11 +2,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -38,7 +37,7 @@ val modelDownloadToken = providers.gradleProperty("MODEL_DOWNLOAD_TOKEN").orNull
 
 val defaultModelsDir = layout.buildDirectory.dir("generated/assets/defaultModels")
 
-val downloadDefaultModels by tasks.registering {
+val downloadDefaultModels = tasks.register("downloadDefaultModels") {
     val outputDir = defaultModelsDir.get().asFile
     outputs.dir(outputDir)
     doLast {
@@ -51,7 +50,7 @@ val downloadDefaultModels by tasks.registering {
 
             val tmpFile = File(modelsDir, "${fileName}.download")
             val url = "$baseUrl/$fileName"
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = URI(url).toURL().openConnection() as HttpURLConnection
             try {
                 connection.instanceFollowRedirects = true
                 connection.connectTimeout = 15_000
@@ -141,7 +140,7 @@ android {
     androidResources {
         noCompress += "tflite"
     }
-    sourceSets["main"].assets.srcDir(defaultModelsDir)
+    sourceSets["main"].assets.directories.add(defaultModelsDir.get().asFile.absolutePath)
 }
 
 tasks.named("preBuild") {
