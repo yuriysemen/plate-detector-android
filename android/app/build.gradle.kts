@@ -85,41 +85,36 @@ val downloadDefaultModels = tasks.register("downloadDefaultModels") {
     }
 }
 
+val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
+val keystorePassword: String? = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val keyAlias: String? = System.getenv("ANDROID_KEY_ALIAS")
+val keyPassword: String? = System.getenv("ANDROID_KEY_PASSWORD")
+val hasSigningEnv = listOf(keystorePath, keystorePassword, keyAlias, keyPassword)
+    .all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.github.yuriysemen.platesdetector"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.github.yuriysemen.platesdetector"
         minSdk = 23
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 11
         versionName = "0.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-    val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-    val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-    val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-    val releaseSigningConfig =
-        if (
-            listOf(
-                keystorePath,
-                keystorePassword,
-                keyAlias,
-                keyPassword
-            ).all { !it.isNullOrBlank() }
-        ) {
-            signingConfigs.create("release") {
-                storeFile = file(keystorePath!!)
-                storePassword = keystorePassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
-            }
-        } else {
-            null
+    val releaseSigningConfig = if (hasSigningEnv) {
+        signingConfigs.create("release") {
+            storeFile = file(keystorePath!!)
+            storePassword = keystorePassword
+            this.keyAlias = keyAlias
+            this.keyPassword = keyPassword
         }
+    } else {
+        null
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -138,7 +133,7 @@ android {
         compose = true
     }
     androidResources {
-        noCompress += "tflite"
+        noCompress.add("tflite")
     }
     sourceSets["main"].assets.directories.add(defaultModelsDir.get().asFile.absolutePath)
 }
