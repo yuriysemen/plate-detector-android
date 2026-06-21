@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -31,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
@@ -49,10 +51,13 @@ fun SettingsScreen(
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
     enableOCR: Boolean,
     onEnableOCRChange: (Boolean) -> Unit,
+    collectTrainingData: Boolean,
+    onCollectTrainingDataChange: (Boolean) -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     targetFps: Int,
-    onTargetFpsChange: (Int) -> Unit
+    onTargetFpsChange: (Int) -> Unit,
+    onExportDataset: () -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
@@ -203,6 +208,25 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onExportDataset) {
+                    Icon(
+                        imageVector = Icons.Default.Archive,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Export dataset")
+                }
+                Switch(
+                    checked = collectTrainingData,
+                    onCheckedChange = onCollectTrainingDataChange
+                )
             }
 
             TextButton(onClick = onPickFile) {

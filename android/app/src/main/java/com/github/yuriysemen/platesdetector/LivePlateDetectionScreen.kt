@@ -171,6 +171,15 @@ private object ModelPrefs {
     fun setTargetFps(context: Context, fps: Int) {
         prefs(context).edit { putInt(KEY_TARGET_FPS, fps.coerceIn(MIN_FPS, MAX_FPS)) }
     }
+
+    private const val KEY_COLLECT_TRAINING = "collect_training_data"
+
+    fun getCollectTrainingData(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_COLLECT_TRAINING, false)
+
+    fun setCollectTrainingData(context: Context, enable: Boolean) {
+        prefs(context).edit { putBoolean(KEY_COLLECT_TRAINING, enable) }
+    }
 }
 
 private fun customModelsDir(context: Context): File =
@@ -553,9 +562,13 @@ fun LivePlateDetectionScreen() {
     var targetFps by rememberSaveable {
         mutableIntStateOf(ModelPrefs.getTargetFps(context))
     }
+    var collectTrainingData by rememberSaveable {
+        mutableStateOf(ModelPrefs.getCollectTrainingData(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
+    var showExport by rememberSaveable { mutableStateOf(false) }
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
@@ -616,50 +629,61 @@ fun LivePlateDetectionScreen() {
     val selected = models.firstOrNull { it.id == selectedId }
 
     if (showSettings || selected == null || !isModelEnabled) {
-        SettingsScreen(
-            models = models,
-            selectedModelId = selectedId ?: models.first().id,
-            onPick = { spec ->
-                val isNewModel = selectedId != spec.id
-                ModelPrefs.setSelectedId(context, spec.id)
-                selectedId = spec.id
-                if (isNewModel) {
-                    ModelPrefs.setShowLabels(context, false)
-                    showClassNames = false
-                }
-                isModelEnabled = true
-                showSettings = false
-                stopDetectionRequested = false
-            },
-            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
-            onDelete = { spec ->
-                if (!spec.isDeletable) return@SettingsScreen
-                deleteModel(context, spec)
-                ModelPrefs.clearConf(context, spec.id)
-                reloadKey++
-            },
-            confidenceForModel = { modelId ->
-                ModelPrefs.getConf(context, modelId)
-            },
-            onConfidenceChange = { modelId, conf ->
-                ModelPrefs.setConf(context, modelId, conf)
-            },
-            enableOCR = enableOCR,
-            onEnableOCRChange = { enable ->
-                ModelPrefs.setEnableOCR(context, enable)
-                enableOCR = enable
-            },
-            analysisResolution = analysisResolution,
-            onAnalysisResolutionChange = { res ->
-                ModelPrefs.setAnalysisResolution(context, res)
-                analysisResolution = res
-            },
-            targetFps = targetFps,
-            onTargetFpsChange = { fps ->
-                ModelPrefs.setTargetFps(context, fps)
-                targetFps = fps
-            }
-        )
+        if (showExport) {
+            ExportScreen(onBack = { showExport = false })
+        } else {
+            SettingsScreen(
+                models = models,
+                selectedModelId = selectedId ?: models.first().id,
+                onPick = { spec ->
+                    val isNewModel = selectedId != spec.id
+                    ModelPrefs.setSelectedId(context, spec.id)
+                    selectedId = spec.id
+                    if (isNewModel) {
+                        ModelPrefs.setShowLabels(context, false)
+                        showClassNames = false
+                    }
+                    isModelEnabled = true
+                    showSettings = false
+                    showExport = false
+                    stopDetectionRequested = false
+                },
+                onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+                onDelete = { spec ->
+                    if (!spec.isDeletable) return@SettingsScreen
+                    deleteModel(context, spec)
+                    ModelPrefs.clearConf(context, spec.id)
+                    reloadKey++
+                },
+                confidenceForModel = { modelId ->
+                    ModelPrefs.getConf(context, modelId)
+                },
+                onConfidenceChange = { modelId, conf ->
+                    ModelPrefs.setConf(context, modelId, conf)
+                },
+                enableOCR = enableOCR,
+                onEnableOCRChange = { enable ->
+                    ModelPrefs.setEnableOCR(context, enable)
+                    enableOCR = enable
+                },
+                analysisResolution = analysisResolution,
+                onAnalysisResolutionChange = { res ->
+                    ModelPrefs.setAnalysisResolution(context, res)
+                    analysisResolution = res
+                },
+                targetFps = targetFps,
+                onTargetFpsChange = { fps ->
+                    ModelPrefs.setTargetFps(context, fps)
+                    targetFps = fps
+                },
+                collectTrainingData = collectTrainingData,
+                onCollectTrainingDataChange = { enable ->
+                    ModelPrefs.setCollectTrainingData(context, enable)
+                    collectTrainingData = enable
+                },
+                onExportDataset = { showExport = true }
+            )
+        }
     } else {
         // Important: spec.conf may change in prefs in picker, so load fresh conf for runtime.
         val runtimeSpec = selected.copy(conf = ModelPrefs.getConf(context, selected.id))
@@ -673,12 +697,14 @@ fun LivePlateDetectionScreen() {
                 showClassNames = show
             },
             enableOCR = enableOCR,
+            collectTrainingData = collectTrainingData,
             analysisResolution = analysisResolution,
             targetFps = targetFps,
             onRequestOpenSettings = { stopDetectionRequested = true },
             onDetectionStopped = {
                 isModelEnabled = false
                 showSettings = true
+                showExport = false
                 stopDetectionRequested = false
             }
         )
@@ -735,6 +761,7 @@ private fun LiveDetectionUi(
     showClassNames: Boolean,
     onShowClassNamesChange: (Boolean) -> Unit,
     enableOCR: Boolean,
+    collectTrainingData: Boolean,
     analysisResolution: AnalysisResolution,
     targetFps: Int,
     onRequestOpenSettings: () -> Unit,
@@ -743,6 +770,12 @@ private fun LiveDetectionUi(
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    val trainingSaver = remember { TrainingDataSaver(context) }
+    @Suppress("DEPRECATION")
+    val appVersion = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" }.getOrDefault("")
+    }
 
     var isInForeground by remember { mutableStateOf(true) }
     DisposableEffect(lifecycleOwner) {
@@ -897,6 +930,10 @@ private fun LiveDetectionUi(
                         detector = detector,
                         plateOCR = plateOCR,
                         enableOCR = enableOCR,
+                        collectTrainingData = collectTrainingData,
+                        trainingSaver = trainingSaver,
+                        appVersion = appVersion,
+                        modelId = spec.id,
                         scoreThreshold = spec.conf,
                         analysisResolution = analysisResolution,
                         targetFps = targetFps,
@@ -1151,7 +1188,8 @@ private fun LiveDetectionUi(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onRequestOpenSettings) {
                         Icon(
@@ -1196,6 +1234,10 @@ private fun CameraPreviewWithAnalysis(
     detector: PlateDetector,
     plateOCR: PlateOCR,
     enableOCR: Boolean,
+    collectTrainingData: Boolean,
+    trainingSaver: TrainingDataSaver,
+    appVersion: String,
+    modelId: String,
     scoreThreshold: Float,
     analysisResolution: AnalysisResolution,
     targetFps: Int,
@@ -1210,6 +1252,9 @@ private fun CameraPreviewWithAnalysis(
     val detectorState by rememberUpdatedState(detector)
     val plateOCRState by rememberUpdatedState(plateOCR)
     val enableOCRState by rememberUpdatedState(enableOCR)
+    val collectTrainingDataState by rememberUpdatedState(collectTrainingData)
+    val appVersionState by rememberUpdatedState(appVersion)
+    val modelIdState by rememberUpdatedState(modelId)
     val thresholdState by rememberUpdatedState(scoreThreshold)
     val detectionEnabledState by rememberUpdatedState(isDetectionEnabled)
     val onResultState by rememberUpdatedState(onResult)
@@ -1315,6 +1360,10 @@ private fun CameraPreviewWithAnalysis(
                                 detection
                             }
                         }
+                    }
+
+                    if (collectTrainingDataState && dets.isNotEmpty()) {
+                        trainingSaver.saveFrame(rotated, dets, appVersionState, modelIdState)
                     }
 
                     val ms = (System.nanoTime() - t0) / 1_000_000

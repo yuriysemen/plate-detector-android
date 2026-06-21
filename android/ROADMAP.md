@@ -37,6 +37,12 @@
 - [x] Settings screen (model picker, confidence slider, OCR toggle, import button)
 - [x] "No models" error screen with retry + file picker
 
+### Training data collection
+- [x] Opt-in toggle (Switch in Settings next to "Export dataset") saves detected JPEG frames + YOLO `.txt` annotations to `filesDir/training_data/`; default off; persisted in SharedPreferences
+- [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, and collection date range; updated after every saved frame; survives app restarts
+- [x] Dataset export — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (default 70/20/10; configurable via sliders on the Export screen); auto-resets collected data on success; share sheet opens immediately
+- [x] Exported files list — scrollable list on Export screen with per-file Share, Rename, and Delete actions
+
 ---
 
 ## Backlog
@@ -68,10 +74,8 @@
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
 ### Training data collection (requirements: REQ-001 – REQ-008)
-- [ ] **In-app data collector** — opt-in toggle saves detected JPEG frames + YOLO `.txt` annotations to `filesDir/training_data/`
-- [ ] **Storage quota + LRU eviction** — 500 MB cap; oldest frames evicted automatically; `manifest.json` tracks `next_seq`
-- [ ] **Dataset export** — ZIP via share sheet; includes `dataset.yaml` and `README.txt` for the Ultralytics pipeline
-- [ ] **Play Store compliance** — first-time consent dialog, Privacy Policy update, Auto Backup exclusion, Data Safety declaration
+- [ ] **Storage quota + LRU eviction** — 500 MB cap; oldest frames evicted automatically (REQ-006)
+- [ ] **Play Store compliance** — first-time consent dialog, Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
 
 ### Parking access control (requirements: REQ-009 – REQ-010)
 - [ ] **Vehicle type classifier** — MobileNetV2 TFLite model; classifies full frame as civilian / police / ambulance / fire_truck / military; runs in parallel with plate detector

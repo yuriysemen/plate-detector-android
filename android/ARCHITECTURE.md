@@ -10,12 +10,13 @@ Single-Activity, fully Jetpack Compose app. No navigation library — navigation
 MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
         ├── NoModelsScreen              (no .tflite assets found)
-        ├── SettingsScreen              (model picker + sliders + OCR toggle)
+        ├── SettingsScreen              (model picker + sliders + OCR toggle + export row)
+        ├── ExportScreen                (stats, export ZIP, file list, reset)
         └── LiveDetectionUi             (camera + detection + overlay)
               └── CameraPreviewWithAnalysis   (CameraX binding)
 ```
 
-`LivePlateDetectionScreen` owns the routing state (`showSettings`, `isModelEnabled`, `selectedId`). When no model is selected on first launch it opens Settings automatically.
+`LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `isModelEnabled`, `selectedId`). When no model is selected on first launch it opens Settings automatically. `ExportScreen` is shown instead of `SettingsScreen` when `showExport` is true.
 
 ## Detection pipeline (per frame)
 
@@ -32,9 +33,15 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     └─ decode output [1, N, 6] → List<Detection>
   │           (unproject letterbox coords back to original-image pixels)
   │
-  └─ PlateOCR.recognizePlate()  (if enableOCR && detections not empty)
-        ├─ crop+pad bitmap to detection bounds
-        └─ ML Kit TextRecognizer → clean alphanumeric text
+  ├─ PlateOCR.recognizePlate()  (if enableOCR && detections not empty)
+  │     ├─ crop+pad bitmap to detection bounds
+  │     └─ ML Kit TextRecognizer → clean alphanumeric text
+  │
+  └─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
+        ├─ write JPEG (quality 90) → filesDir/training_data/images/frame_XXXXXXXX.jpg
+        ├─ write YOLO .txt → filesDir/training_data/labels/frame_XXXXXXXX.txt
+        │     (one line per detection: classId x_center y_center width height, all normalized to [0,1])
+        └─ overwrite manifest.json (next_seq, total_frames, total_detections, date range)
 
 Results posted to main thread → recompose overlay Canvas
 ```
@@ -51,7 +58,7 @@ Three model origins (tracked in `ModelOrigin` enum):
 
 `ModelSpec` carries a `ModelSource` sealed class (`Asset`, `FilePath`, `ContentUri`) so `PlateDetector` loads from any of the three sources via memory-mapping with a `readBytes` fallback.
 
-`ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, OCR-enabled flag.
+`ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, OCR-enabled flag, collect-training-data flag.
 
 A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings.
 
@@ -68,6 +75,8 @@ The top bar in `LiveDetectionUi` exposes:
 - **Settings button** (hamburger) — opens `SettingsScreen`
 - **Stats text** — zoom ratio, detection count, inference latency
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
+
+`SettingsScreen` bottom row: **Export dataset** (archive icon + label, navigates to `ExportScreen`) with a **Switch** on the right that toggles training data collection on/off.
 - **Zoom shortcut buttons** — 1×/2×/3× pill buttons at bottom center; filtered to `camera.cameraInfo.zoomState.maxZoomRatio`; tapping calls `setZoomRatio()`; active level highlighted in white
 - **EV slider** — horizontal slider above zoom buttons; range and step read from `camera.cameraInfo.exposureState`; calls `setExposureCompensationIndex()`; displays computed EV value (`index × step`); hidden when `isExposureCompensationSupported` is false; resets to 0 on model change
 - **Analysis resolution** — `AnalysisResolution` enum (`DEFAULT`/`LOW`/`HD`) persisted in `ModelPrefs`; wired into `ImageAnalysis.Builder` via `ResolutionSelector` + `ResolutionStrategy`; camera is fully rebound when changed (via `key(spec.id, analysisResolution)`); picker shown in `SettingsScreen`
@@ -85,3 +94,25 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper (private object) |
+| `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
+| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); reads stats; lists/renames/deletes export files; provides `FileProvider` URIs |
+
+## Training data collection
+
+Collected frames are stored under `context.filesDir`:
+
+```
+training_data/
+  images/   frame_XXXXXXXX.jpg   (JPEG quality 90, rotated bitmap)
+  labels/   frame_XXXXXXXX.txt   (YOLO format: classId xc yc w h, normalized)
+  manifest.json                  (next_seq, total_frames, total_detections, date range, app_version, model_id)
+exports/
+  plates_dataset_<timestamp>.zip (one per export; frames randomly shuffled then split into
+                                   train/, val/, test/ subdirs + data.yaml)
+```
+
+`TrainingDataSaver` is instantiated per `LiveDetectionUi` session (via `remember`). It reads `manifest.json` on first use to restore `next_seq`, then increments in memory and rewrites the manifest after every frame. Because `LiveDetectionUi` leaves composition when Settings opens, a fresh `TrainingDataSaver` is created on each return — reading the latest manifest, so any reset performed in `ExportScreen` is picked up automatically.
+
+`DatasetExporter` is instantiated per `ExportScreen` session. The two classes never run concurrently (the camera and export screens are never on screen at the same time), so there is no shared-state conflict.
+
+`FileProvider` authority: `com.github.yuriysemen.platesdetector.fileprovider`, serving `filesDir/exports/` (declared in `res/xml/file_paths.xml`).

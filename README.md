@@ -3,9 +3,12 @@ An Android app for on-device license-plate detection, paired with a set of model
 YOLO is the first (and currently implemented) experiment, with room for additional approaches later. OCR (reading plate text) is planned.
 
 ## Features
-- Real-time license plate detection (on-device)
-- Bounding box overlay
+- Real-time license plate detection (on-device, TFLite YOLO)
+- Bounding box overlay with confidence score
+- OCR — reads plate text using ML Kit (toggle in Settings)
 - Optional beep alert on detection
+- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; export as a ZIP ready for `yolo train`
+- Multiple models selectable; custom `.tflite` import; per-model confidence threshold
 - Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
 
 ## Getting a model for the Android app
@@ -76,8 +79,12 @@ When those secrets are set, the workflow produces:
 - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
 
 ## Roadmap (planned)
-- **Character-level recognition (OCR)**: add a separate model and pipeline to detect the license-plate number itself.
-- **Event metadata**: emit notifications that specify *when* a plate is detected and *which* plate text was recognized. The event format and payload are still being designed and will be documented once the OCR pipeline lands.
+- **Storage quota + LRU eviction** — auto-evict oldest training frames when storage exceeds a configurable cap.
+- **Play Store compliance** — first-launch consent dialog, Auto Backup exclusion, Data Safety declaration.
+- **Event metadata** — emit structured detection events (timestamp, plate text, bounding box) for downstream consumers.
+- **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
+
+See `android/ROADMAP.md` for the full backlog.
 
 ## Privacy
 The app is designed to run fully on-device:
