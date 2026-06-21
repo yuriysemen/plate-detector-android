@@ -1,13 +1,19 @@
 ---
 id: REQ-006
 title: Storage Quota, LRU Eviction, and Dataset Export
-status: draft
+status: done
 priority: medium
 ---
 
 ## Summary
 
 Define limits to prevent the feature from consuming unbounded device storage, how old data is evicted when limits are reached, and how the final dataset is packaged for use with the training pipeline.
+
+## Implementation status
+
+- **Storage quota + warning banners** — implemented (REQ-011 replaced the hidden constant with a user-configurable quota in Settings; 80% yellow banner and 100% red pause banner are live).
+- **LRU eviction** — **not implemented and superseded by REQ-011**. Silently deleting curated frames was deemed worse than pausing collection and prompting the user to act via the Dataset Editor. The collection pause strategy from REQ-011 is the replacement.
+- **Export flow** — implemented. The ZIP format, train/val/test split, and FileProvider setup differ from this spec in several ways (see REQ-002 for the authoritative implementation details).
 
 ## Storage location
 
@@ -119,9 +125,9 @@ Add to `AndroidManifest.xml`:
 
 ## Acceptance criteria
 
-- [ ] Total storage never exceeds 500 MB; oldest frames are deleted automatically when the cap is reached.
-- [ ] Deleting a frame also deletes its paired `.txt` — no orphaned label files.
-- [ ] The exported ZIP is accepted by macOS Archive Utility and standard `unzip` without errors.
-- [ ] `yolo train data=dataset.yaml` runs without modification after unzipping the export.
-- [ ] Export button is disabled (greyed out) when 0 frames have been collected.
-- [ ] Exporting does not block the UI thread.
+- [x] Deleting a frame also deletes its paired `.txt` — no orphaned label files.
+- [x] The exported ZIP is accepted by macOS Archive Utility and standard `unzip` without errors.
+- [x] `yolo train data=dataset.yaml` runs without modification after unzipping the export.
+- [x] Export button is disabled (greyed out) when 0 frames have been collected.
+- [x] Exporting does not block the UI thread.
+- [ ] ~~Total storage never exceeds 500 MB; oldest frames are deleted automatically when the cap is reached.~~ — superseded by REQ-011 (collection pause + Dataset Editor instead of silent LRU eviction).

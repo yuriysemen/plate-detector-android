@@ -43,6 +43,9 @@
 - [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, `multi_detection_frames`, and collection date range; updated after every saved frame; survives app restarts
 - [x] Dataset export — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (default 70/20/10; configurable via sliders on the Export screen); auto-resets collected data on success; share sheet opens immediately
 - [x] Exported files list — scrollable list on Export screen with per-file Share, Rename, and Delete actions
+- [x] Configurable storage quota — user-visible "Storage limit" setting (default 500 MB); 80% yellow warning banner on camera + Export screens; collection paused (red banner + "Edit" shortcut) at 100%
+- [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation
+- [x] Frame Detail Editor — full-res frame view; tap to select box; drag body to move, drag handles (8 per box) to resize; draw new box via FAB; delete box or entire frame; saves YOLO-normalized coordinates back to `.txt`
 
 ---
 
@@ -74,8 +77,7 @@
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
-### Training data collection (requirements: REQ-001 – REQ-008)
-- [ ] **Storage quota + LRU eviction** — 500 MB cap; oldest frames evicted automatically (REQ-006)
+### Training data collection (requirements: REQ-007)
 - [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
 
 ### Parking access control (requirements: REQ-009 – REQ-010)

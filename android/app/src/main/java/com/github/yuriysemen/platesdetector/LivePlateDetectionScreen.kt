@@ -57,7 +57,9 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
@@ -188,6 +190,16 @@ private object ModelPrefs {
 
     fun setCollectFirstTimeShown(context: Context, shown: Boolean) {
         prefs(context).edit { putBoolean(KEY_COLLECT_FIRST_TIME_SHOWN, shown) }
+    }
+
+    private const val KEY_STORAGE_QUOTA_MB = "training_data_quota_mb"
+    const val DEFAULT_QUOTA_MB = 500
+
+    fun getStorageQuotaMb(context: Context): Int =
+        prefs(context).getInt(KEY_STORAGE_QUOTA_MB, DEFAULT_QUOTA_MB).coerceAtLeast(100)
+
+    fun setStorageQuotaMb(context: Context, mb: Int) {
+        prefs(context).edit { putInt(KEY_STORAGE_QUOTA_MB, mb.coerceAtLeast(100)) }
     }
 }
 
@@ -577,10 +589,14 @@ fun LivePlateDetectionScreen() {
     var collectFirstTimeShown by rememberSaveable {
         mutableStateOf(ModelPrefs.getCollectFirstTimeShown(context))
     }
+    var storageQuotaMb by rememberSaveable {
+        mutableIntStateOf(ModelPrefs.getStorageQuotaMb(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
     var showExport by rememberSaveable { mutableStateOf(false) }
+    var showEditor by rememberSaveable { mutableStateOf(false) }
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
@@ -641,10 +657,14 @@ fun LivePlateDetectionScreen() {
     val selected = models.firstOrNull { it.id == selectedId }
 
     if (showSettings || selected == null || !isModelEnabled) {
-        if (showExport) {
-            ExportScreen(onBack = { showExport = false })
-        } else {
-            SettingsScreen(
+        when {
+            showEditor -> DatasetEditorScreen(onBack = { showEditor = false })
+            showExport -> ExportScreen(
+                onBack = { showExport = false },
+                onEditDataset = { showEditor = true },
+                storageQuotaMb = storageQuotaMb
+            )
+            else -> SettingsScreen(
                 models = models,
                 selectedModelId = selectedId ?: models.first().id,
                 onPick = { spec ->
@@ -658,6 +678,7 @@ fun LivePlateDetectionScreen() {
                     isModelEnabled = true
                     showSettings = false
                     showExport = false
+                    showEditor = false
                     stopDetectionRequested = false
                 },
                 onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
@@ -698,6 +719,11 @@ fun LivePlateDetectionScreen() {
                     ModelPrefs.setCollectFirstTimeShown(context, true)
                     collectFirstTimeShown = true
                 },
+                storageQuotaMb = storageQuotaMb,
+                onStorageQuotaMbChange = { mb ->
+                    ModelPrefs.setStorageQuotaMb(context, mb)
+                    storageQuotaMb = mb
+                },
                 onExportDataset = { showExport = true }
             )
         }
@@ -715,13 +741,22 @@ fun LivePlateDetectionScreen() {
             },
             enableOCR = enableOCR,
             collectTrainingData = collectTrainingData,
+            storageQuotaMb = storageQuotaMb,
             analysisResolution = analysisResolution,
             targetFps = targetFps,
             onRequestOpenSettings = { stopDetectionRequested = true },
+            onOpenEditor = {
+                isModelEnabled = false
+                showSettings = true
+                showExport = true
+                showEditor = true
+                stopDetectionRequested = false
+            },
             onDetectionStopped = {
                 isModelEnabled = false
                 showSettings = true
                 showExport = false
+                showEditor = false
                 stopDetectionRequested = false
             }
         )
@@ -779,9 +814,11 @@ private fun LiveDetectionUi(
     onShowClassNamesChange: (Boolean) -> Unit,
     enableOCR: Boolean,
     collectTrainingData: Boolean,
+    storageQuotaMb: Int,
     analysisResolution: AnalysisResolution,
     targetFps: Int,
     onRequestOpenSettings: () -> Unit,
+    onOpenEditor: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
     val context = LocalContext.current
@@ -789,9 +826,23 @@ private fun LiveDetectionUi(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val trainingSaver = remember { TrainingDataSaver(context) }
+    val datasetEditor = remember { DatasetEditor(context) }
     @Suppress("DEPRECATION")
     val appVersion = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" }.getOrDefault("")
+    }
+
+    var storageUsageBytes by remember { mutableLongStateOf(0L) }
+    val quotaBytes = storageQuotaMb.toLong() * 1024L * 1024L
+    val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
+    val quotaReached = storageUsageBytes >= quotaBytes
+
+    LaunchedEffect(collectTrainingData, storageQuotaMb) {
+        while (true) {
+            storageUsageBytes = withContext(Dispatchers.IO) { datasetEditor.trainingUsageBytes() }
+            if (!collectTrainingData) break
+            delay(5_000)
+        }
     }
 
     var isInForeground by remember { mutableStateOf(true) }
@@ -947,7 +998,7 @@ private fun LiveDetectionUi(
                         detector = detector,
                         plateOCR = plateOCR,
                         enableOCR = enableOCR,
-                        collectTrainingData = collectTrainingData,
+                        collectTrainingData = collectTrainingData && !quotaReached,
                         trainingSaver = trainingSaver,
                         appVersion = appVersion,
                         modelId = spec.id,
@@ -1237,6 +1288,22 @@ private fun LiveDetectionUi(
                     }
                 }
 
+                // Storage banners (below top bar, only while collecting)
+                if (collectTrainingData && quotaReached) {
+                    StorageBanner(
+                        text = "Storage limit reached ($storageQuotaMb MB). Export or edit your dataset to continue collecting.",
+                        isError = true,
+                        actionLabel = "Edit",
+                        onAction = onOpenEditor
+                    )
+                } else if (collectTrainingData && usagePct >= 80) {
+                    StorageBanner(
+                        text = "Training storage at $usagePct% — consider exporting or editing your dataset.",
+                        isError = false,
+                        actionLabel = null,
+                        onAction = null
+                    )
+                }
             }
         }
     }
@@ -1507,5 +1574,34 @@ fun sourceLabel(model: ModelSpec): String {
         ModelOrigin.DEFAULT -> "default model"
         ModelOrigin.CUSTOM -> "custom model"
         ModelOrigin.LEGACY_EXTERNAL -> "external file"
+    }
+}
+
+@Composable
+fun StorageBanner(
+    text: String,
+    isError: Boolean,
+    actionLabel: String?,
+    onAction: (() -> Unit)?
+) {
+    val bg = if (isError) Color(0xFFB71C1C) else Color(0xFFF57F17)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(bg)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.weight(1f)
+        )
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel, color = Color.White, style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }

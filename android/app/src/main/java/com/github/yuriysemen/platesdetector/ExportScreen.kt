@@ -31,8 +31,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,13 +53,21 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun ExportScreen(onBack: () -> Unit) {
+fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: Int) {
     val context = LocalContext.current
     val exporter = remember { DatasetExporter(context) }
+    val editor = remember { DatasetEditor(context) }
     val scope = rememberCoroutineScope()
 
     var stats by remember { mutableStateOf(exporter.readStats()) }
     var exports by remember { mutableStateOf(exporter.listExports()) }
+    var storageUsageBytes by remember { mutableLongStateOf(0L) }
+    val quotaBytes = storageQuotaMb.toLong() * 1024L * 1024L
+    val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
+
+    LaunchedEffect(Unit) {
+        storageUsageBytes = withContext(Dispatchers.IO) { editor.trainingUsageBytes() }
+    }
     var isExporting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
@@ -156,6 +166,18 @@ fun ExportScreen(onBack: () -> Unit) {
                 Text("Export dataset", style = MaterialTheme.typography.titleLarge)
             }
 
+            if (usagePct >= 80) {
+                item {
+                    StorageBanner(
+                        text = if (usagePct >= 100) "Storage limit reached ($storageQuotaMb MB). Export or edit your dataset."
+                               else "Training storage at $usagePct% — consider exporting or editing your dataset.",
+                        isError = usagePct >= 100,
+                        actionLabel = null,
+                        onAction = null
+                    )
+                }
+            }
+
             item {
                 OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -214,6 +236,16 @@ fun ExportScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
+                }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = onEditDataset,
+                    enabled = stats.totalFrames > 0,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Edit dataset")
                 }
             }
 

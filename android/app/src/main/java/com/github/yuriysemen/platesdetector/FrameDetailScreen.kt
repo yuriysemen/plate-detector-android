@@ -1,0 +1,505 @@
+package com.github.yuriysemen.platesdetector
+
+import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.sqrt
+
+// Mutable box in display-space pixels (relative to image canvas origin)
+private data class DisplayBox(
+    val classId: Int,
+    var left: Float,
+    var top: Float,
+    var right: Float,
+    var bottom: Float
+) {
+    val cx get() = (left + right) / 2f
+    val cy get() = (top + bottom) / 2f
+    val w get() = right - left
+    val h get() = bottom - top
+}
+
+private enum class DragTarget { NONE, MOVE, TL, TR, BL, BR, TM, BM, LM, RM }
+
+@Composable
+fun FrameDetailScreen(
+    frame: FrameEntry,
+    editor: DatasetEditor,
+    onBack: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var imageBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var boxes by remember { mutableStateOf<List<DisplayBox>>(emptyList()) }
+    var selectedIndex by remember { mutableStateOf(-1) }
+    var hasUnsavedChanges by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    var showDeleteFrameDialog by remember { mutableStateOf(false) }
+    var showDeleteLastBoxDialog by remember { mutableStateOf(false) }
+    var drawingNewBox by remember { mutableStateOf(false) }
+    var newBoxStart by remember { mutableStateOf(Offset.Zero) }
+    var newBoxEnd by remember { mutableStateOf(Offset.Zero) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var initialized by remember { mutableStateOf(false) }
+    var layoutOffX by remember { mutableStateOf(0f) }
+    var layoutOffY by remember { mutableStateOf(0f) }
+    var layoutDispW by remember { mutableStateOf(1f) }
+    var layoutDispH by remember { mutableStateOf(1f) }
+
+    // drag state
+    var dragTarget by remember { mutableStateOf(DragTarget.NONE) }
+
+    LaunchedEffect(frame.name) {
+        val bmp = withContext(Dispatchers.IO) { editor.loadBitmap(frame.imageFile) } ?: return@LaunchedEffect
+        bitmap = bmp
+        imageBitmap = bmp.asImageBitmap()
+    }
+
+    fun navigateBack() {
+        if (hasUnsavedChanges) showDiscardDialog = true else onBack()
+    }
+
+    BackHandler { navigateBack() }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard unsaved changes?") },
+            confirmButton = { TextButton(onClick = { showDiscardDialog = false; onBack() }) { Text("Discard") } },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing") } }
+        )
+    }
+
+    if (showDeleteFrameDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteFrameDialog = false },
+            title = { Text("Delete this frame?") },
+            text = { Text("This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteFrameDialog = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) { editor.deleteFrames(listOf(frame)) }
+                        onBack()
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteFrameDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showDeleteLastBoxDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteLastBoxDialog = false },
+            title = { Text("No boxes remain") },
+            text = { Text("Delete the frame entirely?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteLastBoxDialog = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) { editor.deleteFrames(listOf(frame)) }
+                        onBack()
+                    }
+                }) { Text("Delete frame") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteLastBoxDialog = false
+                    // keep empty label file
+                    scope.launch {
+                        withContext(Dispatchers.IO) { editor.saveBoxes(frame, emptyList()) }
+                        onBack()
+                    }
+                }) { Text("Keep empty") }
+            }
+        )
+    }
+
+    val density = LocalDensity.current
+    val handleRadius = with(density) { 14.dp.toPx() }
+    val minBoxSize = with(density) { 20.dp.toPx() }
+
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Top bar
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(onClick = { navigateBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    frame.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedIndex in boxes.indices) {
+                    IconButton(onClick = {
+                        val updated = boxes.toMutableList().also { it.removeAt(selectedIndex) }
+                        selectedIndex = -1
+                        if (updated.isEmpty()) {
+                            showDeleteLastBoxDialog = true
+                        } else {
+                            boxes = updated
+                            hasUnsavedChanges = true
+                        }
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "Delete box", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        isSaving = true
+                        scope.launch {
+                            val bmp = bitmap ?: return@launch
+                            val yoloBoxes = boxes.map { d ->
+                                val l = ((d.left - layoutOffX) / layoutDispW).coerceIn(0f, 1f)
+                                val t = ((d.top - layoutOffY) / layoutDispH).coerceIn(0f, 1f)
+                                val r = ((d.right - layoutOffX) / layoutDispW).coerceIn(0f, 1f)
+                                val b2 = ((d.bottom - layoutOffY) / layoutDispH).coerceIn(0f, 1f)
+                                YoloBox(d.classId, (l + r) / 2f, (t + b2) / 2f, r - l, b2 - t)
+                            }
+                            withContext(Dispatchers.IO) { editor.saveBoxes(frame, yoloBoxes) }
+                            isSaving = false
+                            hasUnsavedChanges = false
+                            onBack()
+                        }
+                    },
+                    enabled = hasUnsavedChanges && !isSaving
+                ) {
+                    if (isSaving) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Check, contentDescription = "Save", tint = if (hasUnsavedChanges) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+                }
+                Box {
+                    IconButton(onClick = { showOverflowMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Delete frame", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = { showOverflowMenu = false; showDeleteFrameDialog = true }
+                        )
+                    }
+                }
+            }
+
+            // Image + interactive canvas
+            val bmp = bitmap
+            val imgBitmap = imageBitmap
+            if (bmp == null || imgBitmap == null) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
+                    val canvasW = constraints.maxWidth.toFloat()
+                    val canvasH = constraints.maxHeight.toFloat()
+                    val scale = minOf(canvasW / bmp.width, canvasH / bmp.height)
+                    val dispW = bmp.width * scale
+                    val dispH = bmp.height * scale
+                    val offX = (canvasW - dispW) / 2f
+                    val offY = (canvasH - dispH) / 2f
+
+                    SideEffect {
+                        if (initialized && dispW > 0f && dispH > 0f &&
+                            (layoutOffX != offX || layoutOffY != offY || layoutDispW != dispW || layoutDispH != dispH)
+                        ) {
+                            val oldOffX = layoutOffX; val oldOffY = layoutOffY
+                            val oldDispW = layoutDispW; val oldDispH = layoutDispH
+                            boxes = boxes.map { d ->
+                                val l = ((d.left - oldOffX) / oldDispW).coerceIn(0f, 1f)
+                                val t = ((d.top - oldOffY) / oldDispH).coerceIn(0f, 1f)
+                                val r = ((d.right - oldOffX) / oldDispW).coerceIn(0f, 1f)
+                                val b2 = ((d.bottom - oldOffY) / oldDispH).coerceIn(0f, 1f)
+                                DisplayBox(d.classId, offX + l * dispW, offY + t * dispH, offX + r * dispW, offY + b2 * dispH)
+                            }
+                        }
+                        layoutOffX = offX
+                        layoutOffY = offY
+                        layoutDispW = dispW
+                        layoutDispH = dispH
+                    }
+
+                    // Convert YoloBox coordinates to canvas space
+                    fun yoloToCanvas(b: YoloBox): DisplayBox = DisplayBox(
+                        classId = b.classId,
+                        left = offX + (b.xCenter - b.width / 2f) * dispW,
+                        top = offY + (b.yCenter - b.height / 2f) * dispH,
+                        right = offX + (b.xCenter + b.width / 2f) * dispW,
+                        bottom = offY + (b.yCenter + b.height / 2f) * dispH
+                    )
+
+                    fun canvasToYolo(d: DisplayBox): YoloBox {
+                        val l = ((d.left - offX) / dispW).coerceIn(0f, 1f)
+                        val t = ((d.top - offY) / dispH).coerceIn(0f, 1f)
+                        val r = ((d.right - offX) / dispW).coerceIn(0f, 1f)
+                        val b2 = ((d.bottom - offY) / dispH).coerceIn(0f, 1f)
+                        return YoloBox(d.classId, (l + r) / 2f, (t + b2) / 2f, r - l, b2 - t)
+                    }
+
+                    LaunchedEffect(bmp, offX, offY, dispW, dispH) {
+                        if (!initialized && dispW > 0f && dispH > 0f) {
+                            boxes = frame.boxes.map { b -> yoloToCanvas(b) }
+                            initialized = true
+                        }
+                    }
+
+                    fun hitTest(pos: Offset): Pair<Int, DragTarget> {
+                        // Check handles of selected box first
+                        val sel = selectedIndex
+                        if (sel in boxes.indices) {
+                            val b = boxes[sel]
+                            val handles = listOf(
+                                Offset(b.left, b.top) to DragTarget.TL,
+                                Offset(b.right, b.top) to DragTarget.TR,
+                                Offset(b.left, b.bottom) to DragTarget.BL,
+                                Offset(b.right, b.bottom) to DragTarget.BR,
+                                Offset(b.cx, b.top) to DragTarget.TM,
+                                Offset(b.cx, b.bottom) to DragTarget.BM,
+                                Offset(b.left, b.cy) to DragTarget.LM,
+                                Offset(b.right, b.cy) to DragTarget.RM,
+                            )
+                            for ((hPos, target) in handles) {
+                                if (dist(pos, hPos) <= handleRadius * 1.5f) return sel to target
+                            }
+                            if (pos.x in b.left..b.right && pos.y in b.top..b.bottom) return sel to DragTarget.MOVE
+                        }
+                        // Check other boxes
+                        for (i in boxes.indices.reversed()) {
+                            val b = boxes[i]
+                            if (pos.x in b.left..b.right && pos.y in b.top..b.bottom) return i to DragTarget.MOVE
+                        }
+                        return -1 to DragTarget.NONE
+                    }
+
+                    val boxColors = listOf(Color(0xFF00E676), Color(0xFF40C4FF), Color(0xFFFF6E40), Color(0xFFEA80FC))
+
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(drawingNewBox) {
+                                if (drawingNewBox) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            newBoxStart = offset
+                                            newBoxEnd = offset
+                                        },
+                                        onDrag = { change, _ ->
+                                            newBoxEnd = change.position
+                                        },
+                                        onDragEnd = {
+                                            val l = minOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
+                                            val t = minOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
+                                            val r = maxOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
+                                            val b2 = maxOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
+                                            if (r - l >= minBoxSize && b2 - t >= minBoxSize) {
+                                                val newBox = DisplayBox(0, l, t, r, b2)
+                                                boxes = boxes + newBox
+                                                selectedIndex = boxes.size - 1
+                                                hasUnsavedChanges = true
+                                            }
+                                            drawingNewBox = false
+                                        },
+                                        onDragCancel = { drawingNewBox = false }
+                                    )
+                                }
+                            }
+                            .pointerInput(boxes, selectedIndex) {
+                                if (!drawingNewBox) {
+                                    detectTapGestures { offset ->
+                                        val (idx, _) = hitTest(offset)
+                                        selectedIndex = idx
+                                    }
+                                }
+                            }
+                            .pointerInput(selectedIndex, drawingNewBox) {
+                                if (!drawingNewBox) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            val (idx, target) = hitTest(offset)
+                                            if (idx >= 0) {
+                                                selectedIndex = idx
+                                                dragTarget = target
+                                            } else {
+                                                dragTarget = DragTarget.NONE
+                                            }
+                                        },
+                                        onDrag = { _, dragAmount ->
+                                            val idx = selectedIndex
+                                            if (idx !in boxes.indices || dragTarget == DragTarget.NONE) return@detectDragGestures
+                                            val dx = dragAmount.x
+                                            val dy = dragAmount.y
+                                            val b = boxes[idx]
+                                            val updated = when (dragTarget) {
+                                                DragTarget.MOVE -> b.copy(
+                                                    left = (b.left + dx).coerceIn(offX, offX + dispW - b.w),
+                                                    top = (b.top + dy).coerceIn(offY, offY + dispH - b.h),
+                                                    right = (b.right + dx).coerceIn(offX + b.w, offX + dispW),
+                                                    bottom = (b.bottom + dy).coerceIn(offY + b.h, offY + dispH)
+                                                )
+                                                DragTarget.TL -> b.copy(
+                                                    left = (b.left + dx).coerceIn(offX, b.right - minBoxSize),
+                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize)
+                                                )
+                                                DragTarget.TR -> b.copy(
+                                                    right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW),
+                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize)
+                                                )
+                                                DragTarget.BL -> b.copy(
+                                                    left = (b.left + dx).coerceIn(offX, b.right - minBoxSize),
+                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH)
+                                                )
+                                                DragTarget.BR -> b.copy(
+                                                    right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW),
+                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH)
+                                                )
+                                                DragTarget.TM -> b.copy(top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize))
+                                                DragTarget.BM -> b.copy(bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH))
+                                                DragTarget.LM -> b.copy(left = (b.left + dx).coerceIn(offX, b.right - minBoxSize))
+                                                DragTarget.RM -> b.copy(right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW))
+                                                DragTarget.NONE -> b
+                                            }
+                                            boxes = boxes.toMutableList().also { it[idx] = updated }
+                                            hasUnsavedChanges = true
+                                        },
+                                        onDragEnd = { dragTarget = DragTarget.NONE }
+                                    )
+                                }
+                            }
+                    ) {
+                        // Draw image fit-center
+                        drawImage(
+                            image = imgBitmap,
+                            dstOffset = androidx.compose.ui.unit.IntOffset(offX.toInt(), offY.toInt()),
+                            dstSize = androidx.compose.ui.unit.IntSize(dispW.toInt(), dispH.toInt())
+                        )
+
+                        // Draw new-box preview
+                        if (drawingNewBox) {
+                            val l = minOf(newBoxStart.x, newBoxEnd.x)
+                            val t = minOf(newBoxStart.y, newBoxEnd.y)
+                            val r = maxOf(newBoxStart.x, newBoxEnd.x)
+                            val b2 = maxOf(newBoxStart.y, newBoxEnd.y)
+                            drawRect(Color.White, Offset(l, t), Size(r - l, b2 - t), style = Stroke(2.dp.toPx()))
+                        }
+
+                        // Draw boxes
+                        for ((i, box) in boxes.withIndex()) {
+                            val isSelected = i == selectedIndex
+                            val color = boxColors[i % boxColors.size]
+                            val strokeW = if (isSelected) 3.dp.toPx() else 2.dp.toPx()
+                            drawRect(color, Offset(box.left, box.top), Size(box.w, box.h), style = Stroke(strokeW))
+
+                            if (isSelected) {
+                                val handles = listOf(
+                                    Offset(box.left, box.top), Offset(box.right, box.top),
+                                    Offset(box.left, box.bottom), Offset(box.right, box.bottom),
+                                    Offset(box.cx, box.top), Offset(box.cx, box.bottom),
+                                    Offset(box.left, box.cy), Offset(box.right, box.cy)
+                                )
+                                for (h in handles) {
+                                    drawCircle(Color.White, radius = handleRadius, center = h)
+                                    drawCircle(color, radius = handleRadius - 3.dp.toPx(), center = h)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // FAB row at bottom
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (!drawingNewBox && selectedIndex < 0) {
+                    FloatingActionButton(
+                        onClick = {
+                            selectedIndex = -1
+                            drawingNewBox = true
+                        },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add box")
+                    }
+                }
+                if (drawingNewBox) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { drawingNewBox = false }) { Text("Cancel") }
+                }
+            }
+        }
+    }
+}
+
+
+private fun dist(a: Offset, b: Offset): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    return sqrt(dx * dx + dy * dy)
+}

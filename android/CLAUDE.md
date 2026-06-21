@@ -50,6 +50,10 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 3. `CameraPreviewWithAnalysis` — binds CameraX `Preview` + `ImageAnalysis` to the lifecycle. Frame → YUV→NV21→JPEG→Bitmap conversion, rotation, then detection on a single-thread executor.
 4. `PlateDetector` — wraps TFLite `Interpreter`. Accepts `ModelSource` (asset, file path, or content URI), performs letterbox preprocessing, runs inference, decodes `[1, N, 6]` output (`[x1,y1,x2,y2,score,class]`), and unprojects coordinates back to original-image space.
 5. `PlateOCR` — wraps ML Kit `TextRecognizer`. Receives a cropped plate bitmap, returns `OCRResult` with cleaned alphanumeric text.
+6. `ExportScreen` — shows collection stats, train/val/test split config, storage quota banners (80% warning / 100% pause), previous export file list, and the "Edit dataset" entry point.
+7. `DatasetEditorScreen` — 2-column lazy grid of collected frames; thumbnails decoded asynchronously with bounding boxes overlaid; long-press multi-select + batch delete; tap to open `FrameDetailScreen`.
+8. `FrameDetailScreen` — full-res frame editor; boxes stored in canvas-pixel space during editing; `SideEffect` re-projects boxes when canvas geometry changes (e.g. FAB row collapses on selection); saves YOLO-normalized coordinates back to `.txt` via `DatasetEditor`.
+9. `DatasetEditor` — data layer for the editor: loads `FrameEntry` list, parses YOLO label files into `YoloBox` lists, saves edited boxes, deletes frame pairs (image + label), rebuilds `manifest.json`.
 
 **Key data types:**
 - `ModelSpec` — per-model metadata (id, display title, source, confidence threshold, description, origin).

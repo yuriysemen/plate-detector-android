@@ -31,12 +31,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import kotlin.math.roundToInt
@@ -56,6 +61,8 @@ fun SettingsScreen(
     onCollectTrainingDataChange: (Boolean) -> Unit,
     collectFirstTimeShown: Boolean,
     onCollectFirstTimeShownAck: () -> Unit,
+    storageQuotaMb: Int,
+    onStorageQuotaMbChange: (Int) -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     targetFps: Int,
@@ -65,6 +72,14 @@ fun SettingsScreen(
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
     var showCollectConsentDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Quota editing state — work in MB, convert to/from GB for display
+    var quotaUnit by rememberSaveable { mutableStateOf(if (storageQuotaMb >= 1024) "GB" else "MB") }
+    var quotaText by rememberSaveable(storageQuotaMb) {
+        mutableStateOf(
+            if (storageQuotaMb >= 1024) (storageQuotaMb / 1024).toString() else storageQuotaMb.toString()
+        )
+    }
 
     fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
@@ -237,6 +252,47 @@ fun SettingsScreen(
                         TextButton(onClick = { showCollectConsentDialog = false }) { Text("Cancel") }
                     }
                 )
+            }
+
+            // Storage limit
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = quotaText,
+                    onValueChange = { v ->
+                        quotaText = v.filter { it.isDigit() }
+                        val n = quotaText.toIntOrNull() ?: return@OutlinedTextField
+                        val mb = if (quotaUnit == "GB") n * 1024 else n
+                        if (mb >= 100) onStorageQuotaMbChange(mb)
+                    },
+                    label = { Text("Storage limit") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                listOf("MB", "GB").forEach { unit ->
+                    val selected = unit == quotaUnit
+                    TextButton(
+                        onClick = {
+                            if (unit != quotaUnit) {
+                                val cur = quotaText.toIntOrNull() ?: 0
+                                quotaUnit = unit
+                                val newMb = if (unit == "GB") cur * 1024 else cur
+                                quotaText = if (unit == "GB") (storageQuotaMb / 1024).coerceAtLeast(1).toString()
+                                           else storageQuotaMb.toString()
+                                if (newMb >= 100) onStorageQuotaMbChange(newMb)
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent
+                        )
+                    ) {
+                        Text(unit)
+                    }
+                }
             }
 
             Row(

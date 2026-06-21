@@ -7,7 +7,8 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Bounding box overlay with confidence score
 - OCR — reads plate text using ML Kit (toggle in Settings)
 - Optional beep alert on detection
-- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; export as a ZIP ready for `yolo train`
+- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; configurable storage quota with 80%/100% banners; export as a ZIP ready for `yolo train`
+- Dataset editor — review, correct, and prune collected frames on device; edit bounding boxes directly (move, resize, add, delete) before export
 - Multiple models selectable; custom `.tflite` import; per-model confidence threshold
 - Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
 
@@ -79,8 +80,7 @@ When those secrets are set, the workflow produces:
 - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
 
 ## Roadmap (planned)
-- **Storage quota + LRU eviction** — auto-evict oldest training frames when storage exceeds a configurable cap.
-- **Play Store compliance** — first-launch consent dialog, Auto Backup exclusion, Data Safety declaration.
+- **Play Store compliance** — Auto Backup exclusion, Data Safety declaration.
 - **Event metadata** — emit structured detection events (timestamp, plate text, bounding box) for downstream consumers.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 

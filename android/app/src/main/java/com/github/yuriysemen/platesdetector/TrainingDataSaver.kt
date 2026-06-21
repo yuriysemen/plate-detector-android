@@ -54,6 +54,7 @@ class TrainingDataSaver(context: Context) {
             val xc = ((det.leftPx + det.rightPx) / 2f) / w
             val yc = ((det.topPx + det.bottomPx) / 2f) / h
             "${det.classId} %.6f %.6f %.6f %.6f".format(
+                Locale.US,
                 xc.coerceIn(0f, 1f),
                 yc.coerceIn(0f, 1f),
                 bw.coerceIn(0f, 1f),

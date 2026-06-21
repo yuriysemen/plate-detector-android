@@ -11,12 +11,16 @@ MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
         ├── NoModelsScreen              (no .tflite assets found)
         ├── SettingsScreen              (model picker + sliders + OCR toggle + export row)
-        ├── ExportScreen                (stats, export ZIP, file list, reset)
+        ├── ExportScreen                (stats, export ZIP, file list, reset, storage banner)
+        │     └── DatasetEditorScreen   (frame grid; multi-select delete)
+        │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)
               └── CameraPreviewWithAnalysis   (CameraX binding)
 ```
 
 `LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `isModelEnabled`, `selectedId`). When no model is selected on first launch it opens Settings automatically. `ExportScreen` is shown instead of `SettingsScreen` when `showExport` is true.
+
+`ExportScreen` owns the sub-navigation to `DatasetEditorScreen` via a local state flag. `DatasetEditorScreen` owns the sub-navigation to `FrameDetailScreen` via a `openFrame: FrameEntry?` state — when non-null the detail screen renders in place of the grid.
 
 ## Detection pipeline (per frame)
 
@@ -98,6 +102,9 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
 | `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); reads stats; lists/renames/deletes export files; provides `FileProvider` URIs |
+| `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
+| `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
+| `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
 
 ## Training data collection
 
@@ -118,3 +125,20 @@ exports/
 `DatasetExporter` is instantiated per `ExportScreen` session. The two classes never run concurrently (the camera and export screens are never on screen at the same time), so there is no shared-state conflict.
 
 `FileProvider` authority: `com.github.yuriysemen.platesdetector.fileprovider`, serving `filesDir/exports/` (declared in `res/xml/file_paths.xml`).
+
+## Dataset editor
+
+`DatasetEditorScreen` is a 2-column lazy grid of all collected frames. Each cell asynchronously decodes the JPEG thumbnail and overlays its bounding boxes via a `Canvas`. Long-press enters multi-select mode; tapping a cell in normal mode opens `FrameDetailScreen`.
+
+`FrameDetailScreen` displays the full-resolution frame inside a `BoxWithConstraints` (black letterbox, fit-center scaling). Bounding boxes are stored in **canvas-pixel space** (offset + scaled to the composable's display area) while the screen is open. The coordinate lifecycle is:
+
+```
+YoloBox (normalized 0–1)
+  → yoloToCanvas()     on first layout (LaunchedEffect, runs once per frame open)
+  → DisplayBox         in-memory during editing (drag / resize / add / delete)
+  → canvasToYolo()     on Save (converts back before writing .txt)
+```
+
+When the canvas geometry changes (e.g. a box is selected and the FAB row collapses), a `SideEffect` detects the change and re-projects all `DisplayBox` values to the new geometry before the next draw, keeping boxes aligned with the image.
+
+`DatasetEditor` is instantiated once per `DatasetEditorScreen` session (via `remember`) and shared with each `FrameDetailScreen` child. Mutations (`saveBoxes`, `deleteFrames`) are always dispatched on `Dispatchers.IO`; after completion the grid calls `refresh()` to reload `frames` state from disk.
