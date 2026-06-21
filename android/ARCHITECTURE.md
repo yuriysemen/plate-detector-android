@@ -38,10 +38,12 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     └─ ML Kit TextRecognizer → clean alphanumeric text
   │
   └─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
+        ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
+        ├─ if no valid lines → return (no files written)
         ├─ write JPEG (quality 90) → filesDir/training_data/images/frame_XXXXXXXX.jpg
         ├─ write YOLO .txt → filesDir/training_data/labels/frame_XXXXXXXX.txt
-        │     (one line per detection: classId x_center y_center width height, all normalized to [0,1])
-        └─ overwrite manifest.json (next_seq, total_frames, total_detections, multi_detection_frames, date range)
+        │     (one line per valid detection: classId x_center y_center width height, all normalized to [0,1])
+        └─ overwrite manifest.json (next_seq, total_frames, total_detections=valid annotations, multi_detection_frames, date range)
 
 Results posted to main thread → recompose overlay Canvas
 ```

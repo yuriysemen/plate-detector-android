@@ -1,7 +1,7 @@
 ---
 id: REQ-003
 title: Coordinate Transformation — Detection Pixels to YOLO Normalized
-status: draft
+status: done
 priority: high
 ---
 
@@ -70,13 +70,17 @@ The normalized values are the same as long as the object occupies the same *rela
 
 | Case | Handling |
 |---|---|
-| Detection box partially outside image bounds | `PlateDetector` already clamps to `[0, bitmapUpright.width]` / `[0, bitmapUpright.height]`. YOLO values will be ≥ 0 and ≤ 1. |
-| Degenerate box (width or height = 0) | Skip saving: `bw <= 0 || bh <= 0`. |
+| Detection box partially outside image bounds | `PlateDetector` clamps to `[0, bitmapUpright.width]` / `[0, bitmapUpright.height]`; `TrainingDataSaver` additionally `coerceIn(0f, 1f)` on all four normalized values. |
+| Degenerate box (width or height = 0) | `bw` and `bh` are computed before the image is written. If either `<= 0`, that detection is dropped. If all detections in a frame are degenerate, the frame is skipped entirely (no JPEG, no `.txt`). |
 | `rotated` is null (conversion failed) | Frame is not saved. Only save when both `rotated` and detections are non-null/non-empty. |
+
+## Implementation notes
+
+`TrainingDataSaver.saveFrame()` computes and validates the YOLO lines **before** writing any file to disk. The JPEG is written only when at least one valid annotation exists, so images and labels are always paired. `manifest.json` counts only the valid annotations that were written (not the raw detection count from the model).
 
 ## Acceptance criteria
 
-- [ ] A saved `.txt` for a detection that spans the full width of the image has `bw ≈ 1.0`.
-- [ ] Saving the same real-world plate at two different analysis resolutions produces YOLO coordinates within ±0.02 of each other.
-- [ ] No saved annotation has any value outside [0.0, 1.0].
-- [ ] No saved annotation has `bw = 0` or `bh = 0`.
+- [x] A saved `.txt` for a detection that spans the full width of the image has `bw ≈ 1.0`.
+- [x] Saving the same real-world plate at two different analysis resolutions produces YOLO coordinates within ±0.02 of each other.
+- [x] No saved annotation has any value outside [0.0, 1.0].
+- [x] No saved annotation has `bw = 0` or `bh = 0`.

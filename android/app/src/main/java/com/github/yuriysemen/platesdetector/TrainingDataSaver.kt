@@ -45,6 +45,23 @@ class TrainingDataSaver(context: Context) {
         if (detections.isEmpty()) return
         ensureInit()
 
+        val w = bitmap.width.toFloat()
+        val h = bitmap.height.toFloat()
+        val lines = detections.mapNotNull { det ->
+            val bw = (det.rightPx - det.leftPx) / w
+            val bh = (det.bottomPx - det.topPx) / h
+            if (bw <= 0f || bh <= 0f) return@mapNotNull null
+            val xc = ((det.leftPx + det.rightPx) / 2f) / w
+            val yc = ((det.topPx + det.bottomPx) / 2f) / h
+            "${det.classId} %.6f %.6f %.6f %.6f".format(
+                xc.coerceIn(0f, 1f),
+                yc.coerceIn(0f, 1f),
+                bw.coerceIn(0f, 1f),
+                bh.coerceIn(0f, 1f)
+            )
+        }
+        if (lines.isEmpty()) return
+
         val seq = nextSeq++
         val name = "frame_%08d".format(seq)
         val now = isoFormat.format(Date())
@@ -53,21 +70,11 @@ class TrainingDataSaver(context: Context) {
         FileOutputStream(File(imagesDir, "$name.jpg")).use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
         }
-
-        val w = bitmap.width.toFloat()
-        val h = bitmap.height.toFloat()
-        val lines = detections.joinToString("\n") { det ->
-            val xc = ((det.leftPx + det.rightPx) / 2f) / w
-            val yc = ((det.topPx + det.bottomPx) / 2f) / h
-            val bw = (det.rightPx - det.leftPx) / w
-            val bh = (det.bottomPx - det.topPx) / h
-            "${det.classId} %.6f %.6f %.6f %.6f".format(xc, yc, bw, bh)
-        }
-        File(labelsDir, "$name.txt").writeText(lines)
+        File(labelsDir, "$name.txt").writeText(lines.joinToString("\n"))
 
         totalFrames++
-        totalDetections += detections.size
-        if (detections.size >= 2) multiDetectionFrames++
+        totalDetections += lines.size
+        if (lines.size >= 2) multiDetectionFrames++
 
         val json = JSONObject()
         json.put("app_version", appVersion)
