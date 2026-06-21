@@ -1,7 +1,7 @@
 ---
 id: REQ-004
 title: Multiple Detections Per Frame — Investigation and Handling
-status: draft
+status: done
 priority: high
 ---
 
@@ -81,7 +81,7 @@ In `manifest.json`, track how many frames had ≥ 2 detections separately so dat
 
 ## Acceptance criteria
 
-- [ ] A frame with 3 detected plates produces a single `.jpg` and a `.txt` with exactly 3 lines.
-- [ ] The saved label file for a multi-detection frame is accepted by `yolo val` without error.
-- [ ] `manifest.json` correctly counts frames where detections ≥ 2.
-- [ ] Single-detection and zero-detection frames are handled identically to the multi-detection case (no special branching).
+- [x] A frame with 3 detected plates produces a single `.jpg` and a `.txt` with exactly 3 lines.
+- [x] The saved label file for a multi-detection frame is accepted by `yolo val` without error.
+- [x] `manifest.json` correctly counts frames where detections ≥ 2.
+- [x] Single-detection and zero-detection frames are handled identically to the multi-detection case (no special branching).

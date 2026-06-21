@@ -41,7 +41,7 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
         ├─ write JPEG (quality 90) → filesDir/training_data/images/frame_XXXXXXXX.jpg
         ├─ write YOLO .txt → filesDir/training_data/labels/frame_XXXXXXXX.txt
         │     (one line per detection: classId x_center y_center width height, all normalized to [0,1])
-        └─ overwrite manifest.json (next_seq, total_frames, total_detections, date range)
+        └─ overwrite manifest.json (next_seq, total_frames, total_detections, multi_detection_frames, date range)
 
 Results posted to main thread → recompose overlay Canvas
 ```
@@ -105,7 +105,7 @@ Collected frames are stored under `context.filesDir`:
 training_data/
   images/   frame_XXXXXXXX.jpg   (JPEG quality 90, rotated bitmap)
   labels/   frame_XXXXXXXX.txt   (YOLO format: classId xc yc w h, normalized)
-  manifest.json                  (next_seq, total_frames, total_detections, date range, app_version, model_id)
+  manifest.json                  (next_seq, total_frames, total_detections, multi_detection_frames, date range, app_version, model_id)
 exports/
   plates_dataset_<timestamp>.zip (one per export; frames randomly shuffled then split into
                                    train/, val/, test/ subdirs + data.yaml)

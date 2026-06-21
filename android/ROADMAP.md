@@ -39,7 +39,7 @@
 
 ### Training data collection
 - [x] Opt-in toggle (Switch in Settings next to "Export dataset") saves detected JPEG frames + YOLO `.txt` annotations to `filesDir/training_data/`; default off; persisted in SharedPreferences
-- [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, and collection date range; updated after every saved frame; survives app restarts
+- [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, `multi_detection_frames`, and collection date range; updated after every saved frame; survives app restarts
 - [x] Dataset export — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (default 70/20/10; configurable via sliders on the Export screen); auto-resets collected data on success; share sheet opens immediately
 - [x] Exported files list — scrollable list on Export screen with per-file Share, Rename, and Delete actions
 

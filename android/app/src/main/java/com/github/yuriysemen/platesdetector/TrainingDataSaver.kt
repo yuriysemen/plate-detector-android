@@ -18,6 +18,7 @@ class TrainingDataSaver(context: Context) {
     private var nextSeq = 1
     private var totalFrames = 0
     private var totalDetections = 0
+    private var multiDetectionFrames = 0
     private var collectedFrom: String? = null
     private var initialized = false
 
@@ -34,6 +35,7 @@ class TrainingDataSaver(context: Context) {
                 totalFrames = json.optInt("total_frames", 0)
                 totalDetections = json.optInt("total_detections", 0)
                 collectedFrom = json.optString("collected_from").takeIf { it.isNotEmpty() }
+                multiDetectionFrames = json.optInt("multi_detection_frames", 0)
             }
         }
         initialized = true
@@ -65,6 +67,7 @@ class TrainingDataSaver(context: Context) {
 
         totalFrames++
         totalDetections += detections.size
+        if (detections.size >= 2) multiDetectionFrames++
 
         val json = JSONObject()
         json.put("app_version", appVersion)
@@ -73,6 +76,7 @@ class TrainingDataSaver(context: Context) {
         json.put("collected_to", now)
         json.put("total_frames", totalFrames)
         json.put("total_detections", totalDetections)
+        json.put("multi_detection_frames", multiDetectionFrames)
         json.put("next_seq", nextSeq)
         manifestFile.writeText(json.toString(2))
     }
@@ -83,6 +87,7 @@ class TrainingDataSaver(context: Context) {
         nextSeq = 1
         totalFrames = 0
         totalDetections = 0
+        multiDetectionFrames = 0
         collectedFrom = null
         initialized = true
     }
