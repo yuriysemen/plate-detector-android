@@ -26,6 +26,8 @@ Define limits to prevent the feature from consuming unbounded device storage, ho
 
 ## Storage quota
 
+> **Superseded by REQ-011.** Quota is now user-configurable in Settings (default 500 MB, range 100 MB – 20 GB). The hidden developer constant below was removed.
+
 Hard cap: **500 MB** (configurable via a hidden developer constant, not exposed in UI).
 
 Approximate frame sizes:
@@ -40,6 +42,8 @@ Since only frames with detections are saved (REQ-001 decision), storage grows on
 
 ## LRU eviction strategy
 
+> **Not implemented — superseded by REQ-011.** Collection pauses at quota; the user prunes via the Dataset Editor instead of silent auto-deletion.
+
 When a new frame would push total size over the quota:
 1. List all `.jpg` files in `images/` sorted by last-modified time (oldest first).
 2. Delete the oldest image and its paired `.txt` label file until there is space for the new frame.
@@ -50,6 +54,8 @@ Eviction happens synchronously before writing the new frame, on the analysis bac
 **Why LRU not FIFO:** same result for continuous collection, but LRU is correct if the user resumes collection after a gap (old frames from previous sessions are evicted first).
 
 ## Export flow
+
+> **Superseded by REQ-002.** The actual implementation stores ZIPs in `filesDir/exports/` (not `cacheDir/export/`), auto-splits into `train/`/`val/`/`test/` subdirectories, and does not require a manual split step. See REQ-002 for authoritative details.
 
 Triggered by the "Export dataset" button in Settings (see REQ-005).
 
@@ -66,6 +72,8 @@ Steps:
 
 ## dataset.yaml content
 
+> **Superseded by REQ-002.** Actual format uses `train/images`, `val/images`, `test/images` paths and class name `License_Plate`. See REQ-002.
+
 ```yaml
 path: .
 train: images
@@ -78,6 +86,8 @@ names:
 Note: the user is expected to split `images/` into `train/` and `val/` subdirectories before running `yolo train`. This is documented in an exported `README.txt` inside the zip.
 
 ## README.txt bundled in export zip
+
+> **Superseded by REQ-002.** The export auto-splits frames; no manual split step is needed. See REQ-002 for the actual bundled `data.yaml` and directory layout.
 
 ```
 Plate Detector — Training Dataset

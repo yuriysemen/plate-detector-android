@@ -19,21 +19,22 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 ## Non-goals
 
 - Automatic upload to any server (covered separately in REQ-008).
-- In-app annotation correction (user cannot move/resize boxes in this scope).
+- ~~In-app annotation correction (user cannot move/resize boxes in this scope).~~ — **implemented in REQ-011.**
 - Video recording.
 - Collecting frames with zero detections (background-only samples) — out of scope for now.
 
 ## Feature scope (child requirements)
 
-| Req | Topic |
-|---|---|
-| REQ-002 | YOLO format specification and directory structure |
-| REQ-003 | Coordinate transformation from Detection to YOLO |
-| REQ-004 | Multiple detections per frame |
-| REQ-005 | Settings UI and preference keys |
-| REQ-006 | Storage quota, LRU eviction, and export |
-| REQ-007 | Google Play compliance and privacy policy changes |
-| REQ-008 | Local-only vs. cloud upload analysis |
+| Req | Topic | Status |
+|---|---|---|
+| REQ-002 | YOLO format specification and directory structure | done |
+| REQ-003 | Coordinate transformation from Detection to YOLO | done |
+| REQ-004 | Multiple detections per frame | done |
+| REQ-005 | Settings UI and preference keys | done |
+| REQ-006 | Storage quota, LRU eviction, and export | done (LRU superseded by REQ-011) |
+| REQ-007 | Google Play compliance and privacy policy changes | draft |
+| REQ-008 | Local-only vs. cloud upload analysis | done (local-only decided) |
+| REQ-011 | Dataset Editor, Frame Detail editing, and configurable storage quota | done |
 
 ## Dependencies
 
