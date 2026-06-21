@@ -66,3 +66,15 @@
 
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
+
+### Training data collection (requirements: REQ-001 – REQ-008)
+- [ ] **In-app data collector** — opt-in toggle saves detected JPEG frames + YOLO `.txt` annotations to `filesDir/training_data/`
+- [ ] **Storage quota + LRU eviction** — 500 MB cap; oldest frames evicted automatically; `manifest.json` tracks `next_seq`
+- [ ] **Dataset export** — ZIP via share sheet; includes `dataset.yaml` and `README.txt` for the Ultralytics pipeline
+- [ ] **Play Store compliance** — first-time consent dialog, Privacy Policy update, Auto Backup exclusion, Data Safety declaration
+
+### Parking access control (requirements: REQ-009 – REQ-010)
+- [ ] **Vehicle type classifier** — MobileNetV2 TFLite model; classifies full frame as civilian / police / ambulance / fire_truck / military; runs in parallel with plate detector
+- [ ] **Access decision UI** — AUTO-ALLOW (green) / CHECK PLATE (blue) / HOLD (orange) banner; majority-vote stability filter; configurable uncertain-type behavior and military auto-allow toggle in Settings
+- [ ] **Access decision log** — local CSV, 90-day retention, exportable via share sheet; excluded from Auto Backup
+- [ ] **Civilian plate database** — lookup collected plate against an allowed list (local SQLite or remote API); design TBD
