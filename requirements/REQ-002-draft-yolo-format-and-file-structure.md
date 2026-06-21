@@ -9,6 +9,17 @@ priority: high
 
 Define exactly how images and annotations are stored on device so the exported dataset can be fed directly into the `training/ultralytics/` pipeline without conversion.
 
+## Settings flag
+
+Training data collection is controlled by a toggle in the Settings page.
+
+- **Default:** off (unchecked).
+- **Persistence:** stored in `SharedPreferences` (or equivalent) so the value survives app restarts.
+- **Effect when off:** the frame saver is never invoked; no images or labels are written. All other collection infrastructure (directory structure, manifest) remains intact.
+- **Effect when on:** collection resumes from where it left off (`next_seq` from `manifest.json`).
+
+The toggle label should make its purpose clear, e.g. "Collect training data".
+
 ## YOLO annotation format
 
 Each image has a paired `.txt` file with one line per detected object:
@@ -93,6 +104,10 @@ names:
 
 ## Acceptance criteria
 
+- [ ] The Settings page contains a "Collect training data" toggle, defaulting to off on first install.
+- [ ] The toggle state is preserved after the app is killed and relaunched.
+- [ ] When the toggle is off, no files are written to `training_data/` regardless of detections.
+- [ ] When the toggle is turned on after being off, collection resumes from the previous `next_seq`.
 - [ ] Saving a frame with two detections produces a `.jpg` and a `.txt` with two lines.
 - [ ] The `dataset.yaml` generated at export is accepted by `yolo train data=dataset.yaml` without modification.
 - [ ] File names are globally unique across all sessions; no two frames ever share the same sequence number.
