@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +54,8 @@ fun SettingsScreen(
     onEnableOCRChange: (Boolean) -> Unit,
     collectTrainingData: Boolean,
     onCollectTrainingDataChange: (Boolean) -> Unit,
+    collectFirstTimeShown: Boolean,
+    onCollectFirstTimeShownAck: () -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     targetFps: Int,
@@ -61,6 +64,7 @@ fun SettingsScreen(
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
+    var showCollectConsentDialog by rememberSaveable { mutableStateOf(false) }
 
     fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
@@ -210,23 +214,56 @@ fun SettingsScreen(
                 }
             }
 
+            if (showCollectConsentDialog) {
+                AlertDialog(
+                    onDismissRequest = { showCollectConsentDialog = false },
+                    title = { Text("Collect training data?") },
+                    text = {
+                        Text(
+                            "The app will save camera frames and bounding boxes to this device " +
+                            "whenever a plate is detected.\n\n" +
+                            "• Saved to: device storage only — nothing is uploaded.\n" +
+                            "• To delete: open Export dataset and tap Reset collected data."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showCollectConsentDialog = false
+                            onCollectFirstTimeShownAck()
+                            onCollectTrainingDataChange(true)
+                        }) { Text("Enable") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showCollectConsentDialog = false }) { Text("Cancel") }
+                    }
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onExportDataset) {
-                    Icon(
-                        imageVector = Icons.Default.Archive,
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Export dataset")
-                }
+                Text("Collect training data", style = MaterialTheme.typography.bodyMedium)
                 Switch(
                     checked = collectTrainingData,
-                    onCheckedChange = onCollectTrainingDataChange
+                    onCheckedChange = { enable ->
+                        if (enable && !collectFirstTimeShown) {
+                            showCollectConsentDialog = true
+                        } else {
+                            onCollectTrainingDataChange(enable)
+                        }
+                    }
                 )
+            }
+
+            TextButton(onClick = onExportDataset) {
+                Icon(
+                    imageVector = Icons.Default.Archive,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Export dataset")
             }
 
             TextButton(onClick = onPickFile) {

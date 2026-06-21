@@ -76,7 +76,7 @@ The top bar in `LiveDetectionUi` exposes:
 - **Stats text** — zoom ratio, detection count, inference latency
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
 
-`SettingsScreen` bottom row: **Export dataset** (archive icon + label, navigates to `ExportScreen`) with a **Switch** on the right that toggles training data collection on/off.
+`SettingsScreen` bottom section: **"Collect training data"** Switch (default off; first enable shows a one-time consent dialog; `collect_training_data` + `collect_first_time_shown` prefs) followed by an **Export dataset** TextButton (archive icon, navigates to `ExportScreen`).
 - **Zoom shortcut buttons** — 1×/2×/3× pill buttons at bottom center; filtered to `camera.cameraInfo.zoomState.maxZoomRatio`; tapping calls `setZoomRatio()`; active level highlighted in white
 - **EV slider** — horizontal slider above zoom buttons; range and step read from `camera.cameraInfo.exposureState`; calls `setExposureCompensationIndex()`; displays computed EV value (`index × step`); hidden when `isExposureCompensationSupported` is false; resets to 0 on model change
 - **Analysis resolution** — `AnalysisResolution` enum (`DEFAULT`/`LOW`/`HD`) persisted in `ModelPrefs`; wired into `ImageAnalysis.Builder` via `ResolutionSelector` + `ResolutionStrategy`; camera is fully rebound when changed (via `key(spec.id, analysisResolution)`); picker shown in `SettingsScreen`
@@ -93,7 +93,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `ModelSource` | `ModelTypes.kt` | Sealed: `Asset(path)`, `FilePath(file)`, `ContentUri(uri)` |
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
-| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper (private object) |
+| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
 | `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); reads stats; lists/renames/deletes export files; provides `FileProvider` URIs |
 

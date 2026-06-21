@@ -180,6 +180,15 @@ private object ModelPrefs {
     fun setCollectTrainingData(context: Context, enable: Boolean) {
         prefs(context).edit { putBoolean(KEY_COLLECT_TRAINING, enable) }
     }
+
+    private const val KEY_COLLECT_FIRST_TIME_SHOWN = "collect_first_time_shown"
+
+    fun getCollectFirstTimeShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_COLLECT_FIRST_TIME_SHOWN, false)
+
+    fun setCollectFirstTimeShown(context: Context, shown: Boolean) {
+        prefs(context).edit { putBoolean(KEY_COLLECT_FIRST_TIME_SHOWN, shown) }
+    }
 }
 
 private fun customModelsDir(context: Context): File =
@@ -565,6 +574,9 @@ fun LivePlateDetectionScreen() {
     var collectTrainingData by rememberSaveable {
         mutableStateOf(ModelPrefs.getCollectTrainingData(context))
     }
+    var collectFirstTimeShown by rememberSaveable {
+        mutableStateOf(ModelPrefs.getCollectFirstTimeShown(context))
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -680,6 +692,11 @@ fun LivePlateDetectionScreen() {
                 onCollectTrainingDataChange = { enable ->
                     ModelPrefs.setCollectTrainingData(context, enable)
                     collectTrainingData = enable
+                },
+                collectFirstTimeShown = collectFirstTimeShown,
+                onCollectFirstTimeShownAck = {
+                    ModelPrefs.setCollectFirstTimeShown(context, true)
+                    collectFirstTimeShown = true
                 },
                 onExportDataset = { showExport = true }
             )
