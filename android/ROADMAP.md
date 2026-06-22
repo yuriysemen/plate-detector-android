@@ -44,8 +44,9 @@
 - [x] Dataset export — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (default 70/20/10; configurable via sliders on the Export screen); auto-resets collected data on success; share sheet opens immediately
 - [x] Exported files list — scrollable list on Export screen with per-file Share, Rename, and Delete actions
 - [x] Configurable storage quota — user-visible "Storage limit" setting (default 500 MB); 80% yellow warning banner on camera + Export screens; collection paused (red banner + "Edit" shortcut) at 100%
-- [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation
-- [x] Frame Detail Editor — full-res frame view; tap to select box; drag body to move, drag handles (8 per box) to resize; draw new box via FAB; delete box or entire frame; saves YOLO-normalized coordinates back to `.txt`
+- [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation; scroll position restored when returning from Frame Detail; thumbnail boxes use same four-colour cycle as the detail editor
+- [x] Frame Detail Editor — full-res frame view; tap to select box; drag body to move, drag handles (8 per box) to resize; draw new box via FAB (always commits, snaps to minimum size); delete box or entire frame; saves YOLO-normalized coordinates back to `.txt`
+- [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
 
 ---
 

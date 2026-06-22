@@ -4,6 +4,12 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -53,10 +59,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -104,11 +114,17 @@ fun FrameDetailScreen(
     var layoutOffY by remember { mutableStateOf(0f) }
     var layoutDispW by remember { mutableStateOf(1f) }
     var layoutDispH by remember { mutableStateOf(1f) }
+    var zoomScale by remember { mutableStateOf(1f) }
+    var panOffsetX by remember { mutableStateOf(0f) }
+    var panOffsetY by remember { mutableStateOf(0f) }
 
     // drag state
     var dragTarget by remember { mutableStateOf(DragTarget.NONE) }
 
     LaunchedEffect(frame.name) {
+        zoomScale = 1f
+        panOffsetX = 0f
+        panOffsetY = 0f
         val bmp = withContext(Dispatchers.IO) { editor.loadBitmap(frame.imageFile) } ?: return@LaunchedEffect
         bitmap = bmp
         imageBitmap = bmp.asImageBitmap()
@@ -176,7 +192,8 @@ fun FrameDetailScreen(
 
     val density = LocalDensity.current
     val handleRadius = with(density) { 14.dp.toPx() }
-    val minBoxSize = with(density) { 20.dp.toPx() }
+    val minBoxSize = with(density) { 10.dp.toPx() }
+    val minBoxH = minBoxSize * 0.75f
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -309,8 +326,22 @@ fun FrameDetailScreen(
                         }
                     }
 
+                    var zoomLabelAlpha by remember { mutableStateOf(0f) }
+                    val animatedLabelAlpha by animateFloatAsState(targetValue = zoomLabelAlpha, label = "zoomLabel")
+                    LaunchedEffect(zoomScale) {
+                        if (zoomScale > 1f) {
+                            zoomLabelAlpha = 1f
+                            delay(1500)
+                            zoomLabelAlpha = 0f
+                        } else {
+                            zoomLabelAlpha = 0f
+                        }
+                    }
+
                     fun hitTest(pos: Offset): Pair<Int, DragTarget> {
-                        // Check handles of selected box first
+                        // Inverse-transform screen-space pos to canvas space
+                        val cp = Offset((pos.x - panOffsetX) / zoomScale, (pos.y - panOffsetY) / zoomScale)
+                        val hitR = handleRadius / zoomScale * 1.5f
                         val sel = selectedIndex
                         if (sel in boxes.indices) {
                             val b = boxes[sel]
@@ -325,14 +356,13 @@ fun FrameDetailScreen(
                                 Offset(b.right, b.cy) to DragTarget.RM,
                             )
                             for ((hPos, target) in handles) {
-                                if (dist(pos, hPos) <= handleRadius * 1.5f) return sel to target
+                                if (dist(cp, hPos) <= hitR) return sel to target
                             }
-                            if (pos.x in b.left..b.right && pos.y in b.top..b.bottom) return sel to DragTarget.MOVE
+                            if (cp.x in b.left..b.right && cp.y in b.top..b.bottom) return sel to DragTarget.MOVE
                         }
-                        // Check other boxes
                         for (i in boxes.indices.reversed()) {
                             val b = boxes[i]
-                            if (pos.x in b.left..b.right && pos.y in b.top..b.bottom) return i to DragTarget.MOVE
+                            if (cp.x in b.left..b.right && cp.y in b.top..b.bottom) return i to DragTarget.MOVE
                         }
                         return -1 to DragTarget.NONE
                     }
@@ -342,27 +372,40 @@ fun FrameDetailScreen(
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
+                            .clipToBounds()
                             .pointerInput(drawingNewBox) {
                                 if (drawingNewBox) {
                                     detectDragGestures(
                                         onDragStart = { offset ->
-                                            newBoxStart = offset
-                                            newBoxEnd = offset
+                                            newBoxStart = Offset((offset.x - panOffsetX) / zoomScale, (offset.y - panOffsetY) / zoomScale)
+                                            newBoxEnd = newBoxStart
                                         },
                                         onDrag = { change, _ ->
-                                            newBoxEnd = change.position
+                                            newBoxEnd = Offset((change.position.x - panOffsetX) / zoomScale, (change.position.y - panOffsetY) / zoomScale)
                                         },
                                         onDragEnd = {
-                                            val l = minOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
-                                            val t = minOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
-                                            val r = maxOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
-                                            val b2 = maxOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
-                                            if (r - l >= minBoxSize && b2 - t >= minBoxSize) {
-                                                val newBox = DisplayBox(0, l, t, r, b2)
-                                                boxes = boxes + newBox
-                                                selectedIndex = boxes.size - 1
-                                                hasUnsavedChanges = true
+                                            var l = minOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
+                                            var t = minOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
+                                            var r = maxOf(newBoxStart.x, newBoxEnd.x).coerceIn(offX, offX + dispW)
+                                            var b2 = maxOf(newBoxStart.y, newBoxEnd.y).coerceIn(offY, offY + dispH)
+                                            // Snap to minimum size if the drag was too short
+                                            if (r - l < minBoxSize) {
+                                                val cx = (l + r) / 2f
+                                                l = cx - minBoxSize / 2f
+                                                r = cx + minBoxSize / 2f
+                                                if (l < offX) { l = offX; r = offX + minBoxSize }
+                                                if (r > offX + dispW) { r = offX + dispW; l = r - minBoxSize }
                                             }
+                                            if (b2 - t < minBoxH) {
+                                                val cy = (t + b2) / 2f
+                                                t = cy - minBoxH / 2f
+                                                b2 = cy + minBoxH / 2f
+                                                if (t < offY) { t = offY; b2 = offY + minBoxH }
+                                                if (b2 > offY + dispH) { b2 = offY + dispH; t = b2 - minBoxH }
+                                            }
+                                            boxes = boxes + DisplayBox(0, l, t, r, b2)
+                                            selectedIndex = boxes.size - 1
+                                            hasUnsavedChanges = true
                                             drawingNewBox = false
                                         },
                                         onDragCancel = { drawingNewBox = false }
@@ -371,10 +414,17 @@ fun FrameDetailScreen(
                             }
                             .pointerInput(boxes, selectedIndex) {
                                 if (!drawingNewBox) {
-                                    detectTapGestures { offset ->
-                                        val (idx, _) = hitTest(offset)
-                                        selectedIndex = idx
-                                    }
+                                    detectTapGestures(
+                                        onTap = { offset ->
+                                            val (idx, _) = hitTest(offset)
+                                            selectedIndex = idx
+                                        },
+                                        onDoubleTap = {
+                                            zoomScale = 1f
+                                            panOffsetX = 0f
+                                            panOffsetY = 0f
+                                        }
+                                    )
                                 }
                             }
                             .pointerInput(selectedIndex, drawingNewBox) {
@@ -392,8 +442,8 @@ fun FrameDetailScreen(
                                         onDrag = { _, dragAmount ->
                                             val idx = selectedIndex
                                             if (idx !in boxes.indices || dragTarget == DragTarget.NONE) return@detectDragGestures
-                                            val dx = dragAmount.x
-                                            val dy = dragAmount.y
+                                            val dx = dragAmount.x / zoomScale
+                                            val dy = dragAmount.y / zoomScale
                                             val b = boxes[idx]
                                             val updated = when (dragTarget) {
                                                 DragTarget.MOVE -> b.copy(
@@ -404,22 +454,22 @@ fun FrameDetailScreen(
                                                 )
                                                 DragTarget.TL -> b.copy(
                                                     left = (b.left + dx).coerceIn(offX, b.right - minBoxSize),
-                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize)
+                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxH)
                                                 )
                                                 DragTarget.TR -> b.copy(
                                                     right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW),
-                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize)
+                                                    top = (b.top + dy).coerceIn(offY, b.bottom - minBoxH)
                                                 )
                                                 DragTarget.BL -> b.copy(
                                                     left = (b.left + dx).coerceIn(offX, b.right - minBoxSize),
-                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH)
+                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxH, offY + dispH)
                                                 )
                                                 DragTarget.BR -> b.copy(
                                                     right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW),
-                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH)
+                                                    bottom = (b.bottom + dy).coerceIn(b.top + minBoxH, offY + dispH)
                                                 )
-                                                DragTarget.TM -> b.copy(top = (b.top + dy).coerceIn(offY, b.bottom - minBoxSize))
-                                                DragTarget.BM -> b.copy(bottom = (b.bottom + dy).coerceIn(b.top + minBoxSize, offY + dispH))
+                                                DragTarget.TM -> b.copy(top = (b.top + dy).coerceIn(offY, b.bottom - minBoxH))
+                                                DragTarget.BM -> b.copy(bottom = (b.bottom + dy).coerceIn(b.top + minBoxH, offY + dispH))
                                                 DragTarget.LM -> b.copy(left = (b.left + dx).coerceIn(offX, b.right - minBoxSize))
                                                 DragTarget.RM -> b.copy(right = (b.right + dx).coerceIn(b.left + minBoxSize, offX + dispW))
                                                 DragTarget.NONE -> b
@@ -431,42 +481,112 @@ fun FrameDetailScreen(
                                     )
                                 }
                             }
-                    ) {
-                        // Draw image fit-center
-                        drawImage(
-                            image = imgBitmap,
-                            dstOffset = androidx.compose.ui.unit.IntOffset(offX.toInt(), offY.toInt()),
-                            dstSize = androidx.compose.ui.unit.IntSize(dispW.toInt(), dispH.toInt())
-                        )
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    // Wait within the same gesture for a second finger to appear
+                                    var event = awaitPointerEvent()
+                                    while (event.changes.any { it.pressed } && event.changes.count { it.pressed } < 2) {
+                                        event = awaitPointerEvent()
+                                    }
+                                    if (event.changes.count { it.pressed } < 2) return@awaitEachGesture
 
-                        // Draw new-box preview
-                        if (drawingNewBox) {
-                            val l = minOf(newBoxStart.x, newBoxEnd.x)
-                            val t = minOf(newBoxStart.y, newBoxEnd.y)
-                            val r = maxOf(newBoxStart.x, newBoxEnd.x)
-                            val b2 = maxOf(newBoxStart.y, newBoxEnd.y)
-                            drawRect(Color.White, Offset(l, t), Size(r - l, b2 - t), style = Stroke(2.dp.toPx()))
-                        }
+                                    // Cancel any in-progress new-box draw
+                                    if (drawingNewBox) drawingNewBox = false
+                                    event.changes.forEach { it.consume() }
 
-                        // Draw boxes
-                        for ((i, box) in boxes.withIndex()) {
-                            val isSelected = i == selectedIndex
-                            val color = boxColors[i % boxColors.size]
-                            val strokeW = if (isSelected) 3.dp.toPx() else 2.dp.toPx()
-                            drawRect(color, Offset(box.left, box.top), Size(box.w, box.h), style = Stroke(strokeW))
+                                    do {
+                                        event = awaitPointerEvent()
+                                        if (event.changes.count { it.pressed } < 2) break
 
-                            if (isSelected) {
-                                val handles = listOf(
-                                    Offset(box.left, box.top), Offset(box.right, box.top),
-                                    Offset(box.left, box.bottom), Offset(box.right, box.bottom),
-                                    Offset(box.cx, box.top), Offset(box.cx, box.bottom),
-                                    Offset(box.left, box.cy), Offset(box.right, box.cy)
-                                )
-                                for (h in handles) {
-                                    drawCircle(Color.White, radius = handleRadius, center = h)
-                                    drawCircle(color, radius = handleRadius - 3.dp.toPx(), center = h)
+                                        val centroid = event.calculateCentroid(useCurrent = false)
+                                        val zoomFactor = event.calculateZoom()
+                                        val panDelta = event.calculatePan()
+
+                                        val newZoom = (zoomScale * zoomFactor).coerceIn(1f, 8f)
+                                        val actualFactor = newZoom / zoomScale
+
+                                        // Pivot zoom around centroid and apply two-finger pan
+                                        panOffsetX = centroid.x - (centroid.x - panOffsetX) * actualFactor + panDelta.x
+                                        panOffsetY = centroid.y - (centroid.y - panOffsetY) * actualFactor + panDelta.y
+                                        zoomScale = newZoom
+
+                                        // Clamp: at least 25% of the image must remain visible
+                                        val w = size.width.toFloat()
+                                        val h = size.height.toFloat()
+                                        panOffsetX = panOffsetX.coerceIn(
+                                            w * 0.25f - (layoutOffX + layoutDispW) * zoomScale,
+                                            w * 0.75f - layoutOffX * zoomScale
+                                        )
+                                        panOffsetY = panOffsetY.coerceIn(
+                                            h * 0.25f - (layoutOffY + layoutDispH) * zoomScale,
+                                            h * 0.75f - layoutOffY * zoomScale
+                                        )
+
+                                        event.changes.forEach { it.consume() }
+                                    } while (event.changes.any { it.pressed })
                                 }
                             }
+                    ) {
+                        withTransform({
+                            translate(panOffsetX, panOffsetY)
+                            scale(zoomScale, zoomScale, Offset.Zero)
+                        }) {
+                            // Draw image fit-center
+                            drawImage(
+                                image = imgBitmap,
+                                dstOffset = androidx.compose.ui.unit.IntOffset(offX.toInt(), offY.toInt()),
+                                dstSize = androidx.compose.ui.unit.IntSize(dispW.toInt(), dispH.toInt())
+                            )
+
+                            // Draw new-box preview
+                            if (drawingNewBox) {
+                                val l = minOf(newBoxStart.x, newBoxEnd.x)
+                                val t = minOf(newBoxStart.y, newBoxEnd.y)
+                                val r = maxOf(newBoxStart.x, newBoxEnd.x)
+                                val b2 = maxOf(newBoxStart.y, newBoxEnd.y)
+                                drawRect(Color.White, Offset(l, t), Size(r - l, b2 - t), style = Stroke(2.dp.toPx()))
+                            }
+
+                            // Draw boxes
+                            for ((i, box) in boxes.withIndex()) {
+                                val isSelected = i == selectedIndex
+                                val color = boxColors[i % boxColors.size]
+                                val strokeW = if (isSelected) 3.dp.toPx() else 2.dp.toPx()
+                                drawRect(color, Offset(box.left, box.top), Size(box.w, box.h), style = Stroke(strokeW))
+
+                                if (isSelected) {
+                                    val screenHandleR = handleRadius / zoomScale
+                                    val handles = listOf(
+                                        Offset(box.left, box.top), Offset(box.right, box.top),
+                                        Offset(box.left, box.bottom), Offset(box.right, box.bottom),
+                                        Offset(box.cx, box.top), Offset(box.cx, box.bottom),
+                                        Offset(box.left, box.cy), Offset(box.right, box.cy)
+                                    )
+                                    for (h in handles) {
+                                        drawCircle(Color.White, radius = screenHandleR, center = h)
+                                        drawCircle(color, radius = screenHandleR - 3.dp.toPx() / zoomScale, center = h)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (animatedLabelAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 12.dp, bottom = 12.dp),
+                            contentAlignment = Alignment.BottomStart
+                        ) {
+                            Text(
+                                text = "%.1f×".format(zoomScale),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier
+                                    .alpha(animatedLabelAlpha)
+                                    .background(Color.Black.copy(alpha = 0.45f), shape = RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
                         }
                     }
                 }

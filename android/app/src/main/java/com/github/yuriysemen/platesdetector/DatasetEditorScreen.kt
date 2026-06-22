@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,6 +74,7 @@ fun DatasetEditorScreen(onBack: () -> Unit) {
     var inSelectionMode by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var openFrame by remember { mutableStateOf<FrameEntry?>(null) }
+    val gridState = rememberLazyGridState()
 
     fun refresh() {
         scope.launch {
@@ -170,6 +172,7 @@ fun DatasetEditorScreen(onBack: () -> Unit) {
                 }
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = gridState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -243,13 +246,14 @@ private fun FrameThumbnailCell(
                     dstSize = IntSize(dispW.toInt(), dispH.toInt())
                 )
 
+                val boxColors = listOf(Color(0xFF00E676), Color(0xFF40C4FF), Color(0xFFFF6E40), Color(0xFFEA80FC))
                 val stroke = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round)
-                for (box in frame.boxes) {
+                for ((i, box) in frame.boxes.withIndex()) {
                     val l = offX + (box.xCenter - box.width / 2f) * dispW
                     val t = offY + (box.yCenter - box.height / 2f) * dispH
                     val w = box.width * dispW
                     val h = box.height * dispH
-                    drawRect(color = Color(0xFF00E676), topLeft = Offset(l, t), size = Size(w, h), style = stroke)
+                    drawRect(color = boxColors[i % boxColors.size], topLeft = Offset(l, t), size = Size(w, h), style = stroke)
                 }
             }
         } else {

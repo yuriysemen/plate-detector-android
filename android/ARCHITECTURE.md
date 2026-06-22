@@ -128,7 +128,7 @@ exports/
 
 ## Dataset editor
 
-`DatasetEditorScreen` is a 2-column lazy grid of all collected frames. Each cell asynchronously decodes the JPEG thumbnail and overlays its bounding boxes via a `Canvas`. Long-press enters multi-select mode; tapping a cell in normal mode opens `FrameDetailScreen`.
+`DatasetEditorScreen` is a 2-column lazy grid of all collected frames. Each cell asynchronously decodes the JPEG thumbnail and overlays its bounding boxes via a `Canvas`, using the same four-colour cycle (`0xFF00E676` / `0xFF40C4FF` / `0xFFFF6E40` / `0xFFEA80FC`) as the detail editor. Long-press enters multi-select mode; tapping a cell in normal mode opens `FrameDetailScreen`. `LazyGridState` is hoisted before the early `return` that renders `FrameDetailScreen`, so the grid scroll position is preserved in memory across the navigation and restored when the user navigates back.
 
 `FrameDetailScreen` displays the full-resolution frame inside a `BoxWithConstraints` (black letterbox, fit-center scaling). Bounding boxes are stored in **canvas-pixel space** (offset + scaled to the composable's display area) while the screen is open. The coordinate lifecycle is:
 
@@ -140,5 +140,7 @@ YoloBox (normalized 0–1)
 ```
 
 When the canvas geometry changes (e.g. a box is selected and the FAB row collapses), a `SideEffect` detects the change and re-projects all `DisplayBox` values to the new geometry before the next draw, keeping boxes aligned with the image.
+
+**Zoom and pan (REQ-012):** `FrameDetailScreen` maintains `zoomScale` (1×–8×), `panOffsetX`, and `panOffsetY` as `remember` state. All Canvas drawing is wrapped in `withTransform { translate(pan); scale(zoom) }` so zoom/pan is a pure transform with no bitmap re-decode. The Canvas carries `Modifier.clipToBounds()` to prevent zoomed content from overflowing into adjacent UI. A fourth `pointerInput(Unit)` block runs an `awaitEachGesture` loop that waits within each touch sequence until ≥ 2 fingers are detected, then reads `PointerEvent.calculateZoom/Pan/Centroid` for pinch-to-zoom. All single-finger gesture coordinates (tap, drag start, drag delta) are inverse-transformed from screen space to canvas space before use. Handle circles are drawn at `handleRadius / zoomScale` so they remain 14 dp on screen at any zoom level. Zoom state resets when a new frame is opened (`LaunchedEffect(frame.name)`) and implicitly on device rotation (Activity recreation resets all `remember` state). A semi-transparent zoom label (e.g. `"2.5×"`) fades in on zoom change and auto-hides after 1.5 s via `animateFloatAsState`.
 
 `DatasetEditor` is instantiated once per `DatasetEditorScreen` session (via `remember`) and shared with each `FrameDetailScreen` child. Mutations (`saveBoxes`, `deleteFrames`) are always dispatched on `Dispatchers.IO`; after completion the grid calls `refresh()` to reload `frames` state from disk.

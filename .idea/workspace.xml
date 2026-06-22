@@ -4,13 +4,11 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
+    <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="partially implement zoom">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/android/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle.properties" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle.properties" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle/libs.versions.toml" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle/libs.versions.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" afterPath="$PROJECT_DIR$/android/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetEditorScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetEditorScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/FrameDetailScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/FrameDetailScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements/REQ-012-draft-frame-detail-zoom.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-012-draft-frame-detail-zoom.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,7 +19,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="110610" />
+    <option name="cachedIndexableFilesCount" value="21440" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -30,6 +28,65 @@
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0052992356540924" />
+      <entry key="MS500" value="1.3506248126606002" />
+      <entry key="S2" value="1.7695036100804313" />
+      <entry key="S5" value="1.9005011352299646" />
+      <entry key="S10" value="1.9489473838429945" />
+      <entry key="S30" value="1.9848258788731403" />
+      <entry key="S60" value="2.071455406063942" />
+      <entry key="M2" value="2.4859993551447763" />
+      <entry key="M5" value="3.4519616495817966" />
+      <entry key="M10" value="4.0874560297584335" />
+      <entry key="M15" value="4.355767239028765" />
+      <entry key="M30" value="4.6584769604332354" />
+      <entry key="H1" value="4.8240896822310395" />
+      <entry key="H2" value="4.911935855451004" />
+      <entry key="H4" value="5.082829990799701" />
+      <entry key="D1" value="11.364525391157136" />
+      <entry key="W1" value="17.50827317358763" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.9845746253633834" />
+      <entry key="MS500" value="1.3445356696820594" />
+      <entry key="S2" value="1.767398410195529" />
+      <entry key="S5" value="1.8995861279547308" />
+      <entry key="S10" value="1.9484763936966463" />
+      <entry key="S30" value="1.9846654059854474" />
+      <entry key="S60" value="2.0713684692932763" />
+      <entry key="M2" value="2.4859392087896865" />
+      <entry key="M5" value="3.451921987088172" />
+      <entry key="M10" value="4.087431061584767" />
+      <entry key="M15" value="4.355749147377092" />
+      <entry key="M30" value="4.6584670987233" />
+      <entry key="H1" value="4.824084528175628" />
+      <entry key="H2" value="4.9119332195686525" />
+      <entry key="H4" value="5.082828625032036" />
+      <entry key="D1" value="11.364524771156557" />
+      <entry key="W1" value="17.50827302214991" />
+    </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 4
@@ -61,18 +118,19 @@
     "git-widget-placeholder": "main",
     "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/uri/LinkedInProjects/plate-detector-android",
+    "last_opened_file_path": "/Users/uri/LinkedInProjects/plate-detector-android/datasets",
     "node.js.detected.package.eslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "ml.llm.AcpAgentsConfigurable",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/datasets" />
       <recent name="$PROJECT_DIR$" />
       <recent name="$PROJECT_DIR$/android/play_assets" />
       <recent name="$PROJECT_DIR$/experiments/ultralytics" />
@@ -109,11 +167,26 @@
       <workItem from="1771416259359" duration="306000" />
       <workItem from="1771420647890" duration="3979000" />
       <workItem from="1781464010815" duration="220000" />
+      <workItem from="1782035894453" duration="32422000" />
     </task>
+    <task id="LOCAL-00001" summary="partially implement zoom">
+      <option name="closed" value="true" />
+      <created>1782153969716</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1782153969716</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Implemented DatasetEditor with frame management of images in the list of frames." />
+    <MESSAGE value="partially implement zoom" />
+    <option name="LAST_COMMIT_MESSAGE" value="partially implement zoom" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/plate_detector_android$yolo_test_model.coverage" NAME="yolo_test_model Coverage Results" MODIFIED="1768549762771" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/experiments/ultralytics" />
