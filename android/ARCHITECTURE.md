@@ -44,9 +44,10 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   └─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
         ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
         ├─ if no valid lines → return (no files written)
-        ├─ write JPEG (quality 90) → filesDir/training_data/images/frame_XXXXXXXX.jpg
-        ├─ write YOLO .txt → filesDir/training_data/labels/frame_XXXXXXXX.txt
+        ├─ write JPEG (quality 90) → filesDir/training_data/images/<YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg
+        ├─ write YOLO .txt → filesDir/training_data/labels/<YYYYMMDD>_<HHmmss>_<NNNNNN>.txt
         │     (one line per valid detection: classId x_center y_center width height, all normalized to [0,1])
+        │     (date/time = capture wall-clock time in local timezone; NNNNNN = 6-digit monotonic counter)
         └─ overwrite manifest.json (next_seq, total_frames, total_detections=valid annotations, multi_detection_frames, date range)
 
 Results posted to main thread → recompose overlay Canvas
@@ -101,7 +102,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
-| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); reads stats; lists/renames/deletes export files; provides `FileProvider` URIs |
+| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block (phone model, Android version, app version, anonymised device ID); reads stats; lists/renames/deletes export files; provides `FileProvider` URIs |
 | `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
 | `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
 | `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
@@ -112,12 +113,12 @@ Collected frames are stored under `context.filesDir`:
 
 ```
 training_data/
-  images/   frame_XXXXXXXX.jpg   (JPEG quality 90, rotated bitmap)
-  labels/   frame_XXXXXXXX.txt   (YOLO format: classId xc yc w h, normalized)
-  manifest.json                  (next_seq, total_frames, total_detections, multi_detection_frames, date range, app_version, model_id)
+  images/   <YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg   (JPEG quality 90, rotated bitmap; date/time = capture time)
+  labels/   <YYYYMMDD>_<HHmmss>_<NNNNNN>.txt   (YOLO format: classId xc yc w h, normalized)
+  manifest.json                                  (next_seq, total_frames, total_detections, multi_detection_frames, date range, app_version, model_id)
 exports/
-  plates_dataset_<timestamp>.zip (one per export; frames randomly shuffled then split into
-                                   train/, val/, test/ subdirs + data.yaml)
+  plates_dataset_<timestamp>.zip  (one per export; frames randomly shuffled then split into
+                                    train/, val/, test/ subdirs + data.yaml with device: metadata block)
 ```
 
 `TrainingDataSaver` is instantiated per `LiveDetectionUi` session (via `remember`). It reads `manifest.json` on first use to restore `next_seq`, then increments in memory and rewrites the manifest after every frame. Because `LiveDetectionUi` leaves composition when Settings opens, a fresh `TrainingDataSaver` is created on each return — reading the latest manifest, so any reset performed in `ExportScreen` is picked up automatically.

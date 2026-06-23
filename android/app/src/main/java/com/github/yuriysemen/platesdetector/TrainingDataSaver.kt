@@ -23,6 +23,7 @@ class TrainingDataSaver(context: Context) {
     private var initialized = false
 
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+    private val filenameDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT)
 
     private fun ensureInit() {
         if (initialized) return
@@ -64,8 +65,9 @@ class TrainingDataSaver(context: Context) {
         if (lines.isEmpty()) return
 
         val seq = nextSeq++
-        val name = "frame_%08d".format(seq)
-        val now = isoFormat.format(Date())
+        val captureTime = Date()
+        val name = "${filenameDateFormat.format(captureTime)}_${"%06d".format(seq)}"
+        val now = isoFormat.format(captureTime)
         if (collectedFrom == null) collectedFrom = now
 
         FileOutputStream(File(imagesDir, "$name.jpg")).use { out ->

@@ -7,8 +7,9 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Bounding box overlay with confidence score
 - OCR — reads plate text using ML Kit (toggle in Settings)
 - Optional beep alert on detection
-- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; configurable storage quota with 80%/100% banners; export as a ZIP ready for `yolo train`
-- Dataset editor — review, correct, and prune collected frames on device; edit bounding boxes directly (move, resize, add, delete) before export
+- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; frame files named `<date>_<time>_<seq>` with capture timestamp; configurable storage quota with 80%/100% banners; export as a ZIP ready for `yolo train`
+- Dataset editor — review, correct, and prune collected frames on device; edit bounding boxes directly (move, resize, add, delete), with pinch-to-zoom for small plates; before export
+- Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
 - Multiple models selectable; custom `.tflite` import; per-model confidence threshold
 - Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
 
@@ -81,7 +82,8 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration.
-- **Event metadata** — emit structured detection events (timestamp, plate text, bounding box) for downstream consumers.
+- **Cloud dataset upload** — optional upload of exported ZIPs to a central AWS S3 bucket via Lambda pre-signed URLs; scheduled daily auto-upload.
+- **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 
 See `android/ROADMAP.md` for the full backlog.

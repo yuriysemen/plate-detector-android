@@ -2,10 +2,13 @@ package com.github.yuriysemen.platesdetector
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -25,7 +28,9 @@ class DatasetExporter(context: Context) {
         val totalFrames: Int,
         val totalDetections: Int,
         val collectedFrom: String?,
-        val collectedTo: String?
+        val collectedTo: String?,
+        val modelId: String?,
+        val appVersion: String?
     )
 
     data class ExportFile(
@@ -39,17 +44,27 @@ class DatasetExporter(context: Context) {
         val testRatio: Float get() = (1f - trainRatio - valRatio).coerceAtLeast(0f)
     }
 
+    data class DeviceMetadata(
+        val phoneModel: String,
+        val phoneManufacturer: String,
+        val androidVersion: String,
+        val androidSdk: Int,
+        val deviceId: String
+    )
+
     fun readStats(): Stats {
-        if (!manifestFile.exists()) return Stats(0, 0, null, null)
+        if (!manifestFile.exists()) return Stats(0, 0, null, null, null, null)
         return runCatching {
             val json = JSONObject(manifestFile.readText())
             Stats(
                 totalFrames = json.optInt("total_frames", 0),
                 totalDetections = json.optInt("total_detections", 0),
                 collectedFrom = json.optString("collected_from").takeIf { it.isNotEmpty() },
-                collectedTo = json.optString("collected_to").takeIf { it.isNotEmpty() }
+                collectedTo = json.optString("collected_to").takeIf { it.isNotEmpty() },
+                modelId = json.optString("model_id").takeIf { it.isNotEmpty() },
+                appVersion = json.optString("app_version").takeIf { it.isNotEmpty() }
             )
-        }.getOrDefault(Stats(0, 0, null, null))
+        }.getOrDefault(Stats(0, 0, null, null, null, null))
     }
 
     fun listExports(): List<ExportFile> =
@@ -77,6 +92,19 @@ class DatasetExporter(context: Context) {
                 "test" to allImages.subList(trainCount + valCount, total)
             )
 
+            val stats = readStats()
+            val rawAndroidId = Settings.Secure.getString(
+                appContext.contentResolver, Settings.Secure.ANDROID_ID
+            ) ?: ""
+            val meta = DeviceMetadata(
+                phoneModel = Build.MODEL,
+                phoneManufacturer = Build.MANUFACTURER,
+                androidVersion = Build.VERSION.RELEASE,
+                androidSdk = Build.VERSION.SDK_INT,
+                deviceId = computeDeviceId(rawAndroidId)
+            )
+            val exportTimestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT).format(Date())
+
             ZipOutputStream(FileOutputStream(tmpFile)).use { zos ->
                 for ((splitName, images) in splits) {
                     for (img in images) {
@@ -93,7 +121,7 @@ class DatasetExporter(context: Context) {
                     }
                 }
                 zos.putNextEntry(ZipEntry("data.yaml"))
-                zos.write(DATASET_YAML.toByteArray())
+                zos.write(buildDataYaml(stats, meta, exportTimestamp).toByteArray())
                 zos.closeEntry()
             }
 
@@ -136,7 +164,35 @@ class DatasetExporter(context: Context) {
         FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
 
     companion object {
-        private val DATASET_YAML =
-            "train: train/images\nval: val/images\ntest: test/images\nnc: 1\nnames: ['License_Plate']\n"
+        fun computeDeviceId(rawAndroidId: String): String {
+            val hash = MessageDigest.getInstance("SHA-256")
+                .digest(rawAndroidId.toByteArray(Charsets.UTF_8))
+            return hash.joinToString("") { "%02x".format(it) }.take(16)
+        }
+
+        fun buildDataYaml(stats: Stats, meta: DeviceMetadata, exportTimestamp: String): String {
+            fun esc(s: String) = s.replace("\"", "\\\"")
+            return buildString {
+                appendLine("train: train/images")
+                appendLine("val: val/images")
+                appendLine("test: test/images")
+                appendLine("nc: 1")
+                appendLine("names: ['License_Plate']")
+                appendLine()
+                appendLine("device:")
+                appendLine("  phone_model: \"${esc(meta.phoneModel)}\"")
+                appendLine("  phone_manufacturer: \"${esc(meta.phoneManufacturer)}\"")
+                appendLine("  android_version: \"${esc(meta.androidVersion)}\"")
+                appendLine("  android_sdk: ${meta.androidSdk}")
+                appendLine("  app_version: \"${esc(stats.appVersion ?: "unknown")}\"")
+                appendLine("  model_id: \"${esc(stats.modelId ?: "unknown")}\"")
+                appendLine("  export_timestamp: \"$exportTimestamp\"")
+                appendLine("  device_id: \"${meta.deviceId}\"")
+                appendLine("  total_frames: ${stats.totalFrames}")
+                appendLine("  total_detections: ${stats.totalDetections}")
+                if (stats.collectedFrom != null) appendLine("  collected_from: \"${stats.collectedFrom}\"")
+                if (stats.collectedTo != null) appendLine("  collected_to: \"${stats.collectedTo}\"")
+            }
+        }
     }
 }

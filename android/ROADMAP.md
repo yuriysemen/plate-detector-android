@@ -47,6 +47,8 @@
 - [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation; scroll position restored when returning from Frame Detail; thumbnail boxes use same four-colour cycle as the detail editor
 - [x] Frame Detail Editor — full-res frame view; tap to select box; drag body to move, drag handles (8 per box) to resize; draw new box via FAB (always commits, snaps to minimum size); delete box or entire frame; saves YOLO-normalized coordinates back to `.txt`
 - [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
+- [x] Frame file names include capture date, time, and 6-digit sequence (`<YYYYMMDD>_<HHmmss>_<NNNNNN>`); image and label always share the same base name (REQ-013)
+- [x] Exported `data.yaml` includes a `device:` metadata block: phone model, manufacturer, Android version, SDK, app version, model ID, anonymised device ID (SHA-256 hash, first 16 hex chars), export timestamp, and collection date range; block is ignored by `yolo train` (REQ-013)
 
 ---
 
@@ -80,6 +82,18 @@
 
 ### Training data collection (requirements: REQ-007)
 - [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
+
+### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)
+- [ ] **Export mode selection** — replace auto share sheet with user choice: Manual / Upload to shared dataset / Both; first-time consent dialog for cloud mode (REQ-014)
+- [ ] **Cloud upload via pre-signed URL** — WorkManager job POSTs to a configurable Lambda endpoint, receives S3 pre-signed URL, uploads ZIP directly; Wi-Fi only by default; retry with exponential backoff; upload status badges (Pending / Uploading / Uploaded / Failed) per ZIP in Export screen; manual retry action (REQ-014)
+- [ ] **Scheduled daily auto-upload** — WorkManager `PeriodicWorkRequest`; configurable minimum frames threshold (default 50) and preferred time (default 02:00); notification on success (REQ-015)
+- [ ] **AWS infrastructure** — SAM template deploys private S3 bucket (Block Public Access, AES-256), Lambda (generates pre-signed PUT URLs, sanitises inputs), and HTTP API Gateway; two operator inputs: bucket name + admin IAM principal ARN; stack output `UploadServiceUrl` pasted into app Settings; deploy instructions in `infra/aws/README.md` (REQ-018)
+
+### Model update system (requirements: REQ-016)
+- [ ] **Remote model download** — fetch `model_manifest.json` from GitHub Releases; compare version; download updated `.tflite` on configured schedule (Off / On launch / Daily / Weekly); SHA-256 verification before applying; notify-before-switch or auto-apply mode; one rollback version kept; "Check now" and "Roll back" buttons in Settings (REQ-016)
+
+### Auto-parking settings (requirements: REQ-017)
+- [ ] **Auto-parking settings auto-configuration** — detect device capability on first enable; apply High-quality / Balanced / Efficient preset based on camera resolution and CPU cores; one-time informational banner; "Reset to recommended defaults" button in Settings (REQ-017)
 
 ### Parking access control (requirements: REQ-009 – REQ-010)
 - [ ] **Vehicle type classifier** — MobileNetV2 TFLite model; classifies full frame as civilian / police / ambulance / fire_truck / military; runs in parallel with plate detector

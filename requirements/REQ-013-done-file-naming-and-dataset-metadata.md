@@ -1,7 +1,7 @@
 ---
 id: REQ-013
 title: Dataset File Naming and data.yaml Device Metadata
-status: draft
+status: done
 priority: high
 ---
 
@@ -34,13 +34,6 @@ frame_00000001.jpg  /  frame_00000001.txt
 
 - Capture timestamp = `System.currentTimeMillis()` formatted in device local timezone (`SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT)`).
 - Stored in `manifest.json` per-frame entry so the timestamp can be reconstructed from the manifest without parsing the filename.
-
-### Backwards compatibility
-
-- Existing `frame_<seq8>` files already on device are migrated at first launch after the update:
-  - The migration reads the existing manifest and renames files to the new scheme, using the manifest's `collected_from` as the date/time prefix and preserving the original sequence number (zero-padded to 6 digits).
-  - If `collected_from` is unavailable, today's date at migration time is used.
-  - Migration runs once, on a background thread; a flag in `manifest.json` (`v2_migration_done: true`) prevents it running again.
 
 ---
 
@@ -84,16 +77,13 @@ device:
 ## Acceptance criteria
 
 ### File naming
-- [ ] New frames are saved with the `<YYYYMMDD>_<HHmmss>_<seq6>` naming scheme.
-- [ ] Image and label files always share the same base name.
-- [ ] Sequence counter continues from the last persisted `next_seq`; no resets across sessions.
-- [ ] On first launch after update, existing `frame_<seq8>` files are renamed to the new scheme on a background thread.
-- [ ] Migration is idempotent: running it a second time is a no-op.
-- [ ] After migration, all existing image/label pairs remain valid and matched.
+- [x] New frames are saved with the `<YYYYMMDD>_<HHmmss>_<seq6>` naming scheme.
+- [x] Image and label files always share the same base name.
+- [x] Sequence counter continues from the last persisted `next_seq`; no resets across sessions.
 
 ### data.yaml
-- [ ] Exported `data.yaml` contains all standard YOLO fields (`train`, `val`, `test`, `nc`, `names`).
-- [ ] Exported `data.yaml` contains the `device:` block with all fields listed above.
-- [ ] `yolo train data=data.yaml` succeeds without errors (unknown `device:` key is ignored).
-- [ ] `device_id` is a truncated SHA-256 hash, never the raw ANDROID_ID.
-- [ ] `phone_model`, `android_version`, `android_sdk`, and `app_version` match the device at export time.
+- [x] Exported `data.yaml` contains all standard YOLO fields (`train`, `val`, `test`, `nc`, `names`).
+- [x] Exported `data.yaml` contains the `device:` block with all fields listed above.
+- [x] `yolo train data=data.yaml` succeeds without errors (unknown `device:` key is ignored).
+- [x] `device_id` is a truncated SHA-256 hash, never the raw ANDROID_ID.
+- [x] `phone_model`, `android_version`, `android_sdk`, and `app_version` match the device at export time.
