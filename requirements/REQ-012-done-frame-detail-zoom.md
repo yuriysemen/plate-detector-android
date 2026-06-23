@@ -1,7 +1,7 @@
 ---
 id: REQ-012
 title: Zoom and Pan in Frame Detail Editor
-status: implemented
+status: done
 priority: high
 ---
 
@@ -113,11 +113,11 @@ A small semi-transparent label (e.g. `"2.5×"`) is displayed in the bottom-left 
 
 ## Interaction with existing modes
 
-| Mode | Single-finger gesture | Two-finger gesture |
-|---|---|---|
-| Normal (no box selected) | Select box (tap) / start drawing (in add mode) | Zoom + pan |
-| Box selected | Move box (drag body) / resize (drag handle) | Zoom + pan |
-| Add-box draw mode | Draw new box (drag) | Ignored (cancel draw and zoom is acceptable; see note) |
+| Mode                     | Single-finger gesture                          | Two-finger gesture                                     |
+|--------------------------|------------------------------------------------|--------------------------------------------------------|
+| Normal (no box selected) | Select box (tap) / start drawing (in add mode) | Zoom + pan                                             |
+| Box selected             | Move box (drag body) / resize (drag handle)    | Zoom + pan                                             |
+| Add-box draw mode        | Draw new box (drag)                            | Ignored (cancel draw and zoom is acceptable; see note) |
 
 > **Note on add-box + pinch conflict:** if the user accidentally starts a new-box drag and then adds a second finger, the recommended behaviour is to cancel the in-progress box draw and hand control to zoom/pan. This avoids creating an incorrectly sized box.
 

@@ -1,9 +1,12 @@
 ---
 id: REQ-008
 title: Local-Only vs. Cloud Upload — Analysis and Decision
-status: draft
-priority: medium
+status: superseded
+superseded_by: REQ-014, REQ-018
+priority: low
 ---
+
+> **This document is superseded.** The original decision (local-only for v1) has been reversed. Cloud upload is now implemented as Option C (hybrid: local + optional cloud upload). See **REQ-014** for the Android upload feature and **REQ-018** for the AWS infrastructure. This document is kept for historical context only.
 
 ## Summary
 
