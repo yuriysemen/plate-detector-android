@@ -27,6 +27,7 @@ The Android app expects one or more `.tflite` files in the assets directory. Whe
 
 ## Project structure (high level)
 - `android/` — Android application source.
+- `infra/aws/` — AWS SAM infrastructure (S3 bucket, Lambda, API Gateway) for cloud dataset upload. See `infra/aws/README.md` for deploy instructions.
 - `training/` — Ready-to-run training pipelines implemented in Python.
 - `experiments/` — Exploratory training experiments. Some experiments may be promoted into `training/` after they prove useful; others remain here for history and comparison.
   - `experiments/ultralytics/` for alternative training/export scripts.
@@ -82,7 +83,7 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration.
-- **Cloud dataset upload** — optional upload of exported ZIPs to a central AWS S3 bucket via Lambda pre-signed URLs; scheduled daily auto-upload.
+- **Cloud dataset upload** — AWS infrastructure (S3 + Lambda + API Gateway) is in place (`infra/aws/`); Android upload flow and scheduled auto-upload pending.
 - **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 

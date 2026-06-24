@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Plate Detector dataset upload infrastructure — S3, Lambda, API Gateway
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name for dataset uploads
+  AdminPrincipalArn:
+    Type: String
+    Description: IAM user or role ARN that receives full S3 access to the bucket
+  PresignedUrlExpirySeconds:
+    Type: Number
+    Default: 3600
+    Description: Validity period of pre-signed upload URLs in seconds
+  StageName:
+    Type: String
+    Default: prod
+    Description: API Gateway stage name
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 128
+    Architectures:
+      - x86_64
+
+Resources:
+
+  # ── IAM role for the Lambda function ──────────────────────────────────────
+  # Defined explicitly so the bucket policy can reference its ARN without
+  # relying on SAM's auto-generated role name (which is not stable).
+  UploadLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3PutUpload
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── S3 bucket ──────────────────────────────────────────────────────────────
+  # AccessControl is omitted: AWS disabled ACLs by default (April 2023).
+  # Block Public Access + private-by-default provides equivalent protection.
+  DatasetBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Suspended
+
+  # ── S3 bucket policy ───────────────────────────────────────────────────────
+  DatasetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DatasetBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPutUpload
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt UploadLambdaRole.Arn
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+          - Sid: AdminFullAccess
+            Effect: Allow
+            Principal:
+              AWS: !Ref AdminPrincipalArn
+            Action: s3:*
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketName}"
+              - !Sub "arn:aws:s3:::${BucketName}/*"
+
+  # ── HTTP API (API Gateway v2) ──────────────────────────────────────────────
+  UploadApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+
+  # ── Lambda function ────────────────────────────────────────────────────────
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/get_upload_url/
+      Handler: handler.handler
+      Role: !GetAtt UploadLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          URL_EXPIRY_SECONDS: !Ref PresignedUrlExpirySeconds
+      Events:
+        GetUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UploadApi
+            Path: /get-upload-url
+            Method: POST
+
+Outputs:
+  UploadServiceUrl:
+    Description: >
+      API Gateway invoke URL — paste into Android app
+      Settings → Export → Upload server URL
+    Value: !Sub "https://${UploadApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"

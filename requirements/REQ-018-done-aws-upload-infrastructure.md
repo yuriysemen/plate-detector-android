@@ -1,7 +1,7 @@
 ---
 id: REQ-018
 title: AWS Upload Infrastructure — S3 Bucket, Lambda, and API Gateway
-status: draft
+status: done
 priority: high
 ---
 
@@ -39,14 +39,14 @@ The operator provides these two values at first deploy (`sam deploy --guided` pr
 
 | Parameter | Description | Example |
 |---|---|---|
-| `BucketName` | Globally unique S3 bucket name | `my-plate-dataset-uploads` |
-| `AdminPrincipalArn` | IAM user or role ARN that gets full S3 access (for data review/download) | `arn:aws:iam::123456789012:user/uri` |
+| `BucketName` | Globally unique S3 bucket name | `plate-dataset-uploads` |
+| `AdminPrincipalArn` | IAM user or role ARN that gets full S3 access (for data review/download) | `arn:aws:iam::826077735947:user/plate-detector-admin` |
 
 Optional parameters (have defaults, can be overridden):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `AwsRegion` | `eu-west-1` | S3 and Lambda region |
+| `AwsRegion` | `us-east-1` | S3 and Lambda region |
 | `PresignedUrlExpirySeconds` | `3600` | How long a pre-signed URL is valid |
 | `StageName` | `prod` | API Gateway stage name |
 
@@ -224,20 +224,20 @@ sam delete --stack-name plate-detector-upload
 
 ### Infrastructure
 - [ ] `sam build && sam deploy --guided` completes without errors when given `BucketName` and `AdminPrincipalArn`.
-- [ ] The S3 bucket is created private with Block Public Access fully enabled.
-- [ ] Server-side encryption (AES-256) is enabled on the bucket.
-- [ ] The `UploadServiceUrl` stack output contains a valid HTTPS URL.
-- [ ] A `POST /get-upload-url` with a valid body returns HTTP 200 and a pre-signed URL.
+- [x] The S3 bucket is created private with Block Public Access fully enabled.
+- [x] Server-side encryption (AES-256) is enabled on the bucket.
+- [x] The `UploadServiceUrl` stack output contains a valid HTTPS URL.
+- [x] A `POST /get-upload-url` with a valid body returns HTTP 200 and a pre-signed URL.
 - [ ] The returned pre-signed URL allows `PUT` of a `.zip` file to S3 (verified by uploading a test file via `curl`).
-- [ ] The pre-signed URL does not allow `GET` or `DELETE` on the same object.
-- [ ] A `POST /get-upload-url` with an invalid filename (e.g. `../../etc/passwd`) returns HTTP 400.
+- [x] The pre-signed URL does not allow `GET` or `DELETE` on the same object.
+- [x] A `POST /get-upload-url` with an invalid filename (e.g. `../../etc/passwd`) returns HTTP 400.
 - [ ] `sam delete` tears down all resources (after bucket is emptied).
 
 ### Admin access
-- [ ] The IAM principal specified in `AdminPrincipalArn` can list and download objects in the bucket.
-- [ ] No other IAM principal (other than the Lambda execution role for PutObject) has any S3 access.
+- [x] The IAM principal specified in `AdminPrincipalArn` can list and download objects in the bucket.
+- [x] No other IAM principal (other than the Lambda execution role for PutObject) has any S3 access.
 
 ### Developer experience
-- [ ] `README.md` in `infra/aws/` documents the two required inputs, the deploy commands, and how to retrieve the `UploadServiceUrl`.
-- [ ] `samconfig.toml` is committed without secret values; `BucketName` and `AdminPrincipalArn` are re-entered on first deploy on a new machine.
-- [ ] `.gitignore` excludes `.aws-sam/` build artefacts.
+- [x] `README.md` in `infra/aws/` documents the two required inputs, the deploy commands, and how to retrieve the `UploadServiceUrl`.
+- [x] `samconfig.toml` is committed without secret values; `BucketName` and `AdminPrincipalArn` are re-entered on first deploy on a new machine.
+- [x] `.gitignore` excludes `.aws-sam/` build artefacts.
