@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Plate Detector dataset upload infrastructure — S3, Lambda, API Gateway
+Description: Plate Detector dataset upload infrastructure — S3, Lambda, API Gateway, Cognito
 
 Parameters:
   BucketName:
@@ -60,6 +60,52 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
+  # ── Cognito Identity Pool ──────────────────────────────────────────────────
+  # Allows Android devices to obtain short-lived STS credentials without
+  # embedding any static AWS keys in the APK. Unauthenticated (guest) access
+  # is enabled — no user login required.
+  DeviceIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: PlateDetectorDevices
+      AllowUnauthenticatedIdentities: true
+      AllowClassicFlow: false
+
+  # ── IAM role assumed by unauthenticated Cognito identities ────────────────
+  # Grants only the minimum needed: invoke the single API Gateway route that
+  # requests a pre-signed S3 upload URL. No S3 access is granted directly.
+  DeviceUnauthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref DeviceIdentityPool
+              ForAnyValue:StringLike:
+                "cognito-identity.amazonaws.com:amr": unauthenticated
+      Policies:
+        - PolicyName: InvokeUploadApi
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+
+  # ── Attach the unauthenticated role to the Identity Pool ──────────────────
+  DeviceIdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref DeviceIdentityPool
+      Roles:
+        unauthenticated: !GetAtt DeviceUnauthRole.Arn
+
   # ── S3 bucket ──────────────────────────────────────────────────────────────
   # AccessControl is omitted: AWS disabled ACLs by default (April 2023).
   # Block Public Access + private-by-default provides equivalent protection.
@@ -102,11 +148,16 @@ Resources:
               - !Sub "arn:aws:s3:::${BucketName}"
               - !Sub "arn:aws:s3:::${BucketName}/*"
 
-  # ── HTTP API (API Gateway v2) ──────────────────────────────────────────────
+  # ── HTTP API (API Gateway v2) — IAM-authenticated ─────────────────────────
+  # All routes require a valid SigV4 signature. Devices sign requests using
+  # short-lived STS credentials obtained from the Cognito Identity Pool above.
   UploadApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: !Ref StageName
+      Auth:
+        EnableIamAuthorizer: true
+        DefaultAuthorizer: AWS_IAM
 
   # ── Lambda function ────────────────────────────────────────────────────────
   GetUploadUrlFunction:
@@ -133,3 +184,9 @@ Outputs:
       API Gateway invoke URL — paste into Android app
       Settings → Export → Upload server URL
     Value: !Sub "https://${UploadApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+
+  IdentityPoolId:
+    Description: >
+      Cognito Identity Pool ID — paste into Android app
+      Settings → Export → Identity Pool ID
+    Value: !Ref DeviceIdentityPool

@@ -84,8 +84,17 @@ Logic:
 ### 4. API Gateway (HTTP API v2, `UploadApi`)
 
 - Route: `POST /get-upload-url` → `GetUploadUrlFunction`.
-- **Auth: none** (open endpoint). Future work: add IAM auth + Cognito Identity Pool (see Known gaps).
+- **Auth: `AWS_IAM`** — all requests must carry a valid SigV4 signature. Unsigned requests receive HTTP 403.
 - CORS: disabled (Android HTTP client does not use CORS).
+
+### 5. Cognito Identity Pool (`DeviceIdentityPool`)
+
+- `AllowUnauthenticatedIdentities: true` — devices obtain guest (unauthenticated) STS credentials without user login.
+- `AllowClassicFlow: false` — enhanced auth flow.
+- Unauthenticated IAM role (`DeviceUnauthRole`): `execute-api:Invoke` on `POST /get-upload-url` only. No S3 access.
+- Role attachment (`DeviceIdentityPoolRoleAttachment`) links the role to the pool's unauthenticated identity.
+
+The Identity Pool ID is emitted as a stack output (`IdentityPoolId`) and pasted into the Android app alongside the API URL.
 
 ### Stack outputs
 
@@ -134,9 +143,9 @@ sam delete --stack-name plate-detector-upload
 
 ## Security properties
 
-| Property | Current status |
+| Property | Status |
 |---|---|
-| No static AWS credentials in APK | ✓ App only stores the API Gateway URL |
+| No static AWS credentials in APK | ✓ App stores URL + Identity Pool ID only |
 | S3 Block Public Access | ✓ All four settings enabled |
 | Server-side encryption (AES-256) | ✓ |
 | Lambda cannot read or delete data | ✓ `PutObject` only |
@@ -144,7 +153,8 @@ sam delete --stack-name plate-detector-upload
 | Admin access scoped to one IAM principal | ✓ |
 | Filename injection prevented | ✓ Lambda validates against regex |
 | Device ID injection prevented | ✓ Lambda strips non-hex chars |
-| API endpoint authentication | ✗ **Currently unauthenticated — future work** |
+| API endpoint authentication | ✓ `AWS_IAM` authorizer + Cognito Identity Pool |
+| Unauthenticated device role is least-privilege | ✓ `execute-api:Invoke` on one route only |
 
 ---
 
@@ -155,20 +165,26 @@ sam delete --stack-name plate-detector-upload
 - [x] The S3 bucket is created private with Block Public Access fully enabled.
 - [x] Server-side encryption (AES-256) is enabled on the bucket.
 - [x] The `UploadServiceUrl` stack output contains a valid HTTPS URL.
-- [x] A `POST /get-upload-url` with a valid JSON body returns HTTP 200 and a pre-signed URL.
+- [x] The `IdentityPoolId` stack output contains the Cognito Identity Pool ID.
+- [x] A `POST /get-upload-url` with a valid SigV4-signed body returns HTTP 200 and a pre-signed URL.
+- [x] An unsigned `POST /get-upload-url` returns HTTP 403.
 - [x] The returned pre-signed URL allows `PUT` of a `.zip` file to S3.
 - [x] The pre-signed URL does not allow `GET` or `DELETE` on the same object.
 - [x] A `POST /get-upload-url` with an invalid filename returns HTTP 400.
 - [ ] `sam delete` tears down all resources (after bucket is emptied).
+
+### Cognito Identity Pool
+- [x] Cognito Identity Pool (`PlateDetectorDevices`) is created with unauthenticated access enabled.
+- [x] `GetCredentialsForIdentity` with the pool ID returns temporary STS credentials (AccessKeyId, SecretKey, SessionToken).
+- [x] STS credentials can be used to sign a `POST /get-upload-url` request that succeeds.
+- [x] The unauthenticated role cannot call any S3 API directly.
+- [x] The unauthenticated role cannot call any API Gateway route other than `POST /get-upload-url`.
 
 ### Admin access
 - [x] The IAM principal in `AdminPrincipalArn` can list and download objects in the bucket.
 - [x] No other IAM principal (other than the Lambda execution role for PutObject) has S3 access.
 
 ### Developer experience
-- [x] `README.md` in `infra/aws/` documents the deploy commands and how to retrieve `UploadServiceUrl`.
+- [x] `README.md` documents deploy commands, how to retrieve both `UploadServiceUrl` and `IdentityPoolId`, and where to paste them in the app.
 - [x] `samconfig.toml` is committed without secret values.
 - [x] `.gitignore` excludes `.aws-sam/` build artefacts.
-
-### Known gaps (future work)
-- [ ] API Gateway route has no authentication — add IAM auth (`AWS_IAM` authorizer) and a Cognito Identity Pool so devices obtain short-lived STS credentials instead of relying on URL secrecy.
