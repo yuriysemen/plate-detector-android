@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+
 private val SCAN_OPTIONS = listOf(
     5000 to "5 seconds",
     2000 to "2 seconds",
@@ -47,6 +48,12 @@ private val SCAN_OPTIONS = listOf(
     500  to "½ second",
     0    to "No delay"
 )
+
+private fun msToStep(ms: Int): Float =
+    SCAN_OPTIONS.indexOfFirst { it.first == ms }.coerceAtLeast(0).toFloat()
+
+private fun stepToMs(step: Float): Int =
+    SCAN_OPTIONS.getOrNull(step.toInt().coerceIn(0, SCAN_OPTIONS.lastIndex))?.first ?: 1000
 
 @Composable
 fun SettingsScreen(
@@ -165,25 +172,17 @@ fun SettingsScreen(
             }
 
             // Scan interval
-            Text("Scan interval", style = MaterialTheme.typography.titleMedium)
-            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                SCAN_OPTIONS.forEach { (ms, label) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onScanIntervalMsChange(ms) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        RadioButton(
-                            selected = scanIntervalMs == ms,
-                            onClick = { onScanIntervalMsChange(ms) }
-                        )
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
+            val scanLabel = SCAN_OPTIONS.firstOrNull { it.first == scanIntervalMs }?.second ?: "1 second"
+            Text(
+                "Scan interval: $scanLabel",
+                style = MaterialTheme.typography.titleMedium
+            )
+            Slider(
+                value = msToStep(scanIntervalMs),
+                onValueChange = { onScanIntervalMsChange(stepToMs(it)) },
+                valueRange = 0f..(SCAN_OPTIONS.lastIndex.toFloat()),
+                steps = SCAN_OPTIONS.lastIndex - 1
+            )
 
             // Analysis resolution
             Text("Analysis resolution", style = MaterialTheme.typography.titleMedium)
