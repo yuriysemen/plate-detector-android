@@ -16,6 +16,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.roundToInt
 
+enum class UploadStatus { NOT_QUEUED, PENDING, UPLOADING, UPLOADED, FAILED }
+
 class DatasetExporter(context: Context) {
     private val appContext = context.applicationContext
     private val trainingRoot = File(appContext.filesDir, "training_data")
@@ -37,7 +39,8 @@ class DatasetExporter(context: Context) {
         val file: File,
         val name: String,
         val sizeBytes: Long,
-        val createdAt: Long
+        val createdAt: Long,
+        val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED
     )
 
     data class SplitConfig(val trainRatio: Float = 0.70f, val valRatio: Float = 0.20f) {
@@ -71,7 +74,7 @@ class DatasetExporter(context: Context) {
         exportsDir.listFiles()
             ?.filter { it.extension.equals("zip", ignoreCase = true) }
             ?.sortedByDescending { it.lastModified() }
-            ?.map { f -> ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified()) }
+            ?.map { f -> ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(), readUploadStatus(f)) }
             .orEmpty()
 
     fun exportSync(splitConfig: SplitConfig = SplitConfig()): File {
@@ -158,10 +161,26 @@ class DatasetExporter(context: Context) {
 
     fun deleteExport(file: File) {
         file.delete()
+        sidecarFor(file).delete()
     }
 
     fun getShareUri(file: File): Uri =
         FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
+
+    fun readUploadStatus(zipFile: File): UploadStatus {
+        val sidecar = sidecarFor(zipFile)
+        if (!sidecar.exists()) return UploadStatus.NOT_QUEUED
+        return runCatching {
+            UploadStatus.valueOf(JSONObject(sidecar.readText()).getString("status"))
+        }.getOrDefault(UploadStatus.NOT_QUEUED)
+    }
+
+    fun writeUploadStatus(zipFile: File, status: UploadStatus) {
+        val sidecar = sidecarFor(zipFile)
+        sidecar.writeText(JSONObject().put("status", status.name).toString())
+    }
+
+    private fun sidecarFor(zipFile: File) = File(zipFile.parent, "${zipFile.nameWithoutExtension}.upload.json")
 
     companion object {
         fun computeDeviceId(rawAndroidId: String): String {

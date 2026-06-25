@@ -48,12 +48,40 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 @Composable
-fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: Int) {
+fun ExportScreen(
+    onBack: () -> Unit,
+    onEditDataset: () -> Unit,
+    storageQuotaMb: Int,
+    exportMode: ExportMode,
+    onExportModeChange: (ExportMode) -> Unit,
+    uploadServiceUrl: String,
+    onUploadServiceUrlChange: (String) -> Unit,
+    uploadOnMobileData: Boolean,
+    onUploadOnMobileDataChange: (Boolean) -> Unit,
+    uploadConsentShown: Boolean,
+    onUploadConsentShownAck: () -> Unit,
+    deviceId: String
+) {
     val context = LocalContext.current
     val exporter = remember { DatasetExporter(context) }
     val editor = remember { DatasetEditor(context) }
@@ -79,6 +107,10 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
     var trainPct by rememberSaveable { mutableIntStateOf(70) }
     var valPct by rememberSaveable { mutableIntStateOf(20) }
 
+    var showUploadConsentDialog by rememberSaveable { mutableStateOf(false) }
+    var pendingExportModeName by rememberSaveable { mutableStateOf("") }
+    val pendingExportMode = runCatching { ExportMode.valueOf(pendingExportModeName) }.getOrNull()
+
     BackHandler { onBack() }
 
     fun refresh() {
@@ -96,6 +128,25 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
         context.startActivity(Intent.createChooser(intent, "Share dataset"))
     }
 
+    fun enqueueUpload(zipFile: java.io.File) {
+        val networkType = if (uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
+        val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
+        val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
+            .setInputData(workDataOf(
+                UploadDatasetWorker.KEY_ZIP_PATH   to zipFile.absolutePath,
+                UploadDatasetWorker.KEY_DEVICE_ID  to deviceId,
+                UploadDatasetWorker.KEY_UPLOAD_URL to uploadServiceUrl
+            ))
+            .addTag(zipFile.absolutePath)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            zipFile.absolutePath, ExistingWorkPolicy.KEEP, request
+        )
+        exporter.writeUploadStatus(zipFile, UploadStatus.PENDING)
+    }
+
     fun doExport() {
         scope.launch {
             isExporting = true
@@ -106,7 +157,15 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
             result.fold(
                 onSuccess = { zipFile ->
                     refresh()
-                    shareZip(DatasetExporter.ExportFile(zipFile, zipFile.nameWithoutExtension, zipFile.length(), zipFile.lastModified()))
+                    val isCloud = exportMode == ExportMode.CLOUD || exportMode == ExportMode.BOTH
+                    val urlMissing = isCloud && uploadServiceUrl.isBlank()
+                    if (isCloud && !urlMissing) {
+                        enqueueUpload(zipFile)
+                        refresh()
+                    }
+                    if (exportMode == ExportMode.MANUAL || exportMode == ExportMode.BOTH || urlMissing) {
+                        shareZip(DatasetExporter.ExportFile(zipFile, zipFile.nameWithoutExtension, zipFile.length(), zipFile.lastModified()))
+                    }
                 },
                 onFailure = { errorMessage = it.message ?: "Export failed" }
             )
@@ -130,6 +189,37 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
             },
             dismissButton = {
                 TextButton(onClick = { showResetDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showUploadConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showUploadConsentDialog = false; pendingExportModeName = "" },
+            title = { Text("Upload dataset to shared model training pool?") },
+            text = {
+                Text(
+                    "Your collected frames (license plate images) will be uploaded to " +
+                    "a private research server. Images are used only to improve the " +
+                    "plate detection model.\n\n" +
+                    "• Your uploads are stored under a private device identifier.\n" +
+                    "• Other contributors cannot access your images.\n" +
+                    "• You can request deletion by contacting the app administrator."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUploadConsentDialog = false
+                    onUploadConsentShownAck()
+                    pendingExportMode?.let { onExportModeChange(it) }
+                    pendingExportModeName = ""
+                }) { Text("I Agree — Enable Upload") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showUploadConsentDialog = false
+                    pendingExportModeName = ""
+                }) { Text("Cancel") }
             }
         )
     }
@@ -172,6 +262,18 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
                         text = if (usagePct >= 100) "Storage limit reached ($storageQuotaMb MB). Export or edit your dataset."
                                else "Training storage at $usagePct% — consider exporting or editing your dataset.",
                         isError = usagePct >= 100,
+                        actionLabel = null,
+                        onAction = null
+                    )
+                }
+            }
+
+            val isCloudMode = exportMode == ExportMode.CLOUD || exportMode == ExportMode.BOTH
+            if (isCloudMode && uploadServiceUrl.isBlank()) {
+                item {
+                    StorageBanner(
+                        text = "Upload server URL not configured. Set it in Settings → Export action.",
+                        isError = false,
                         actionLabel = null,
                         onAction = null
                     )
@@ -235,6 +337,70 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
                             color = MaterialTheme.colorScheme.outline,
                             style = MaterialTheme.typography.bodySmall
                         )
+                    }
+                }
+            }
+
+            item {
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Export action", style = MaterialTheme.typography.titleSmall)
+                        listOf(
+                            ExportMode.MANUAL to "Manual share",
+                            ExportMode.CLOUD  to "Upload to shared dataset",
+                            ExportMode.BOTH   to "Both"
+                        ).forEach { (mode, label) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (mode != ExportMode.MANUAL && !uploadConsentShown) {
+                                            pendingExportModeName = mode.name
+                                            showUploadConsentDialog = true
+                                        } else {
+                                            onExportModeChange(mode)
+                                        }
+                                    }
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = exportMode == mode,
+                                    onClick = {
+                                        if (mode != ExportMode.MANUAL && !uploadConsentShown) {
+                                            pendingExportModeName = mode.name
+                                            showUploadConsentDialog = true
+                                        } else {
+                                            onExportModeChange(mode)
+                                        }
+                                    }
+                                )
+                                Text(label, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        if (exportMode != ExportMode.MANUAL) {
+                            OutlinedTextField(
+                                value = uploadServiceUrl,
+                                onValueChange = onUploadServiceUrlChange,
+                                label = { Text("Upload server URL") },
+                                placeholder = { Text("https://…execute-api.amazonaws.com/prod") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Upload on mobile data", style = MaterialTheme.typography.bodyMedium)
+                                Switch(checked = uploadOnMobileData, onCheckedChange = onUploadOnMobileDataChange)
+                            }
+                        }
                     }
                 }
             }
@@ -307,6 +473,19 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
             } else {
                 items(exports, key = { it.file.absolutePath }) { exportFile ->
                     val isRenaming = renameTarget?.file?.absolutePath == exportFile.file.absolutePath
+                    val showUploadBadge = exportMode != ExportMode.MANUAL
+                    val workInfos by WorkManager.getInstance(context)
+                        .getWorkInfosByTagFlow(exportFile.file.absolutePath)
+                        .collectAsState(initial = emptyList())
+                    val liveStatus = workInfos.firstOrNull()?.let { info ->
+                        when (info.state) {
+                            WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> UploadStatus.PENDING
+                            WorkInfo.State.RUNNING -> UploadStatus.UPLOADING
+                            WorkInfo.State.SUCCEEDED -> UploadStatus.UPLOADED
+                            WorkInfo.State.FAILED -> UploadStatus.FAILED
+                            else -> null
+                        }
+                    } ?: exportFile.uploadStatus
                     if (isRenaming) {
                         RenameCard(
                             text = renameText,
@@ -328,13 +507,17 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
                     } else {
                         ExportFileCard(
                             item = exportFile,
+                            showUploadBadge = showUploadBadge,
+                            uploadStatus = liveStatus,
+                            canUpload = uploadServiceUrl.isNotBlank(),
                             onShare = { shareZip(exportFile) },
                             onRename = {
                                 renameTarget = exportFile
                                 renameText = exportFile.name
                                 renameError = null
                             },
-                            onDelete = { deleteTarget = exportFile }
+                            onDelete = { deleteTarget = exportFile },
+                            onUpload = { enqueueUpload(exportFile.file); refresh() }
                         )
                     }
                 }
@@ -346,9 +529,13 @@ fun ExportScreen(onBack: () -> Unit, onEditDataset: () -> Unit, storageQuotaMb: 
 @Composable
 private fun ExportFileCard(
     item: DatasetExporter.ExportFile,
+    showUploadBadge: Boolean,
+    uploadStatus: UploadStatus,
+    canUpload: Boolean,
     onShare: () -> Unit,
     onRename: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onUpload: () -> Unit
 ) {
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -360,8 +547,50 @@ private fun ExportFileCard(
                 "${formatFileSize(item.sizeBytes)} · ${formatFileDate(item.createdAt)}",
                 style = MaterialTheme.typography.bodySmall
             )
+            if (showUploadBadge && uploadStatus != UploadStatus.NOT_QUEUED) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    when (uploadStatus) {
+                        UploadStatus.PENDING -> Text(
+                            "Pending upload",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        UploadStatus.UPLOADING -> {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                            Text(
+                                "Uploading…",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        UploadStatus.UPLOADED -> Text(
+                            "Uploaded",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        UploadStatus.FAILED -> {
+                            Text(
+                                "Upload failed",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            TextButton(
+                                onClick = onUpload,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) { Text("Retry", style = MaterialTheme.typography.labelSmall) }
+                        }
+                        UploadStatus.NOT_QUEUED -> {}
+                    }
+                }
+            }
             Row {
                 TextButton(onClick = onShare) { Text("Share") }
+                if (canUpload && uploadStatus == UploadStatus.NOT_QUEUED) {
+                    TextButton(onClick = onUpload) { Text("Upload") }
+                }
                 TextButton(onClick = onRename) { Text("Rename") }
                 TextButton(onClick = onDelete) { Text("Delete") }
             }

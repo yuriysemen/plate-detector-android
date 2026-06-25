@@ -17,6 +17,7 @@ import android.net.Uri
 import androidx.core.net.toUri
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -200,6 +201,53 @@ private object ModelPrefs {
 
     fun setStorageQuotaMb(context: Context, mb: Int) {
         prefs(context).edit { putInt(KEY_STORAGE_QUOTA_MB, mb.coerceAtLeast(100)) }
+    }
+}
+
+// ------------------------
+// Upload prefs
+// ------------------------
+
+enum class ExportMode { MANUAL, CLOUD, BOTH }
+
+private object UploadPrefs {
+    private const val PREFS = "model_prefs"
+    private const val KEY_EXPORT_MODE   = "export_mode"
+    private const val KEY_UPLOAD_URL    = "upload_service_url"
+    private const val KEY_MOBILE_DATA   = "upload_on_mobile_data"
+    private const val KEY_CONSENT_SHOWN = "upload_consent_shown"
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun getExportMode(context: Context): ExportMode =
+        runCatching {
+            ExportMode.valueOf(prefs(context).getString(KEY_EXPORT_MODE, null) ?: "")
+        }.getOrDefault(ExportMode.MANUAL)
+
+    fun setExportMode(context: Context, mode: ExportMode) {
+        prefs(context).edit { putString(KEY_EXPORT_MODE, mode.name) }
+    }
+
+    fun getUploadUrl(context: Context): String =
+        prefs(context).getString(KEY_UPLOAD_URL, "") ?: ""
+
+    fun setUploadUrl(context: Context, url: String) {
+        prefs(context).edit { putString(KEY_UPLOAD_URL, url) }
+    }
+
+    fun getUploadOnMobileData(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_MOBILE_DATA, false)
+
+    fun setUploadOnMobileData(context: Context, v: Boolean) {
+        prefs(context).edit { putBoolean(KEY_MOBILE_DATA, v) }
+    }
+
+    fun getConsentShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CONSENT_SHOWN, false)
+
+    fun setConsentShown(context: Context, shown: Boolean) {
+        prefs(context).edit { putBoolean(KEY_CONSENT_SHOWN, shown) }
     }
 }
 
@@ -592,6 +640,23 @@ fun LivePlateDetectionScreen() {
     var storageQuotaMb by rememberSaveable {
         mutableIntStateOf(ModelPrefs.getStorageQuotaMb(context))
     }
+    var exportMode by rememberSaveable {
+        mutableStateOf(UploadPrefs.getExportMode(context))
+    }
+    var uploadServiceUrl by rememberSaveable {
+        mutableStateOf(UploadPrefs.getUploadUrl(context))
+    }
+    var uploadOnMobileData by rememberSaveable {
+        mutableStateOf(UploadPrefs.getUploadOnMobileData(context))
+    }
+    var uploadConsentShown by rememberSaveable {
+        mutableStateOf(UploadPrefs.getConsentShown(context))
+    }
+    val deviceId = remember {
+        DatasetExporter.computeDeviceId(
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+        )
+    }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -662,7 +727,28 @@ fun LivePlateDetectionScreen() {
             showExport -> ExportScreen(
                 onBack = { showExport = false },
                 onEditDataset = { showEditor = true },
-                storageQuotaMb = storageQuotaMb
+                storageQuotaMb = storageQuotaMb,
+                exportMode = exportMode,
+                onExportModeChange = { mode ->
+                    UploadPrefs.setExportMode(context, mode)
+                    exportMode = mode
+                },
+                uploadServiceUrl = uploadServiceUrl,
+                onUploadServiceUrlChange = { url ->
+                    UploadPrefs.setUploadUrl(context, url)
+                    uploadServiceUrl = url
+                },
+                uploadOnMobileData = uploadOnMobileData,
+                onUploadOnMobileDataChange = { v ->
+                    UploadPrefs.setUploadOnMobileData(context, v)
+                    uploadOnMobileData = v
+                },
+                uploadConsentShown = uploadConsentShown,
+                onUploadConsentShownAck = {
+                    UploadPrefs.setConsentShown(context, true)
+                    uploadConsentShown = true
+                },
+                deviceId = deviceId
             )
             else -> SettingsScreen(
                 models = models,

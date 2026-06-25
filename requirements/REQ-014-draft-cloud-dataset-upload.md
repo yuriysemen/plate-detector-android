@@ -130,7 +130,7 @@ A 200 response from S3 means the upload succeeded. No separate completion report
 
 ## WorkManager job design
 
-- One `UploadDatasetWorker` per export ZIP, enqueued immediately after the ZIP is written.
+- One `UploadDatasetWorker` per e xport ZIP, enqueued immediately after the ZIP is written.
 - Network constraint: `NetworkType.UNMETERED` by default; `NetworkType.CONNECTED` when the "Upload on mobile data" toggle is on.
 - Retry policy: exponential backoff, maximum 5 attempts over 24 hours.
 - Input data: local ZIP file path, device ID, upload service URL.
