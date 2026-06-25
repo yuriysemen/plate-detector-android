@@ -208,26 +208,13 @@ private object ModelPrefs {
 // Upload prefs
 // ------------------------
 
-enum class ExportMode { MANUAL, CLOUD, BOTH }
-
 private object UploadPrefs {
     private const val PREFS = "model_prefs"
-    private const val KEY_EXPORT_MODE   = "export_mode"
     private const val KEY_UPLOAD_URL    = "upload_service_url"
     private const val KEY_MOBILE_DATA   = "upload_on_mobile_data"
-    private const val KEY_CONSENT_SHOWN = "upload_consent_shown"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
-    fun getExportMode(context: Context): ExportMode =
-        runCatching {
-            ExportMode.valueOf(prefs(context).getString(KEY_EXPORT_MODE, null) ?: "")
-        }.getOrDefault(ExportMode.MANUAL)
-
-    fun setExportMode(context: Context, mode: ExportMode) {
-        prefs(context).edit { putString(KEY_EXPORT_MODE, mode.name) }
-    }
 
     fun getUploadUrl(context: Context): String =
         prefs(context).getString(KEY_UPLOAD_URL, "") ?: ""
@@ -241,13 +228,6 @@ private object UploadPrefs {
 
     fun setUploadOnMobileData(context: Context, v: Boolean) {
         prefs(context).edit { putBoolean(KEY_MOBILE_DATA, v) }
-    }
-
-    fun getConsentShown(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CONSENT_SHOWN, false)
-
-    fun setConsentShown(context: Context, shown: Boolean) {
-        prefs(context).edit { putBoolean(KEY_CONSENT_SHOWN, shown) }
     }
 }
 
@@ -640,17 +620,11 @@ fun LivePlateDetectionScreen() {
     var storageQuotaMb by rememberSaveable {
         mutableIntStateOf(ModelPrefs.getStorageQuotaMb(context))
     }
-    var exportMode by rememberSaveable {
-        mutableStateOf(UploadPrefs.getExportMode(context))
-    }
     var uploadServiceUrl by rememberSaveable {
         mutableStateOf(UploadPrefs.getUploadUrl(context))
     }
     var uploadOnMobileData by rememberSaveable {
         mutableStateOf(UploadPrefs.getUploadOnMobileData(context))
-    }
-    var uploadConsentShown by rememberSaveable {
-        mutableStateOf(UploadPrefs.getConsentShown(context))
     }
     val deviceId = remember {
         DatasetExporter.computeDeviceId(
@@ -724,14 +698,13 @@ fun LivePlateDetectionScreen() {
     if (showSettings || selected == null || !isModelEnabled) {
         when {
             showEditor -> DatasetEditorScreen(onBack = { showEditor = false })
-            showExport -> ExportScreen(
+            showExport -> ContributeScreen(
                 onBack = { showExport = false },
                 onEditDataset = { showEditor = true },
                 storageQuotaMb = storageQuotaMb,
-                exportMode = exportMode,
-                onExportModeChange = { mode ->
-                    UploadPrefs.setExportMode(context, mode)
-                    exportMode = mode
+                onStorageQuotaMbChange = { mb ->
+                    ModelPrefs.setStorageQuotaMb(context, mb)
+                    storageQuotaMb = mb
                 },
                 uploadServiceUrl = uploadServiceUrl,
                 onUploadServiceUrlChange = { url ->
@@ -742,11 +715,6 @@ fun LivePlateDetectionScreen() {
                 onUploadOnMobileDataChange = { v ->
                     UploadPrefs.setUploadOnMobileData(context, v)
                     uploadOnMobileData = v
-                },
-                uploadConsentShown = uploadConsentShown,
-                onUploadConsentShownAck = {
-                    UploadPrefs.setConsentShown(context, true)
-                    uploadConsentShown = true
                 },
                 deviceId = deviceId
             )
@@ -805,12 +773,7 @@ fun LivePlateDetectionScreen() {
                     ModelPrefs.setCollectFirstTimeShown(context, true)
                     collectFirstTimeShown = true
                 },
-                storageQuotaMb = storageQuotaMb,
-                onStorageQuotaMbChange = { mb ->
-                    ModelPrefs.setStorageQuotaMb(context, mb)
-                    storageQuotaMb = mb
-                },
-                onExportDataset = { showExport = true }
+                onNavigateToContribute = { showExport = true }
             )
         }
     } else {

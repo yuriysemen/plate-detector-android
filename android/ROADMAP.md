@@ -38,12 +38,11 @@
 - [x] "No models" error screen with retry + file picker
 
 ### Training data collection
-- [x] Opt-in toggle ("Collect training data" Switch in Settings); default off; persisted in SharedPreferences (`collect_training_data`)
-- [x] First-time consent dialog on first enable — explains what is saved, where, and how to delete; acknowledgement persisted (`collect_first_time_shown`); subsequent toggles skip the dialog
+- [x] Opt-in "Contribute data" row in Settings (Switch + summary + tap-to-navigate to ContributeScreen); default off; persisted in SharedPreferences (`collect_training_data`)
+- [x] First-time consent dialog on first enable — explains what is saved and that data is uploaded to a private server; acknowledgement persisted (`collect_first_time_shown`); subsequent toggles skip the dialog
 - [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, `multi_detection_frames`, and collection date range; updated after every saved frame; survives app restarts
-- [x] Dataset export — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (default 70/20/10; configurable via sliders on the Export screen); auto-resets collected data on success; share sheet opens immediately
-- [x] Exported files list — scrollable list on Export screen with per-file Share, Rename, and Delete actions
-- [x] Configurable storage quota — user-visible "Storage limit" setting (default 500 MB); 80% yellow warning banner on camera + Export screens; collection paused (red banner + "Edit" shortcut) at 100%
+- [x] Dataset upload — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (fixed 70/20/10 split); auto-resets collected data on success; enqueues WorkManager upload job; ZIP deleted from device after successful upload
+- [x] Configurable storage quota — user-visible "Storage limit" setting in ContributeScreen (default 500 MB); 80% yellow warning banner on camera + ContributeScreen; collection paused (red banner + "Edit" shortcut) at 100%
 - [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation; scroll position restored when returning from Frame Detail; thumbnail boxes use same four-colour cycle as the detail editor
 - [x] Frame Detail Editor — full-res frame view; tap to select box; drag body to move, drag handles (8 per box) to resize; draw new box via FAB (always commits, snaps to minimum size); delete box or entire frame; saves YOLO-normalized coordinates back to `.txt`
 - [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
@@ -84,8 +83,9 @@
 - [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
 
 ### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)
-- [ ] **Export mode selection** — replace auto share sheet with user choice: Manual / Upload to shared dataset / Both; first-time consent dialog for cloud mode (REQ-014)
-- [ ] **Cloud upload via pre-signed URL** — WorkManager job POSTs to a configurable Lambda endpoint, receives S3 pre-signed URL, uploads ZIP directly; Wi-Fi only by default; retry with exponential backoff; upload status badges (Pending / Uploading / Uploaded / Failed) per ZIP in Export screen; manual retry action (REQ-014)
+- [x] **Unified Contribute data flow** — single "Contribute data" row in Settings replaces separate toggle + export button; ContributeScreen owns storage limit, upload config, upload action, and "Session in progress" section; no mode selection — cloud upload is the only path; ZIP deleted from device after successful upload (REQ-005, REQ-014)
+- [x] **Cloud upload via pre-signed URL** — WorkManager job POSTs to configurable Lambda endpoint, receives S3 pre-signed URL, uploads ZIP directly; Wi-Fi only by default; retry with exponential backoff; upload status (Pending / Uploading / Failed) shown in ContributeScreen "Session in progress" section; manual retry on failure (REQ-014)
+- [ ] **Cognito Identity Pool auth** — Cognito guest credentials replace unsigned API calls; SigV4-signed requests to IAM-protected API Gateway (REQ-014, REQ-018)
 - [ ] **Scheduled daily auto-upload** — WorkManager `PeriodicWorkRequest`; configurable minimum frames threshold (default 50) and preferred time (default 02:00); notification on success (REQ-015)
 - [x] **AWS infrastructure** — SAM template deploys private S3 bucket (Block Public Access, AES-256), Lambda (generates pre-signed PUT URLs, sanitises inputs), and HTTP API Gateway; two operator inputs: bucket name + admin IAM principal ARN; stack output `UploadServiceUrl` pasted into app Settings; deploy instructions in `infra/aws/README.md` (REQ-018)
 

@@ -125,7 +125,7 @@ The hidden developer constant in REQ-006 is superseded by this setting and must 
 When total storage used by `training_data/` crosses **80%** of the configured quota, a persistent **yellow warning banner** appears:
 
 - On the main camera screen (below or above the existing overlay).
-- On the Export screen.
+- On the ContributeScreen.
 - Text: `"Training storage at X% — consider exporting or editing your dataset."` where X is the integer percentage.
 
 The warning is dismissed automatically when usage drops below 80% (e.g. after the user edits/deletes frames or resets).
@@ -145,7 +145,7 @@ Storage is measured by summing the sizes of all files under `training_data/image
 Storage is re-checked:
 - Before each frame write (existing behavior from REQ-006 LRU check point, repurposed).
 - When the Settings page is opened.
-- When the Export screen is opened.
+- When the ContributeScreen is opened.
 - Lazily on the camera screen (re-checked every 5 seconds while collection is on, not per frame).
 
 ### Interaction with LRU eviction (REQ-006)
@@ -185,7 +185,7 @@ Thumbnails should be loaded asynchronously using an image loading library (e.g. 
 
 ### Dataset Editor — grid
 
-- [x] "Edit dataset" entry appears on the Export screen; it is disabled when `total_frames == 0`.
+- [x] "Edit dataset" entry appears on the ContributeScreen; it is disabled when `total_frames == 0`.
 - [x] Grid shows one thumbnail per collected frame with overlaid bounding boxes.
 - [x] Frame count in the title updates immediately when frames are deleted.
 - [x] Long-press enters selection mode; tapping additional thumbnails toggles them.
@@ -207,7 +207,7 @@ Thumbnails should be loaded asynchronously using an image loading library (e.g. 
 
 - [x] Settings page shows a "Storage limit" field with MB/GB selector; default is 500 MB.
 - [x] The configured quota is persisted across app restarts.
-- [x] A yellow warning banner appears on the camera screen and Export screen when usage ≥ 80% of quota.
+- [x] A yellow warning banner appears on the camera screen and ContributeScreen when usage ≥ 80% of quota.
 - [x] When usage reaches the quota, the frame saver stops writing new frames.
 - [x] A red banner with an "Edit" shortcut is shown on the camera screen when collection is paused by quota.
 - [x] Collection resumes automatically (without toggling off/on) once usage drops below the quota.

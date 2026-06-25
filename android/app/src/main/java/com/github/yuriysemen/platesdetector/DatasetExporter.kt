@@ -1,10 +1,8 @@
 package com.github.yuriysemen.platesdetector
 
 import android.content.Context
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -153,19 +151,10 @@ class DatasetExporter(context: Context) {
         manifestFile.writeText(json.toString(2))
     }
 
-    fun renameExport(file: File, newName: String): Boolean {
-        val target = File(exportsDir, "$newName.zip")
-        if (target.exists()) return false
-        return file.renameTo(target)
-    }
-
     fun deleteExport(file: File) {
         file.delete()
         sidecarFor(file).delete()
     }
-
-    fun getShareUri(file: File): Uri =
-        FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", file)
 
     fun readUploadStatus(zipFile: File): UploadStatus {
         val sidecar = sidecarFor(zipFile)

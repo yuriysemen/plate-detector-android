@@ -57,6 +57,10 @@ Replaces the former ExportScreen. Accessed by tapping the "Contribute data" row 
 
 Frames collected, total detections, collection date range. Read from `manifest.json` each time the screen opens.
 
+### Storage limit
+
+- **Limit** — numeric text field with MB / GB unit selector. Default: 500 MB. Range: 100 MB – 20 GB. Stored in `SharedPreferences` key `training_data_quota_mb`. Moved here from the main Settings screen — storage limit is a dependency of data collection, not a general app setting.
+
 ### Upload configuration
 
 Always visible. Required for uploads to work.

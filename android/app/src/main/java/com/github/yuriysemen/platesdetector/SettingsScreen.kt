@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,11 +33,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.text.input.KeyboardType
@@ -64,25 +61,15 @@ fun SettingsScreen(
     onCollectTrainingDataChange: (Boolean) -> Unit,
     collectFirstTimeShown: Boolean,
     onCollectFirstTimeShownAck: () -> Unit,
-    storageQuotaMb: Int,
-    onStorageQuotaMbChange: (Int) -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     targetFps: Int,
     onTargetFpsChange: (Int) -> Unit,
-    onExportDataset: () -> Unit
+    onNavigateToContribute: () -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
     var showCollectConsentDialog by rememberSaveable { mutableStateOf(false) }
-
-    // Quota editing state — work in MB, convert to/from GB for display
-    var quotaUnit by rememberSaveable { mutableStateOf(if (storageQuotaMb >= 1024) "GB" else "MB") }
-    var quotaText by rememberSaveable(storageQuotaMb) {
-        mutableStateOf(
-            if (storageQuotaMb >= 1024) (storageQuotaMb / 1024).toString() else storageQuotaMb.toString()
-        )
-    }
 
     fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
@@ -191,7 +178,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
+                androidx.compose.material3.Checkbox(
                     checked = enableOCR,
                     onCheckedChange = onEnableOCRChange
                 )
@@ -236,13 +223,14 @@ fun SettingsScreen(
             if (showCollectConsentDialog) {
                 AlertDialog(
                     onDismissRequest = { showCollectConsentDialog = false },
-                    title = { Text("Collect training data?") },
+                    title = { Text("Contribute training data?") },
                     text = {
                         Text(
-                            "The app will save camera frames and bounding boxes to this device " +
-                            "whenever a plate is detected.\n\n" +
-                            "• Saved to: device storage only — nothing is uploaded.\n" +
-                            "• To delete: open Export dataset and tap Reset collected data."
+                            "When enabled, the app will:\n\n" +
+                            "• Save camera frames to this device whenever a plate is detected.\n" +
+                            "• Upload a packaged dataset to a private research server to improve plate detection.\n\n" +
+                            "Images are stored under a private device identifier. " +
+                            "To delete: open Contribute data and tap Reset collected data."
                         )
                     },
                     confirmButton = {
@@ -258,53 +246,24 @@ fun SettingsScreen(
                 )
             }
 
-            // Storage limit
+            // Contribute data row: Switch + summary, row tap navigates to ContributeScreen
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = quotaText,
-                    onValueChange = { v ->
-                        quotaText = v.filter { it.isDigit() }
-                        val n = quotaText.toIntOrNull() ?: return@OutlinedTextField
-                        val mb = if (quotaUnit == "GB") n * 1024 else n
-                        if (mb >= 100) onStorageQuotaMbChange(mb)
-                    },
-                    label = { Text("Storage limit") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                listOf("MB", "GB").forEach { unit ->
-                    val selected = unit == quotaUnit
-                    TextButton(
-                        onClick = {
-                            if (unit != quotaUnit) {
-                                val cur = quotaText.toIntOrNull() ?: 0
-                                quotaUnit = unit
-                                val newMb = if (unit == "GB") cur * 1024 else cur
-                                quotaText = if (unit == "GB") (storageQuotaMb / 1024).coerceAtLeast(1).toString()
-                                           else storageQuotaMb.toString()
-                                if (newMb >= 100) onStorageQuotaMbChange(newMb)
-                            }
-                        },
-                        colors = ButtonDefaults.textButtonColors(
-                            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent
-                        )
-                    ) {
-                        Text(unit)
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToContribute() }
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Collect training data", style = MaterialTheme.typography.bodyMedium)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Contribute data", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (collectTrainingData) "On — collecting and uploading frames"
+                        else "Disabled — no frames are collected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
                 Switch(
                     checked = collectTrainingData,
                     onCheckedChange = { enable ->
@@ -313,17 +272,9 @@ fun SettingsScreen(
                         } else {
                             onCollectTrainingDataChange(enable)
                         }
-                    }
+                    },
+                    modifier = Modifier.padding(start = 8.dp)
                 )
-            }
-
-            TextButton(onClick = onExportDataset) {
-                Icon(
-                    imageVector = Icons.Default.Archive,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Export dataset")
             }
 
             TextButton(onClick = onPickFile) {

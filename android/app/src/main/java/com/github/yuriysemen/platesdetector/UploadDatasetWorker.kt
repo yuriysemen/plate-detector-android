@@ -44,7 +44,7 @@ class UploadDatasetWorker(
             }
 
             if (putSucceeded) {
-                exporter.writeUploadStatus(zipFile, UploadStatus.UPLOADED)
+                exporter.deleteExport(zipFile)
                 Result.success()
             } else {
                 retry(exporter, zipFile)
