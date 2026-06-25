@@ -30,7 +30,7 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-002 | YOLO format specification and directory structure                          | done                             |
 | REQ-003 | Coordinate transformation from Detection to YOLO                           | done                             |
 | REQ-004 | Multiple detections per frame                                              | done                             |
-| REQ-005 | Settings UI and preference keys                                            | done                             |
+| REQ-005 | Settings UI and preference keys for data collection                        | done (Cognito UI fields pending REQ-014) |
 | REQ-006 | Storage quota, LRU eviction, and export                                    | done (LRU superseded by REQ-011) |
 | REQ-007 | Google Play compliance and privacy policy changes                          | draft                            |
 | REQ-008 | Local-only vs. cloud upload analysis                                       | superseded by REQ-014 + REQ-018  |

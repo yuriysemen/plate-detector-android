@@ -1,7 +1,7 @@
 ---
 id: REQ-005
 title: Settings UI and Preference Keys for Data Collection
-status: draft
+status: done
 priority: high
 ---
 
@@ -33,19 +33,19 @@ Shown when the switch is turned on for the first time. The user must accept befo
 Contribute training data?
 
 When enabled, the app will:
-• Save camera frames where a license plate is detected.
-• Periodically upload a packaged dataset to a private
-  research server to improve plate detection.
+• Save camera frames to this device whenever a plate is detected.
+• Upload a packaged dataset to a private research server to improve
+  plate detection.
 
 Images are stored under a private device identifier.
-Other contributors cannot access your images.
-You can request deletion by contacting [contact address].
-Uploads happen over Wi-Fi only (configurable).
+To delete: open Contribute data and tap Reset collected data.
 
 [Cancel]   [Enable]
 ```
 
 If the user taps Cancel, the switch stays off.
+
+> **Note:** The original draft included a "contact address" for deletion requests. Self-service deletion via "Reset collected data" is the implemented mechanism. A formal contact address for deletion requests is deferred to the privacy policy update (REQ-007).
 
 ---
 
@@ -94,17 +94,30 @@ When WorkManager reports `SUCCEEDED` for a job, the item is immediately removed 
 
 ---
 
-## Preference keys (`model_prefs` SharedPreferences)
+## Preference keys
+
+### `model_prefs` SharedPreferences
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `collect_training_data` | Boolean | false | Master on/off switch |
-| `collect_first_time_shown` | Boolean | false | Whether the first-time consent dialog has been shown |
-| `training_data_quota_mb` | Int | 500 | Storage quota in MB (min 100); edited via ✏ icon in stats card |
+| `collect_training_data` | Boolean | `false` | Master on/off switch |
+| `collect_first_time_shown` | Boolean | `false` | Whether the first-time consent dialog has been shown |
+| `training_data_quota_mb` | Int | `500` | Storage quota in MB (min 100); edited via ✏ icon in stats card |
+
+### `upload_prefs` SharedPreferences
+
+| Key | Type | Default | Description |
+|---|---|---|---|
 | `upload_service_url` | String | `""` | API Gateway endpoint URL |
-| `upload_on_mobile_data` | Boolean | false | Allow uploads over metered connections |
+| `upload_on_mobile_data` | Boolean | `false` | Allow uploads over metered connections |
 | `auto_upload_time` | String | `"02:00"` | Daily auto-upload time in HH:mm (24h); see REQ-015 |
-| `auto_upload_last_date` | String? | null | ISO date of last successful auto-upload; see REQ-015 |
+| `auto_upload_last_date` | String? | `null` | ISO date of last successful auto-upload; see REQ-015 |
+| `cognito_user_pool_id` | String | `""` | Cognito User Pool ID (e.g. `us-east-1_xxxxxxxx`); from stack output `UserPoolId` |
+| `cognito_app_client_id` | String | `""` | Cognito App Client ID; from stack output `UserPoolClientId` |
+| `cognito_identity_pool_id` | String | `""` | Cognito Identity Pool ID (e.g. `us-east-1:uuid`); from stack output `IdentityPoolId` |
+| `cognito_user_id` | String | `""` | Cognito sub of the signed-in user; written after successful sign-in, cleared on sign-out |
+
+> The Cognito preference keys and corresponding UI fields in ContributeScreen (User Pool ID, App Client ID, Identity Pool ID inputs; sign-in/sign-up flow) are pending the Android auth client implementation (REQ-014).
 
 ---
 
@@ -132,22 +145,30 @@ The following items are removed and their underlying logic must be deleted:
 
 ## Acceptance criteria
 
-- [ ] Settings shows a single "Contribute data" row with a Switch and a summary line.
-- [ ] Switch is off by default; turning it on for the first time shows the consent dialog.
-- [ ] Cancelling the consent dialog leaves the switch off.
-- [ ] Tapping the row navigates to ContributeScreen.
-- [ ] ContributeScreen stats card shows frames collected, total detections, and `X.XXX / <quota> MB` storage line with ✏ edit icon.
-- [ ] All three stats (frames, detections, storage used) reset to zero together after a successful upload or reset action.
-- [ ] Tapping the ✏ icon opens a dialog pre-filled with the current quota; saving updates `training_data_quota_mb`.
-- [ ] "View dataset" and "Reset collected data" buttons are side by side at the bottom of the stats card; both disabled when `total_frames == 0`.
-- [ ] No separate "Storage limit" card appears anywhere.
-- [ ] Upload configuration card contains: URL field, mobile data toggle, daily auto-upload time row, last auto-upload line.
-- [ ] "Upload collected data" button is disabled when `total_frames == 0` or `upload_service_url` is blank.
-- [ ] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
-- [ ] Completed items disappear from the list as soon as WorkManager reports SUCCEEDED; the ZIP is deleted from device storage.
-- [ ] Failed items show a "Retry" button that re-enqueues the upload job.
-- [ ] Dataset split sliders do not appear anywhere in the app.
-- [ ] No share sheet is opened at any point in the upload flow.
-- [ ] Disabling collection mid-session does not delete already-saved frames.
-- [ ] "Reset collected data" requires confirmation and deletes all frames under `training_data/`.
-- [ ] Clearing data while collection is active resets correctly without leaving orphaned files.
+- [x] Settings shows a single "Contribute data" row with a Switch and a summary line.
+- [x] Switch is off by default; turning it on for the first time shows the consent dialog.
+- [x] Cancelling the consent dialog leaves the switch off.
+- [x] Tapping the row navigates to ContributeScreen.
+- [x] ContributeScreen stats card shows frames collected, total detections, and `X.XXX / <quota> MB` storage line with ✏ edit icon.
+- [x] All three stats (frames, detections, storage used) reset to zero together after a successful upload or reset action.
+- [x] Tapping the ✏ icon opens a dialog pre-filled with the current quota; saving updates `training_data_quota_mb`.
+- [x] "View dataset" and "Reset collected data" buttons are side by side at the bottom of the stats card; both disabled when `total_frames == 0`.
+- [x] No separate "Storage limit" card appears anywhere.
+- [x] Upload configuration card contains: URL field, mobile data toggle, daily auto-upload time row, last auto-upload line.
+- [x] "Upload collected data" button is disabled when `total_frames == 0` or `upload_service_url` is blank.
+- [x] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
+- [x] Completed items disappear from the list as soon as WorkManager reports SUCCEEDED; the ZIP is deleted from device storage.
+- [x] Failed items show a "Retry" button that re-enqueues the upload job.
+- [x] Dataset split sliders do not appear anywhere in the app.
+- [x] No share sheet is opened at any point in the upload flow.
+- [x] Disabling collection mid-session does not delete already-saved frames.
+- [x] "Reset collected data" requires confirmation and deletes all frames under `training_data/`.
+- [x] Clearing data while collection is active resets correctly without leaving orphaned files.
+
+## Pending (Android auth client — REQ-014)
+
+- [ ] Upload configuration card includes three additional fields: User Pool ID, App Client ID, Identity Pool ID.
+- [ ] ContributeScreen shows a sign-in / sign-up entry point when the user is not authenticated.
+- [ ] After successful sign-in the `cognito_user_id` pref is written; it is cleared on sign-out.
+- [ ] "Upload collected data" button is also disabled when no user is signed in.
+- [ ] Privacy policy (REQ-007) updated with a formal contact address for data deletion requests.
