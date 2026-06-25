@@ -171,7 +171,7 @@ sam delete --stack-name plate-detector-upload
 - [x] The returned pre-signed URL allows `PUT` of a `.zip` file to S3.
 - [x] The pre-signed URL does not allow `GET` or `DELETE` on the same object.
 - [x] A `POST /get-upload-url` with an invalid filename returns HTTP 400.
-- [ ] `sam delete` tears down all resources (after bucket is emptied).
+- [x] `teardown.sh` empties the bucket (including versioned objects) then calls `sam delete --no-prompts`; prompts user to type the bucket name before proceeding; supports `--yes`, `--stack-name`, `--region` flags.
 
 ### Cognito Identity Pool
 - [x] Cognito Identity Pool (`PlateDetectorDevices`) is created with unauthenticated access enabled.

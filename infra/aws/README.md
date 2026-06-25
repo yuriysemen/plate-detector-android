@@ -167,9 +167,23 @@ Paste both values into the Android app:
 
 ## Teardown
 
-```bash
-# Empty the bucket first (SAM cannot delete a non-empty bucket)
-aws s3 rm s3://plate-dataset-uploads --recursive
+A `teardown.sh` script handles the full sequence — it empties the bucket (including any versioned objects) then calls `sam delete`:
 
-sam delete --stack-name plate-detector-upload
+```bash
+cd infra/aws
+./teardown.sh
+```
+
+You will be prompted to type the bucket name to confirm before anything is deleted.
+
+To skip the prompt (e.g. in CI):
+
+```bash
+./teardown.sh --yes
+```
+
+Override stack name or region if needed:
+
+```bash
+./teardown.sh --stack-name my-stack --region eu-west-1
 ```
