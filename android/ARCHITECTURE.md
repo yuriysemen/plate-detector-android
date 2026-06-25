@@ -166,7 +166,12 @@ Flow:
 
 `DatasetEditorScreen` is a 2-column lazy grid of all collected frames. Each cell asynchronously decodes the JPEG thumbnail and overlays its bounding boxes via a `Canvas`, using the same four-colour cycle (`0xFF00E676` / `0xFF40C4FF` / `0xFFFF6E40` / `0xFFEA80FC`) as the detail editor. Long-press enters multi-select mode; tapping a cell in normal mode opens `FrameDetailScreen`. `LazyGridState` is hoisted before the early `return` that renders `FrameDetailScreen`, so the grid scroll position is preserved in memory across the navigation and restored when the user navigates back.
 
-`FrameDetailScreen` displays the full-resolution frame inside a `BoxWithConstraints` (black letterbox, fit-center scaling). Bounding boxes are stored in **canvas-pixel space** (offset + scaled to the composable's display area) while the screen is open. The coordinate lifecycle is:
+`FrameDetailScreen` has two explicit modes controlled by `isEditMode: Boolean` state (default `false`):
+
+- **View mode** — read-only; top bar shows Back + ✏ Edit; no handles drawn; tap/drag interactions disabled; Back navigates to the grid without a dialog.
+- **Edit mode** — entered via ✏; top bar shows Cancel + frame name + × (delete selected box) + ✓ Save + ⋮ (delete frame); `+` FAB always visible while not drawing; Cancel / Back show a discard dialog if `hasUnsavedChanges`, then return to view mode (not the grid). `savedBoxes` captures the box state when edit mode is entered so discard can restore it without re-reading disk.
+
+The screen displays the full-resolution frame inside a `BoxWithConstraints` (black letterbox, fit-center scaling). Bounding boxes are stored in **canvas-pixel space** (offset + scaled to the composable's display area) while the screen is open. The coordinate lifecycle is:
 
 ```
 YoloBox (normalized 0–1)

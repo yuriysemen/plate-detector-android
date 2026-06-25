@@ -60,49 +60,55 @@ Tapping a thumbnail (outside selection mode) opens a **Frame Detail screen**.
 
 ## Frame Detail screen
 
-### Layout
+The screen has two explicit modes: **view** (default) and **edit**.
 
-- Full-screen display of the JPEG image, fitting the screen width while preserving aspect ratio.
-- All detected bounding boxes are drawn as coloured rectangles with drag handles at corners and edge midpoints.
-- A **Delete frame** button (trash icon) in the top-right of the action bar.
-- A **Save** button (checkmark) in the action bar, enabled only when unsaved edits exist.
-- A **Back** button that discards unsaved edits (with a confirmation dialog if there are unsaved changes: `"Discard unsaved changes?"`).
+### View mode
 
-### Viewing boxes
+The default state when opening a frame. Read-only — no accidental edits.
 
-Each bounding box read from the `.txt` file is rendered on the image. If the frame has multiple detections (multiple lines in the `.txt`), each is shown as a separate interactive box in a distinct colour.
+- Full-screen display of the JPEG image with all bounding boxes drawn as coloured rectangles (no handles, no selection).
+- Top bar: `←` Back · frame name · ✏ Edit button.
+- Back navigates to the grid immediately — no confirmation dialog.
+- Pinch-to-zoom and double-tap-to-reset work in both modes.
 
-### Editing a bounding box
+### Edit mode
 
-- Tap inside a box to **select** it (highlighted border + handles appear).
-- **Drag** the body of the box to reposition it (pan).
-- **Drag** a corner or edge handle to resize it.
-- The box is constrained to the image bounds at all times.
-- Coordinates are re-normalised to [0, 1] relative to the image pixel size on Save.
+Entered by tapping the ✏ button. Allows modifying boxes.
 
-### Adding a new box
+- Top bar: `Cancel` · frame name · `×` delete-box icon (visible when a box is selected) · `✓` Save (enabled when dirty, spinner while saving) · `⋮` overflow (Delete frame).
+- Cancel / Back: exits edit mode without saving. Shows `"Discard unsaved changes?"` dialog if there are unsaved edits; confirming restores boxes to their state at the time edit mode was entered.
+- Saving returns to the grid.
 
-A **"+ Add box"** floating action button (FAB) is visible when no box is selected. Tapping it enters draw mode: the user drags to draw a new bounding box. The new box is selected immediately after drawing and can be resized with handles. Class is always `0` (plate).
+### Editing a bounding box (edit mode only)
 
-### Deleting a box
+- Tap inside a box to **select** it (highlighted border + 8 resize handles appear).
+- **Drag** the body to reposition; **drag** a corner or edge handle to resize.
+- Box is constrained to image bounds at all times.
+- Coordinates are re-normalised to [0, 1] on Save.
 
-When a box is selected, a small **delete icon** appears next to it (or in the action bar). Tapping it removes that box from the frame. If the last box is deleted, the user is prompted: `"No boxes remain. Delete the frame entirely?"` — Yes deletes the image and label files and returns to the grid; No keeps the frame with an empty `.txt` file (the frame will be skipped at export time because it has no annotations).
+### Adding a new box (edit mode only)
+
+A **`+`** FAB is always visible at the bottom-right while not drawing. Tapping enters draw mode: drag to draw a new box. The new box snaps to a minimum size if the drag is too short. Class is always `0` (plate).
+
+### Deleting a box (edit mode only)
+
+Tap a box to select it, then tap `×` in the top bar. If the last box is deleted: `"No boxes remain. Delete the frame entirely?"` — Yes deletes the frame and returns to the grid; No keeps the frame with an empty `.txt`.
 
 ### Saving edits
 
-Tapping **Save**:
-1. Rewrites the `.txt` file with the current set of boxes in YOLO normalized format (one line per box: `0 x_center y_center width height`).
-2. Updates `manifest.json` (`total_detections` recalculated from all label files — or delta-tracked).
-3. Returns to the thumbnail grid with the updated thumbnail.
+Tapping `✓` Save:
+1. Rewrites the `.txt` file in YOLO normalised format (`0 x_center y_center width height` per box).
+2. Updates `manifest.json` (`total_detections` recalculated).
+3. Returns to the thumbnail grid.
 
-Save runs on a background thread; a brief loading indicator is shown on the Save button.
+Save runs on a background thread; a spinner replaces the `✓` icon while saving.
 
-### Deleting a frame
+### Deleting a frame (edit mode only)
 
-Tapping **Delete frame** shows: `"Delete this frame? This cannot be undone."` On confirmation:
-1. Deletes `images/frame_<seq>.jpg` and `labels/frame_<seq>.txt`.
-2. Decrements `manifest.json` `total_frames` and `total_detections`.
-3. Returns to the grid with the frame removed.
+`⋮` → "Delete frame" → `"Delete this frame? This cannot be undone."` On confirmation:
+1. Deletes the `.jpg` and `.txt` files.
+2. Decrements `manifest.json` counters.
+3. Returns to the grid.
 
 ---
 
@@ -193,14 +199,16 @@ Thumbnails should be loaded asynchronously using an image loading library (e.g. 
 
 ### Dataset Editor — Frame Detail
 
-- [x] Tapping a thumbnail opens the Frame Detail screen with the full image and all bounding boxes overlaid.
-- [x] Each box can be repositioned by dragging its body.
-- [x] Each box can be resized by dragging corner or edge handles.
+- [x] Tapping a thumbnail opens Frame Detail in **view mode** — boxes shown read-only, no handles.
+- [x] Tapping ✏ Edit enters **edit mode**; tapping Cancel exits edit mode and restores boxes if changes were made.
+- [x] Back in view mode navigates to the grid without a dialog.
+- [x] Back / Cancel in edit mode with unsaved changes shows `"Discard unsaved changes?"` and returns to view mode on confirm.
+- [x] Each box can be repositioned by dragging its body (edit mode).
+- [x] Each box can be resized by dragging corner or edge handles (edit mode).
 - [x] Boxes cannot be dragged outside the image bounds.
-- [x] A new box can be drawn with the "Add box" FAB.
+- [x] `+` FAB is always visible in edit mode when not drawing; tapping enters draw mode regardless of selection state.
 - [x] Deleting the last box in a frame prompts the user to delete the frame or keep it empty.
-- [x] Save rewrites the `.txt` file with normalized YOLO coordinates; coordinates are accurate to within ±1 px of the visible handle position.
-- [x] Navigating Back with unsaved changes shows a discard confirmation.
+- [x] Save rewrites the `.txt` file with normalized YOLO coordinates.
 - [x] Deleting a frame removes both `.jpg` and `.txt` and decrements `manifest.json` counters.
 
 ### Storage quota
