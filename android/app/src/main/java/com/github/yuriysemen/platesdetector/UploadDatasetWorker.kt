@@ -1,6 +1,10 @@
 package com.github.yuriysemen.platesdetector
 
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
@@ -16,10 +20,13 @@ class UploadDatasetWorker(
 ) : CoroutineWorker(context, params) {
 
     companion object {
-        const val KEY_ZIP_PATH   = "zip_path"
-        const val KEY_DEVICE_ID  = "device_id"
-        const val KEY_UPLOAD_URL = "upload_url"
-        const val MAX_ATTEMPTS   = 5
+        const val KEY_ZIP_PATH       = "zip_path"
+        const val KEY_DEVICE_ID      = "device_id"
+        const val KEY_UPLOAD_URL     = "upload_url"
+        const val KEY_FRAME_COUNT    = "frame_count"
+        const val KEY_IS_AUTO_UPLOAD = "is_auto_upload"
+        const val MAX_ATTEMPTS       = 5
+        private const val NOTIFICATION_ID = 1001
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -45,6 +52,9 @@ class UploadDatasetWorker(
 
             if (putSucceeded) {
                 exporter.deleteExport(zipFile)
+                if (inputData.getBoolean(KEY_IS_AUTO_UPLOAD, false)) {
+                    showUploadNotification(inputData.getInt(KEY_FRAME_COUNT, 0))
+                }
                 Result.success()
             } else {
                 retry(exporter, zipFile)
@@ -52,6 +62,26 @@ class UploadDatasetWorker(
         } catch (e: Exception) {
             retry(exporter, zipFile)
         }
+    }
+
+    private fun showUploadNotification(frameCount: Int) {
+        val intent = Intent(applicationContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_CONTRIBUTE, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(applicationContext, MainActivity.DATASET_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+            .setContentTitle("Dataset uploaded")
+            .setContentText("$frameCount frames sent. Tap to open Contribute screen.")
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, notification)
     }
 
     private fun retry(exporter: DatasetExporter, zipFile: File): Result =

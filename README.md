@@ -7,8 +7,9 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Bounding box overlay with confidence score
 - OCR — reads plate text using ML Kit (toggle in Settings)
 - Optional beep alert on detection
-- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; frame files named `<date>_<time>_<seq>` with capture timestamp; configurable storage quota with 80%/100% banners; export as a ZIP ready for `yolo train`
-- Dataset editor — review, correct, and prune collected frames on device; edit bounding boxes directly (move, resize, add, delete), with pinch-to-zoom for small plates; before export
+- Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; frame files named `<date>_<time>_<seq>` with capture timestamp; configurable storage quota (default 500 MB) with 80%/100% banners
+- Dataset editor — review, correct, and prune collected frames on device; edit bounding boxes directly (move, resize, add, delete), with pinch-to-zoom for small plates
+- Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket via pre-signed URL; manual upload button or automatic daily upload at a configurable time (default 02:00); respects Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload
 - Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
 - Multiple models selectable; custom `.tflite` import; per-model confidence threshold
 - Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
@@ -82,18 +83,18 @@ When those secrets are set, the workflow produces:
 - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
 
 ## Roadmap (planned)
-- **Play Store compliance** — Auto Backup exclusion, Data Safety declaration.
-- **Cloud dataset upload** — AWS infrastructure (S3 + Lambda + API Gateway) is in place (`infra/aws/`); Android upload flow and scheduled auto-upload pending.
+- **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
+- **Upload authentication** — Cognito Identity Pool + SigV4-signed requests to replace the current open API endpoint.
 - **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 
 See `android/ROADMAP.md` for the full backlog.
 
 ## Privacy
-The app is designed to run fully on-device:
-- Camera frames are processed locally in memory.
-- No camera frames are uploaded to a server.
-- No analytics / tracking is required for core functionality.
+The app is designed to minimise data leaving the device:
+- Camera frames are processed locally in memory; nothing is uploaded by default.
+- The optional "Contribute data" feature (off by default) saves detected frames locally and can upload them to a private AWS S3 bucket run by the developer. A consent dialog is shown before any upload occurs.
+- No analytics or tracking is used for core functionality.
 
 See: [Privacy Policy](privacy-policy.md)
 

@@ -25,7 +25,7 @@ The editor writes changes back to `training_data/images/` and `training_data/lab
 
 ## Entry point
 
-The **"Edit dataset"** button is on ContributeScreen (REQ-005), placed above the "Upload collected data" button. The button is disabled (greyed out, labelled "No data") when `total_frames == 0`.
+The **"View dataset"** button is on ContributeScreen (REQ-005), in the bottom-left of the stats card alongside the "Reset collected data" button. The button is disabled when `total_frames == 0`.
 
 ---
 
@@ -110,12 +110,12 @@ Tapping **Delete frame** shows: `"Delete this frame? This cannot be undone."` On
 
 ### Setting
 
-A new entry in the Settings page, in the "Training data" section:
+The quota is not a separate Settings page entry. It is edited via a small **✏ edit icon** on the "Storage used" line of the stats card in ContributeScreen:
 
-- **Label:** `"Storage limit"`
-- **Control:** a numeric text field (or a segmented/picker) followed by a unit selector (`MB` / `GB`).
-- **Default:** `500 MB` (matches the previous hidden constant in REQ-006, which is now removed).
-- **Allowed range:** 100 MB – 20 GB.
+- Tapping the icon opens an `AlertDialog` with an `OutlinedTextField` pre-filled with the current quota.
+- Units are always MB (no MB/GB switcher).
+- **Default:** `500 MB`.
+- **Minimum:** 100 MB.
 - **Persistence:** stored in `SharedPreferences` key `training_data_quota_mb` as an integer number of megabytes.
 
 The hidden developer constant in REQ-006 is superseded by this setting and must be removed.
@@ -185,7 +185,7 @@ Thumbnails should be loaded asynchronously using an image loading library (e.g. 
 
 ### Dataset Editor — grid
 
-- [x] "Edit dataset" entry appears on the ContributeScreen; it is disabled when `total_frames == 0`.
+- [x] "View dataset" button appears in the stats card on ContributeScreen; it is disabled when `total_frames == 0`.
 - [x] Grid shows one thumbnail per collected frame with overlaid bounding boxes.
 - [x] Frame count in the title updates immediately when frames are deleted.
 - [x] Long-press enters selection mode; tapping additional thumbnails toggles them.
@@ -205,7 +205,7 @@ Thumbnails should be loaded asynchronously using an image loading library (e.g. 
 
 ### Storage quota
 
-- [x] Settings page shows a "Storage limit" field with MB/GB selector; default is 500 MB.
+- [x] ContributeScreen stats card shows a ✏ edit icon on the "Storage used" line; tapping it opens a dialog to edit the quota in MB (minimum 100 MB, default 500 MB).
 - [x] The configured quota is persisted across app restarts.
 - [x] A yellow warning banner appears on the camera screen and ContributeScreen when usage ≥ 80% of quota.
 - [x] When usage reaches the quota, the frame saver stops writing new frames.

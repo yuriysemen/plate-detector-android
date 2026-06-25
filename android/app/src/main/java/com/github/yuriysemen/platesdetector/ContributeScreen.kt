@@ -1,6 +1,7 @@
 package com.github.yuriysemen.platesdetector
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,10 +17,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -29,6 +35,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +69,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import androidx.compose.runtime.collectAsState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContributeScreen(
     onBack: () -> Unit,
@@ -71,6 +80,9 @@ fun ContributeScreen(
     onUploadServiceUrlChange: (String) -> Unit,
     uploadOnMobileData: Boolean,
     onUploadOnMobileDataChange: (Boolean) -> Unit,
+    autoUploadTime: String,
+    onAutoUploadTimeChange: (String) -> Unit,
+    autoUploadLastDate: String?,
     deviceId: String
 ) {
     val context = LocalContext.current
@@ -83,20 +95,26 @@ fun ContributeScreen(
     val quotaBytes = storageQuotaMb.toLong() * 1024L * 1024L
     val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(stats) {
         storageUsageBytes = withContext(Dispatchers.IO) { editor.trainingUsageBytes() }
     }
 
     var isUploading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var showQuotaDialog by remember { mutableStateOf(false) }
+    var quotaDialogText by remember(storageQuotaMb) { mutableStateOf(storageQuotaMb.toString()) }
 
-    var quotaUnit by rememberSaveable { mutableStateOf(if (storageQuotaMb >= 1024) "GB" else "MB") }
-    var quotaText by rememberSaveable(storageQuotaMb) {
-        mutableStateOf(
-            if (storageQuotaMb >= 1024) (storageQuotaMb / 1024).toString() else storageQuotaMb.toString()
-        )
-    }
+    val timeHour   = remember(autoUploadTime) { autoUploadTime.split(":").getOrNull(0)?.toIntOrNull() ?: 2 }
+    val timeMinute = remember(autoUploadTime) { autoUploadTime.split(":").getOrNull(1)?.toIntOrNull() ?: 0 }
+    val timePickerState = rememberTimePickerState(
+        initialHour = timeHour,
+        initialMinute = timeMinute,
+        is24Hour = true
+    )
+
+
 
     val uploadConfigured = uploadServiceUrl.isNotBlank()
 
@@ -161,10 +179,56 @@ fun ContributeScreen(
         )
     }
 
+    if (showQuotaDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuotaDialog = false },
+            title = { Text("Storage limit") },
+            text = {
+                OutlinedTextField(
+                    value = quotaDialogText,
+                    onValueChange = { quotaDialogText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Limit (MB)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val mb = quotaDialogText.toIntOrNull()
+                    if (mb != null && mb >= 100) onStorageQuotaMbChange(mb)
+                    showQuotaDialog = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuotaDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Daily upload time") },
+            text = { TimePicker(state = timePickerState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTimePicker = false
+                    val h = timePickerState.hour.toString().padStart(2, '0')
+                    val m = timePickerState.minute.toString().padStart(2, '0')
+                    onAutoUploadTimeChange("$h:$m")
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     BackHandler { onBack() }
 
     // Active upload jobs: list all ZIPs that have a non-idle status
-    val allExports = remember(stats) { exporter.listExports() }
+    var exportsRefreshTick by remember { mutableStateOf(0) }
+    val allExports = remember(stats, exportsRefreshTick) { exporter.listExports() }
     val sessionJobs = allExports.filter {
         it.uploadStatus != UploadStatus.NOT_QUEUED && it.uploadStatus != UploadStatus.UPLOADED
     }
@@ -216,76 +280,47 @@ fun ContributeScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        val usageMb = storageUsageBytes / (1024f * 1024f)
+                        Text("Frames collected: ${stats.totalFrames}")
+                        Text("Total detections: ${stats.totalDetections}")
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.weight(1f)
+                            Text(
+                                "Storage used: ${"%.3f".format(usageMb)} / $storageQuotaMb MB",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            IconButton(
+                                onClick = {
+                                    quotaDialogText = storageQuotaMb.toString()
+                                    showQuotaDialog = true
+                                },
+                                modifier = Modifier.size(20.dp)
                             ) {
-                                Text("Frames collected: ${stats.totalFrames}")
-                                Text("Total detections: ${stats.totalDetections}")
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit storage limit",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            OutlinedButton(
-                                onClick = onEditDataset,
-                                enabled = stats.totalFrames > 0
-                            ) { Text("View dataset") }
                         }
-                        OutlinedButton(
-                            onClick = { showResetDialog = true },
-                            enabled = stats.totalFrames > 0,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        ) { Text("Reset collected data") }
-                    }
-                }
-            }
-
-            // Storage limit
-            item {
-                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text("Storage limit", style = MaterialTheme.typography.titleSmall)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedTextField(
-                                value = quotaText,
-                                onValueChange = { v ->
-                                    quotaText = v.filter { it.isDigit() }
-                                    val n = quotaText.toIntOrNull() ?: return@OutlinedTextField
-                                    val mb = if (quotaUnit == "GB") n * 1024 else n
-                                    if (mb >= 100) onStorageQuotaMbChange(mb)
-                                },
-                                label = { Text("Limit") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
+                            OutlinedButton(
+                                onClick = onEditDataset,
+                                enabled = stats.totalFrames > 0,
                                 modifier = Modifier.weight(1f)
-                            )
-                            listOf("MB", "GB").forEach { unit ->
-                                val sel = unit == quotaUnit
-                                TextButton(
-                                    onClick = {
-                                        if (unit != quotaUnit) {
-                                            quotaUnit = unit
-                                            quotaText = if (unit == "GB") (storageQuotaMb / 1024).coerceAtLeast(1).toString()
-                                                       else storageQuotaMb.toString()
-                                            val newMb = if (unit == "GB") quotaText.toInt() * 1024 else quotaText.toIntOrNull() ?: 0
-                                            if (newMb >= 100) onStorageQuotaMbChange(newMb)
-                                        }
-                                    },
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = if (sel) MaterialTheme.colorScheme.primaryContainer
-                                                        else androidx.compose.ui.graphics.Color.Transparent
-                                    )
-                                ) { Text(unit) }
-                            }
+                            ) { Text("View dataset") }
+                            OutlinedButton(
+                                onClick = { showResetDialog = true },
+                                enabled = stats.totalFrames > 0,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Reset collected data") }
                         }
                     }
                 }
@@ -321,6 +356,29 @@ fun ContributeScreen(
                                 onCheckedChange = onUploadOnMobileDataChange
                             )
                         }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showTimePicker = true },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Daily auto-upload time", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                autoUploadTime,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Text(
+                            if (autoUploadLastDate != null) "Last auto-upload: $autoUploadLastDate"
+                            else "Not yet auto-uploaded",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                     }
                 }
             }
@@ -379,6 +437,7 @@ fun ContributeScreen(
                         when (info.state) {
                             WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> UploadStatus.PENDING
                             WorkInfo.State.RUNNING                          -> UploadStatus.UPLOADING
+                            WorkInfo.State.SUCCEEDED                        -> UploadStatus.UPLOADED
                             WorkInfo.State.FAILED                           -> UploadStatus.FAILED
                             else                                            -> null
                         }
@@ -387,7 +446,8 @@ fun ContributeScreen(
                     UploadJobCard(
                         item = exportFile,
                         uploadStatus = liveStatus,
-                        onRetry = { enqueueUpload(exportFile.file); refresh() }
+                        onRetry = { enqueueUpload(exportFile.file); refresh() },
+                        onSucceeded = { exportsRefreshTick++ }
                     )
                 }
             }
@@ -399,8 +459,12 @@ fun ContributeScreen(
 private fun UploadJobCard(
     item: DatasetExporter.ExportFile,
     uploadStatus: UploadStatus,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onSucceeded: () -> Unit
 ) {
+    LaunchedEffect(uploadStatus) {
+        if (uploadStatus == UploadStatus.UPLOADED) onSucceeded()
+    }
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(12.dp),

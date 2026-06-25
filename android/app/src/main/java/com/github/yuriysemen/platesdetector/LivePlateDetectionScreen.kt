@@ -15,6 +15,7 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
 import androidx.core.net.toUri
+import android.os.Build
 import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.provider.Settings
@@ -208,7 +209,7 @@ private object ModelPrefs {
 // Upload prefs
 // ------------------------
 
-private object UploadPrefs {
+internal object UploadPrefs {
     private const val PREFS = "model_prefs"
     private const val KEY_UPLOAD_URL    = "upload_service_url"
     private const val KEY_MOBILE_DATA   = "upload_on_mobile_data"
@@ -228,6 +229,25 @@ private object UploadPrefs {
 
     fun setUploadOnMobileData(context: Context, v: Boolean) {
         prefs(context).edit { putBoolean(KEY_MOBILE_DATA, v) }
+    }
+
+    private const val KEY_AUTO_UPLOAD_TIME       = "auto_upload_time"
+    private const val KEY_AUTO_UPLOAD_LAST_DATE  = "auto_upload_last_date"
+    const val DEFAULT_AUTO_UPLOAD_TIME = "02:00"
+
+    fun getAutoUploadTime(context: Context): String =
+        prefs(context).getString(KEY_AUTO_UPLOAD_TIME, DEFAULT_AUTO_UPLOAD_TIME)
+            ?: DEFAULT_AUTO_UPLOAD_TIME
+
+    fun setAutoUploadTime(context: Context, time: String) {
+        prefs(context).edit { putString(KEY_AUTO_UPLOAD_TIME, time) }
+    }
+
+    fun getAutoUploadLastDate(context: Context): String? =
+        prefs(context).getString(KEY_AUTO_UPLOAD_LAST_DATE, null)
+
+    fun setAutoUploadLastDate(context: Context, date: String) {
+        prefs(context).edit { putString(KEY_AUTO_UPLOAD_LAST_DATE, date) }
     }
 }
 
@@ -588,7 +608,7 @@ private fun queryDisplayName(context: Context, uri: Uri): String? {
 // ------------------------
 
 @Composable
-fun LivePlateDetectionScreen() {
+fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     val context = LocalContext.current
 
     // allow "retry" to refresh downloaded/custom models
@@ -626,6 +646,12 @@ fun LivePlateDetectionScreen() {
     var uploadOnMobileData by rememberSaveable {
         mutableStateOf(UploadPrefs.getUploadOnMobileData(context))
     }
+    var autoUploadTime by rememberSaveable {
+        mutableStateOf(UploadPrefs.getAutoUploadTime(context))
+    }
+    val autoUploadLastDate = remember {
+        UploadPrefs.getAutoUploadLastDate(context)
+    }
     val deviceId = remember {
         DatasetExporter.computeDeviceId(
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
@@ -638,6 +664,14 @@ fun LivePlateDetectionScreen() {
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (openContribute) showExport = true
+        AutoUploadWorker.schedule(context)
+        withContext(Dispatchers.IO) {
+            AutoUploadWorker.runCatchUpIfNeeded(context)
+        }
+    }
 
     LaunchedEffect(models) {
         if (models.isEmpty()) {
@@ -710,12 +744,21 @@ fun LivePlateDetectionScreen() {
                 onUploadServiceUrlChange = { url ->
                     UploadPrefs.setUploadUrl(context, url)
                     uploadServiceUrl = url
+                    AutoUploadWorker.schedule(context)
                 },
                 uploadOnMobileData = uploadOnMobileData,
                 onUploadOnMobileDataChange = { v ->
                     UploadPrefs.setUploadOnMobileData(context, v)
                     uploadOnMobileData = v
+                    AutoUploadWorker.schedule(context)
                 },
+                autoUploadTime = autoUploadTime,
+                onAutoUploadTimeChange = { t ->
+                    UploadPrefs.setAutoUploadTime(context, t)
+                    autoUploadTime = t
+                    AutoUploadWorker.schedule(context)
+                },
+                autoUploadLastDate = autoUploadLastDate,
                 deviceId = deviceId
             )
             else -> SettingsScreen(
@@ -767,6 +810,7 @@ fun LivePlateDetectionScreen() {
                 onCollectTrainingDataChange = { enable ->
                     ModelPrefs.setCollectTrainingData(context, enable)
                     collectTrainingData = enable
+                    if (!enable) AutoUploadWorker.cancel(context)
                 },
                 collectFirstTimeShown = collectFirstTimeShown,
                 onCollectFirstTimeShownAck = {
@@ -924,9 +968,19 @@ private fun LiveDetectionUi(
         ActivityResultContracts.RequestPermission()
     ) { granted -> hasPermission = granted }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* granted or denied — notifications will silently no-op if denied */ }
+
     LaunchedEffect(Unit) {
         if (!hasPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

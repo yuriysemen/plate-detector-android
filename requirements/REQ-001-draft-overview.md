@@ -37,8 +37,8 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-011 | Dataset Editor, Frame Detail editing, and configurable storage quota       | done                             |
 | REQ-012 | Zoom and pan in Frame Detail Editor                                        | done                             |
 | REQ-013 | Dataset file naming (`<date>_<time>_<seq6>`) and data.yaml device metadata | done                             |
-| REQ-014 | Cloud dataset upload — export mode selection and AWS S3 upload             | draft                            |
-| REQ-015 | Scheduled automatic daily dataset upload                                   | draft                            |
+| REQ-014 | Cloud dataset upload — export mode selection and AWS S3 upload             | done (auth simplified — see REQ-014) |
+| REQ-015 | Scheduled automatic daily dataset upload                                   | done                             |
 | REQ-016 | Model update system — remote download and auto-apply                       | draft                            |
 | REQ-017 | Auto-parking settings auto-configuration                                   | draft                            |
 | REQ-018 | AWS upload infrastructure — S3 bucket, Lambda, API Gateway (IaC)          | draft                            |

@@ -55,29 +55,28 @@ Replaces the former ExportScreen. Accessed by tapping the "Contribute data" row 
 
 ### Stats card
 
-Frames collected and total detections. Read from `manifest.json` each time the screen opens.
+Displays frames collected, total detections, and storage used. Read from `manifest.json` and the filesystem each time the screen opens and re-read automatically after any reset or upload action.
 
-The stats card also hosts two action controls:
-- **View dataset** button — right of the stats text (disabled when `total_frames == 0`). Navigates to the Dataset Editor (REQ-011).
-- **Reset collected data** button — centered at the bottom of the card (disabled when `total_frames == 0`). Confirmation dialog: `"Delete N frames? This cannot be undone."` Deletes all files under `training_data/` and resets `manifest.json`.
+**Storage used** line format: `X.XXX / 500 MB` — current usage in MB (3 decimal places) against the configurable quota. A small **edit icon (✏)** on the right of the line opens a dialog to change the quota (MB only, minimum 100 MB, default 500 MB). Quota stored in `SharedPreferences` key `training_data_quota_mb`.
 
-### Storage limit
-
-- **Limit** — numeric text field with MB / GB unit selector. Default: 500 MB. Range: 100 MB – 20 GB. Stored in `SharedPreferences` key `training_data_quota_mb`. Moved here from the main Settings screen — storage limit is a dependency of data collection, not a general app setting.
+At the bottom of the card, side by side in a single row:
+- **View dataset** button (left, disabled when `total_frames == 0`). Navigates to the Dataset Editor (REQ-011).
+- **Reset collected data** button (right, disabled when `total_frames == 0`). Confirmation dialog: `"Delete N frames? This cannot be undone."` Deletes all files under `training_data/` and resets `manifest.json`.
 
 ### Upload configuration
 
 Always visible. Required for uploads to work.
 
-- **Upload server URL** — text field (URL input type). Placeholder: `https://your-api.execute-api.eu-west-1.amazonaws.com/prod`. Stored in `SharedPreferences` key `upload_service_url`. Validated: must be a valid HTTPS URL.
-- **Identity Pool ID** — text field. Placeholder: `eu-west-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. Stored in `SharedPreferences` key `cognito_identity_pool_id`. Validated: must match `<region>:<uuid>` pattern.
+- **Upload server URL** — text field (URL input type). Placeholder: `https://your-api.execute-api.eu-west-1.amazonaws.com/prod`. Stored in `SharedPreferences` key `upload_service_url`.
 - **Upload on mobile data** — toggle, default off.
+- **Daily auto-upload time** — tappable row showing current scheduled time; tapping opens a 24-hour clock picker (Material3 `TimePicker`). Default 02:00. Stored in `SharedPreferences` key `auto_upload_time`. See REQ-015.
+- **Last auto-upload** — read-only line: `"Last auto-upload: YYYY-MM-DD"` or `"Not yet auto-uploaded"`. Sourced from `SharedPreferences` key `auto_upload_last_date`.
 
-A warning banner is shown below the config section if either URL or Identity Pool ID is missing: `"Upload not configured — data will be collected but not sent."`
+A warning banner is shown if the URL field is empty: `"Upload not configured — data will be collected but not sent."`
 
 ### Actions
 
-- **Upload collected data** — button (enabled when `total_frames > 0` AND upload is configured). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
+- **Upload collected data** — button below the upload configuration card (enabled when `total_frames > 0` AND `upload_service_url` is non-blank). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
 
 ### "Session in progress" section
 
@@ -87,11 +86,11 @@ Each item shows:
 
 | Status | Display |
 |---|---|
-| `PENDING` | Filename + `"Pending upload"` chip |
-| `UPLOADING` | Filename + progress bar with percentage |
-| `FAILED` | Filename + red `"Failed"` chip + `"Retry"` button |
+| `PENDING` | Filename + `"Pending upload"` label |
+| `UPLOADING` | Filename + spinner + `"Uploading…"` |
+| `FAILED` | Filename + `"Upload failed"` + `"Retry"` button |
 
-On successful upload the ZIP is deleted from the device and the item is removed from this list. There is no persistent "previous uploads" history.
+When WorkManager reports `SUCCEEDED` for a job, the item is immediately removed from the list and the ZIP is deleted from device storage. There is no persistent "previous uploads" history.
 
 ---
 
@@ -101,9 +100,11 @@ On successful upload the ZIP is deleted from the device and the item is removed 
 |---|---|---|---|
 | `collect_training_data` | Boolean | false | Master on/off switch |
 | `collect_first_time_shown` | Boolean | false | Whether the first-time consent dialog has been shown |
+| `training_data_quota_mb` | Int | 500 | Storage quota in MB (min 100); edited via ✏ icon in stats card |
 | `upload_service_url` | String | `""` | API Gateway endpoint URL |
-| `cognito_identity_pool_id` | String | `""` | Cognito Identity Pool ID (`region:uuid`) |
 | `upload_on_mobile_data` | Boolean | false | Allow uploads over metered connections |
+| `auto_upload_time` | String | `"02:00"` | Daily auto-upload time in HH:mm (24h); see REQ-015 |
+| `auto_upload_last_date` | String? | null | ISO date of last successful auto-upload; see REQ-015 |
 
 ---
 
@@ -135,14 +136,18 @@ The following items are removed and their underlying logic must be deleted:
 - [ ] Switch is off by default; turning it on for the first time shows the consent dialog.
 - [ ] Cancelling the consent dialog leaves the switch off.
 - [ ] Tapping the row navigates to ContributeScreen.
-- [ ] ContributeScreen shows the stats card (with "View dataset" and "Reset collected data" controls), upload config fields, the "Upload collected data" button, and (conditionally) the "Session in progress" section.
-- [ ] Dataset split sliders do not appear anywhere in the app.
-- [ ] "Upload collected data" button is disabled when `total_frames == 0` or upload is not configured.
+- [ ] ContributeScreen stats card shows frames collected, total detections, and `X.XXX / <quota> MB` storage line with ✏ edit icon.
+- [ ] All three stats (frames, detections, storage used) reset to zero together after a successful upload or reset action.
+- [ ] Tapping the ✏ icon opens a dialog pre-filled with the current quota; saving updates `training_data_quota_mb`.
+- [ ] "View dataset" and "Reset collected data" buttons are side by side at the bottom of the stats card; both disabled when `total_frames == 0`.
+- [ ] No separate "Storage limit" card appears anywhere.
+- [ ] Upload configuration card contains: URL field, mobile data toggle, daily auto-upload time row, last auto-upload line.
+- [ ] "Upload collected data" button is disabled when `total_frames == 0` or `upload_service_url` is blank.
 - [ ] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
-- [ ] Completed (UPLOADED) items disappear from the list and the ZIP is deleted from device storage.
+- [ ] Completed items disappear from the list as soon as WorkManager reports SUCCEEDED; the ZIP is deleted from device storage.
 - [ ] Failed items show a "Retry" button that re-enqueues the upload job.
+- [ ] Dataset split sliders do not appear anywhere in the app.
 - [ ] No share sheet is opened at any point in the upload flow.
-- [ ] Share and Rename actions do not appear on any export item.
 - [ ] Disabling collection mid-session does not delete already-saved frames.
 - [ ] "Reset collected data" requires confirmation and deletes all frames under `training_data/`.
 - [ ] Clearing data while collection is active resets correctly without leaving orphaned files.

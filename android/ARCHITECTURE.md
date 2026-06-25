@@ -11,7 +11,7 @@ MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
         ├── NoModelsScreen              (no .tflite assets found)
         ├── SettingsScreen              (model picker + sliders + OCR toggle + Contribute data row)
-        ├── ContributeScreen            (stats card with view/reset controls, storage limit, upload config, upload ZIP, session in progress)
+        ├── ContributeScreen            (stats card with storage/quota/view/reset; upload config with auto-upload time; manual upload button; session in progress)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)
@@ -100,9 +100,11 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `ModelSource` | `ModelTypes.kt` | Sealed: `Asset(path)`, `FilePath(file)`, `ContentUri(uri)` |
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
-| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps |
+| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps, storage quota |
+| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date) |
+| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
-| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block (phone model, Android version, app version, anonymised device ID); reads stats; lists/deletes export files; reads/writes per-ZIP upload status sidecar (`.upload.json`) |
+| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; lists/deletes export files; reads/writes per-ZIP upload status sidecar; `exportSync()` for WorkManager callers |
 | `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
 | `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
 | `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
@@ -126,6 +128,39 @@ exports/
 `DatasetExporter` is instantiated per `ContributeScreen` session. The two classes never run concurrently (the camera and export screens are never on screen at the same time), so there is no shared-state conflict.
 
 `FileProvider` authority: `com.github.yuriysemen.platesdetector.fileprovider`, serving `filesDir/exports/` (declared in `res/xml/file_paths.xml`).
+
+## Background upload jobs (WorkManager)
+
+Two `CoroutineWorker` classes handle dataset upload off the main thread:
+
+### `UploadDatasetWorker`
+
+One instance per export ZIP. Enqueued immediately after a ZIP is created (both manual and auto-upload paths). Unique work name = ZIP file path (prevents duplicate uploads).
+
+Flow:
+1. POST to `<upload_service_url>/get-upload-url` with `filename` + `device_id` → receives S3 pre-signed URL.
+2. PUT the ZIP binary to the pre-signed URL.
+3. On S3 HTTP 200: delete the local ZIP, update sidecar to `UPLOADED`, post a notification if `KEY_IS_AUTO_UPLOAD == true`.
+4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
+5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
+
+Network constraint: `UNMETERED` (Wi-Fi) unless "Upload on mobile data" is on (`CONNECTED`).
+
+### `AutoUploadWorker`
+
+Scheduled as a `PeriodicWorkRequest` (24 h period, ±30 min flex). Registered by `AutoUploadWorker.schedule(context)` whenever upload settings change or the app starts. Cancelled when the upload URL is cleared or contribution is disabled.
+
+Flow:
+1. Skip if URL is blank or `total_frames == 0`.
+2. Call `exportSync()` — packages frames into a ZIP and resets collected frames atomically.
+3. Enqueue `UploadDatasetWorker` with `KEY_IS_AUTO_UPLOAD = true`.
+4. Write today's date to `auto_upload_last_date`.
+
+`runCatchUpIfNeeded()` is called in `LaunchedEffect(Unit)` on every app start. It enqueues a one-shot `AutoUploadWorker` if the URL is configured, frames exist, today's date is not in `auto_upload_last_date`, and the network constraint is currently satisfied — covering the case where the device was offline at the scheduled time.
+
+**Scheduling triggers** — `schedule()` is called after any of these pref changes: upload URL, mobile-data toggle, auto-upload time, or app start.
+
+**Notification**: on auto-upload success `UploadDatasetWorker` posts to the `"Dataset"` `NotificationChannel` (created in `MainActivity.onCreate`). `POST_NOTIFICATIONS` runtime permission is requested on Android 13+ at first app launch.
 
 ## Dataset editor
 
