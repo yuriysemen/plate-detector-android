@@ -214,18 +214,30 @@ fun ContributeScreen(
                 OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Frames collected: ${stats.totalFrames}")
-                        Text("Total detections: ${stats.totalDetections}")
-                        val from = stats.collectedFrom
-                        val to = stats.collectedTo
-                        if (from != null || to != null) {
-                            Text(
-                                "Date range: ${from ?: "—"} → ${to ?: "—"}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Frames collected: ${stats.totalFrames}")
+                                Text("Total detections: ${stats.totalDetections}")
+                            }
+                            OutlinedButton(
+                                onClick = onEditDataset,
+                                enabled = stats.totalFrames > 0
+                            ) { Text("View dataset") }
                         }
+                        OutlinedButton(
+                            onClick = { showResetDialog = true },
+                            enabled = stats.totalFrames > 0,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) { Text("Reset collected data") }
                     }
                 }
             }
@@ -314,22 +326,6 @@ fun ContributeScreen(
             }
 
             // Actions
-            item {
-                OutlinedButton(
-                    onClick = onEditDataset,
-                    enabled = stats.totalFrames > 0,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Edit dataset") }
-            }
-
-            item {
-                OutlinedButton(
-                    onClick = { showResetDialog = true },
-                    enabled = stats.totalFrames > 0,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Reset collected data") }
-            }
-
             item {
                 Button(
                     onClick = ::doUpload,

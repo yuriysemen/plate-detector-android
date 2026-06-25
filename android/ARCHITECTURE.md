@@ -11,7 +11,7 @@ MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
         ├── NoModelsScreen              (no .tflite assets found)
         ├── SettingsScreen              (model picker + sliders + OCR toggle + Contribute data row)
-        ├── ContributeScreen            (stats, storage limit, upload config, upload ZIP, edit/reset, session in progress)
+        ├── ContributeScreen            (stats card with view/reset controls, storage limit, upload config, upload ZIP, session in progress)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)

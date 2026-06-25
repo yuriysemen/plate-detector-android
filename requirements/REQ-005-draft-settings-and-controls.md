@@ -55,7 +55,11 @@ Replaces the former ExportScreen. Accessed by tapping the "Contribute data" row 
 
 ### Stats card
 
-Frames collected, total detections, collection date range. Read from `manifest.json` each time the screen opens.
+Frames collected and total detections. Read from `manifest.json` each time the screen opens.
+
+The stats card also hosts two action controls:
+- **View dataset** button — right of the stats text (disabled when `total_frames == 0`). Navigates to the Dataset Editor (REQ-011).
+- **Reset collected data** button — centered at the bottom of the card (disabled when `total_frames == 0`). Confirmation dialog: `"Delete N frames? This cannot be undone."` Deletes all files under `training_data/` and resets `manifest.json`.
 
 ### Storage limit
 
@@ -73,9 +77,7 @@ A warning banner is shown below the config section if either URL or Identity Poo
 
 ### Actions
 
-- **Edit dataset** — button (disabled when `total_frames == 0`). Navigates to the Dataset Editor (REQ-011).
 - **Upload collected data** — button (enabled when `total_frames > 0` AND upload is configured). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
-- **Reset collected data** — button (enabled when `total_frames > 0`). Confirmation dialog: `"Delete N frames? This cannot be undone."` Deletes all files under `training_data/` and resets `manifest.json`.
 
 ### "Session in progress" section
 
@@ -133,7 +135,7 @@ The following items are removed and their underlying logic must be deleted:
 - [ ] Switch is off by default; turning it on for the first time shows the consent dialog.
 - [ ] Cancelling the consent dialog leaves the switch off.
 - [ ] Tapping the row navigates to ContributeScreen.
-- [ ] ContributeScreen shows the stats card, upload config fields, action buttons, and (conditionally) the "Session in progress" section.
+- [ ] ContributeScreen shows the stats card (with "View dataset" and "Reset collected data" controls), upload config fields, the "Upload collected data" button, and (conditionally) the "Session in progress" section.
 - [ ] Dataset split sliders do not appear anywhere in the app.
 - [ ] "Upload collected data" button is disabled when `total_frames == 0` or upload is not configured.
 - [ ] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
