@@ -25,7 +25,7 @@ The editor writes changes back to `training_data/images/` and `training_data/lab
 
 ## Entry point
 
-A new **"Edit dataset"** entry is added to the Export screen (REQ-002), placed directly above the existing Export button. The entry is disabled (greyed out, labelled "No data") when `total_frames == 0`.
+The **"Edit dataset"** button is on ContributeScreen (REQ-005), placed above the "Upload collected data" button. The button is disabled (greyed out, labelled "No data") when `total_frames == 0`.
 
 ---
 

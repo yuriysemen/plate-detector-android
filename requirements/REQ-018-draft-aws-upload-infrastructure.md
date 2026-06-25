@@ -1,13 +1,15 @@
 ---
 id: REQ-018
-title: AWS Upload Infrastructure — S3 Bucket, Lambda, and API Gateway
-status: done
+title: AWS Upload Infrastructure — S3 Bucket, Lambda, API Gateway, and Cognito Identity Pool
+status: draft
 priority: high
 ---
 
 ## Summary
 
 Define, provision, and deploy the server-side AWS infrastructure that supports the cloud dataset upload feature (REQ-014). All infrastructure is declared as code in a new `infra/aws/` folder in the repository. Deployment requires two inputs from the operator: the desired S3 bucket name and an IAM principal ARN (user or role) that will have read/manage access to the collected data. Everything else is generated automatically.
+
+The API Gateway endpoint is protected with **AWS IAM authentication**. Android devices obtain temporary, auto-rotating STS credentials from a **Cognito Identity Pool** (guest/unauthenticated mode) and sign each request with SigV4. No static AWS credentials are stored on devices.
 
 ---
 
@@ -158,10 +160,70 @@ def _response(status, body):
 
 - **Type:** AWS::Serverless::HttpApi (API Gateway v2 — lower cost, lower latency than REST API).
 - **Route:** `POST /get-upload-url` → `GetUploadUrlFunction`.
-- **Auth:** none (the pre-signed URL is the security boundary; the endpoint itself is open to allow unauthenticated Android clients).
+- **Auth:** AWS IAM (`AWS_IAM` authorizer on the route). API Gateway validates the SigV4 signature on every request. Unsigned requests receive HTTP 403.
 - **CORS:** disabled (Android OkHttp does not use CORS; CORS is only needed for browser clients).
 - **Throttling (optional):** can be enabled via API Gateway usage plan if abuse is a concern. Default: no throttling.
 - **Output:** the API Gateway invoke URL is printed as a CloudFormation stack output (`UploadServiceUrl`) after deploy.
+
+```yaml
+# Route-level IAM auth in SAM
+Events:
+  GetUploadUrl:
+    Type: HttpApi
+    Properties:
+      ApiId: !Ref UploadApi
+      Path: /get-upload-url
+      Method: POST
+      Auth:
+        Authorizer: AWS_IAM
+```
+
+### 5. Cognito Identity Pool
+
+Provides temporary STS credentials to Android devices without requiring user accounts or embedding static keys in the APK.
+
+- **Mode:** `AllowUnauthenticatedIdentities: true` (guest access — no login required).
+- **Unauthenticated role** grants a single permission: `execute-api:Invoke` on the `POST /get-upload-url` route only. No S3 access, no Lambda invocation, no other AWS actions.
+- Credentials issued by Cognito/STS are valid for ~1 hour and rotate automatically.
+
+```yaml
+UploadIdentityPool:
+  Type: AWS::Cognito::IdentityPool
+  Properties:
+    IdentityPoolName: PlateDetectorUploaders
+    AllowUnauthenticatedIdentities: true
+
+UploadUnauthRole:
+  Type: AWS::IAM::Role
+  Properties:
+    AssumeRolePolicyDocument:
+      Version: "2012-10-17"
+      Statement:
+        - Effect: Allow
+          Principal:
+            Federated: cognito-identity.amazonaws.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              "cognito-identity.amazonaws.com:aud": !Ref UploadIdentityPool
+            "ForAnyValue:StringLike":
+              "cognito-identity.amazonaws.com:amr": unauthenticated
+    Policies:
+      - PolicyName: InvokeUploadApi
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: execute-api:Invoke
+              Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+
+IdentityPoolRoleAttachment:
+  Type: AWS::Cognito::IdentityPoolRoleAttachment
+  Properties:
+    IdentityPoolId: !Ref UploadIdentityPool
+    Roles:
+      unauthenticated: !GetAtt UploadUnauthRole.Arn
+```
 
 ---
 
@@ -185,16 +247,19 @@ cd infra/aws
 sam build && sam deploy
 ```
 
-### Retrieve the upload URL
+### Retrieve the stack outputs
 
 ```bash
 aws cloudformation describe-stacks \
   --stack-name plate-detector-upload \
-  --query "Stacks[0].Outputs[?OutputKey=='UploadServiceUrl'].OutputValue" \
-  --output text
+  --query "Stacks[0].Outputs" \
+  --output table
 ```
 
-This URL is pasted into the Android app's Settings → Export → Upload server URL field.
+Two values are needed by the Android app:
+
+- **`UploadServiceUrl`** — paste into Settings → Export → Upload server URL.
+- **`CognitoIdentityPoolId`** — paste into Settings → Export → Identity Pool ID.
 
 ### Teardown
 
@@ -209,12 +274,15 @@ sam delete --stack-name plate-detector-upload
 
 | Property | Design |
 |---|---|
-| No public S3 access | Block Public Access enabled on bucket + private ACL |
+| API endpoint requires authentication | All requests must be SigV4-signed; unsigned requests receive HTTP 403 |
+| No static credentials in APK | App stores Identity Pool ID (not a secret) + API URL; no AWS keys |
+| Temporary credentials only | Cognito/STS issues credentials valid for ~1 hour; no long-lived keys on device |
+| Device permissions are minimal | Unauthenticated role grants `execute-api:Invoke` on one route only |
+| No public S3 access | Block Public Access enabled on bucket |
 | Devices cannot read data | Pre-signed URL allows `PutObject` on one path only; no `GetObject` |
 | Devices cannot enumerate uploads | No `ListBucket` granted anywhere in the bucket policy |
 | Lambda cannot read data | Execution role grants `PutObject` only |
 | Admin access scoped to one IAM principal | `AdminPrincipalArn` is the only entity with broad S3 access |
-| No secrets in APK | App only stores the HTTPS API Gateway URL (public) |
 | Filename injection prevented | Lambda validates filename against `^[\w\-. ]+\.zip$` regex |
 | Device ID injection prevented | Lambda strips non-hex characters from `device_id` |
 
@@ -227,17 +295,25 @@ sam delete --stack-name plate-detector-upload
 - [x] The S3 bucket is created private with Block Public Access fully enabled.
 - [x] Server-side encryption (AES-256) is enabled on the bucket.
 - [x] The `UploadServiceUrl` stack output contains a valid HTTPS URL.
-- [x] A `POST /get-upload-url` with a valid body returns HTTP 200 and a pre-signed URL.
+- [ ] The `CognitoIdentityPoolId` stack output contains a valid identity pool ID in `region:uuid` format.
+- [ ] A SigV4-signed `POST /get-upload-url` with a valid body returns HTTP 200 and a pre-signed URL.
+- [ ] An unsigned `POST /get-upload-url` returns HTTP 403.
 - [ ] The returned pre-signed URL allows `PUT` of a `.zip` file to S3 (verified by uploading a test file via `curl`).
 - [x] The pre-signed URL does not allow `GET` or `DELETE` on the same object.
 - [x] A `POST /get-upload-url` with an invalid filename (e.g. `../../etc/passwd`) returns HTTP 400.
 - [ ] `sam delete` tears down all resources (after bucket is emptied).
+
+### Cognito Identity Pool
+- [ ] The identity pool allows unauthenticated (guest) access.
+- [ ] Credentials obtained from the identity pool can sign a request to `POST /get-upload-url` successfully.
+- [ ] Credentials obtained from the identity pool cannot invoke any other AWS action (verified by attempting `s3:ListBuckets` — expect `AccessDenied`).
+- [ ] Credentials expire after ~1 hour and are refreshed transparently by `CognitoCachingCredentialsProvider`.
 
 ### Admin access
 - [x] The IAM principal specified in `AdminPrincipalArn` can list and download objects in the bucket.
 - [x] No other IAM principal (other than the Lambda execution role for PutObject) has any S3 access.
 
 ### Developer experience
-- [x] `README.md` in `infra/aws/` documents the two required inputs, the deploy commands, and how to retrieve the `UploadServiceUrl`.
+- [ ] `README.md` in `infra/aws/` documents the two required inputs, the deploy commands, and how to retrieve both `UploadServiceUrl` and `CognitoIdentityPoolId`.
 - [x] `samconfig.toml` is committed without secret values; `BucketName` and `AdminPrincipalArn` are re-entered on first deploy on a new machine.
 - [x] `.gitignore` excludes `.aws-sam/` build artefacts.
