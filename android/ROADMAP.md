@@ -12,7 +12,7 @@
 - [x] Zoom shortcut buttons — 1×/2×/3× pill buttons at bottom center; filtered to camera's max zoom; highlights active level
 - [x] Exposure compensation — EV slider above zoom buttons; reads `ExposureState` range; shows computed EV value; hidden when unsupported
 - [x] Analysis resolution control — `DEFAULT`/`LOW (640×480)`/`HD (1280×720)` picker in Settings; uses `ResolutionSelector`; camera rebinds on change
-- [x] Frame rate control — 1–15 fps slider in Settings; throttle derived per-frame via `rememberUpdatedState`; takes effect immediately without camera rebind
+- [x] Scan interval control — RadioButton list in Settings; options: 5 s / 2 s / 1 s / ½ s / No delay (default 1 s); throttle applied per-frame via `rememberUpdatedState`; takes effect immediately without camera rebind
 
 ### Detection
 - [x] TFLite YOLO inference on each camera frame (~8 fps)
@@ -24,7 +24,7 @@
 ### OCR
 - [x] ML Kit text recognizer on cropped plate region
 - [x] OCR result shown in bounding box label
-- [x] Enable/disable OCR toggle in Settings
+- [x] OCR always enabled — runs automatically on every detection
 
 ### Model management
 - [x] Bundled default models (downloaded at build time from GitHub Releases)
@@ -34,7 +34,7 @@
 - [x] Delete custom/external models
 
 ### UI
-- [x] Settings screen (model picker, confidence slider, OCR toggle, import button)
+- [x] Settings screen (model picker + custom model import inside card, confidence slider, scan interval picker, analysis resolution picker, Contribute data row)
 - [x] "No models" error screen with retry + file picker
 
 ### Training data collection

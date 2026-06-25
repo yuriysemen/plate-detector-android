@@ -94,7 +94,6 @@ private object ModelPrefs {
     private const val KEY_MODEL_ID = "selected_model_id"
     private const val KEY_EXTERNAL_URIS = "external_model_uris"
     private const val KEY_SHOW_LABELS = "show_class_labels"
-    private const val KEY_ENABLE_OCR = "enable_ocr"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -144,13 +143,6 @@ private object ModelPrefs {
         prefs(context).edit { putBoolean(KEY_SHOW_LABELS, show) }
     }
 
-    fun getEnableOCR(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_ENABLE_OCR, true)
-
-    fun setEnableOCR(context: Context, enable: Boolean) {
-        prefs(context).edit { putBoolean(KEY_ENABLE_OCR, enable) }
-    }
-
     private const val KEY_ANALYSIS_RESOLUTION = "analysis_resolution"
 
     fun getAnalysisResolution(context: Context): AnalysisResolution =
@@ -164,16 +156,14 @@ private object ModelPrefs {
         prefs(context).edit { putString(KEY_ANALYSIS_RESOLUTION, res.name) }
     }
 
-    private const val KEY_TARGET_FPS = "target_fps"
-    const val DEFAULT_FPS = 8
-    const val MIN_FPS = 1
-    const val MAX_FPS = 15
+    private const val KEY_SCAN_INTERVAL_MS = "scan_interval_ms"
+    const val DEFAULT_SCAN_INTERVAL_MS = 1000
 
-    fun getTargetFps(context: Context): Int =
-        prefs(context).getInt(KEY_TARGET_FPS, DEFAULT_FPS).coerceIn(MIN_FPS, MAX_FPS)
+    fun getScanIntervalMs(context: Context): Int =
+        prefs(context).getInt(KEY_SCAN_INTERVAL_MS, DEFAULT_SCAN_INTERVAL_MS)
 
-    fun setTargetFps(context: Context, fps: Int) {
-        prefs(context).edit { putInt(KEY_TARGET_FPS, fps.coerceIn(MIN_FPS, MAX_FPS)) }
+    fun setScanIntervalMs(context: Context, ms: Int) {
+        prefs(context).edit { putInt(KEY_SCAN_INTERVAL_MS, ms) }
     }
 
     private const val KEY_COLLECT_TRAINING = "collect_training_data"
@@ -622,14 +612,11 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     var showClassNames by rememberSaveable {
         mutableStateOf(ModelPrefs.getShowLabels(context))
     }
-    var enableOCR by rememberSaveable {
-        mutableStateOf(ModelPrefs.getEnableOCR(context))
-    }
     var analysisResolution by rememberSaveable {
         mutableStateOf(ModelPrefs.getAnalysisResolution(context))
     }
-    var targetFps by rememberSaveable {
-        mutableIntStateOf(ModelPrefs.getTargetFps(context))
+    var scanIntervalMs by rememberSaveable {
+        mutableIntStateOf(ModelPrefs.getScanIntervalMs(context))
     }
     var collectTrainingData by rememberSaveable {
         mutableStateOf(ModelPrefs.getCollectTrainingData(context))
@@ -791,20 +778,15 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 onConfidenceChange = { modelId, conf ->
                     ModelPrefs.setConf(context, modelId, conf)
                 },
-                enableOCR = enableOCR,
-                onEnableOCRChange = { enable ->
-                    ModelPrefs.setEnableOCR(context, enable)
-                    enableOCR = enable
-                },
                 analysisResolution = analysisResolution,
                 onAnalysisResolutionChange = { res ->
                     ModelPrefs.setAnalysisResolution(context, res)
                     analysisResolution = res
                 },
-                targetFps = targetFps,
-                onTargetFpsChange = { fps ->
-                    ModelPrefs.setTargetFps(context, fps)
-                    targetFps = fps
+                scanIntervalMs = scanIntervalMs,
+                onScanIntervalMsChange = { ms ->
+                    ModelPrefs.setScanIntervalMs(context, ms)
+                    scanIntervalMs = ms
                 },
                 collectTrainingData = collectTrainingData,
                 onCollectTrainingDataChange = { enable ->
@@ -832,11 +814,10 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 ModelPrefs.setShowLabels(context, show)
                 showClassNames = show
             },
-            enableOCR = enableOCR,
             collectTrainingData = collectTrainingData,
             storageQuotaMb = storageQuotaMb,
             analysisResolution = analysisResolution,
-            targetFps = targetFps,
+            scanIntervalMs = scanIntervalMs,
             onRequestOpenSettings = { stopDetectionRequested = true },
             onOpenEditor = {
                 isModelEnabled = false
@@ -905,11 +886,10 @@ private fun LiveDetectionUi(
     stopDetectionRequested: Boolean,
     showClassNames: Boolean,
     onShowClassNamesChange: (Boolean) -> Unit,
-    enableOCR: Boolean,
     collectTrainingData: Boolean,
     storageQuotaMb: Int,
     analysisResolution: AnalysisResolution,
-    targetFps: Int,
+    scanIntervalMs: Int,
     onRequestOpenSettings: () -> Unit,
     onOpenEditor: () -> Unit,
     onDetectionStopped: () -> Unit
@@ -1100,14 +1080,13 @@ private fun LiveDetectionUi(
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         plateOCR = plateOCR,
-                        enableOCR = enableOCR,
                         collectTrainingData = collectTrainingData && !quotaReached,
                         trainingSaver = trainingSaver,
                         appVersion = appVersion,
                         modelId = spec.id,
                         scoreThreshold = spec.conf,
                         analysisResolution = analysisResolution,
-                        targetFps = targetFps,
+                        scanIntervalMs = scanIntervalMs,
                         isDetectionEnabled = detectionEnabled,
                         onProcessingChanged = { isProcessing = it },
                         onCameraReady = { cam, factory ->
@@ -1420,14 +1399,13 @@ private fun LiveDetectionUi(
 private fun CameraPreviewWithAnalysis(
     detector: PlateDetector,
     plateOCR: PlateOCR,
-    enableOCR: Boolean,
     collectTrainingData: Boolean,
     trainingSaver: TrainingDataSaver,
     appVersion: String,
     modelId: String,
     scoreThreshold: Float,
     analysisResolution: AnalysisResolution,
-    targetFps: Int,
+    scanIntervalMs: Int,
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
     onCameraReady: (Camera, MeteringPointFactory) -> Unit,
@@ -1438,7 +1416,6 @@ private fun CameraPreviewWithAnalysis(
 
     val detectorState by rememberUpdatedState(detector)
     val plateOCRState by rememberUpdatedState(plateOCR)
-    val enableOCRState by rememberUpdatedState(enableOCR)
     val collectTrainingDataState by rememberUpdatedState(collectTrainingData)
     val appVersionState by rememberUpdatedState(appVersion)
     val modelIdState by rememberUpdatedState(modelId)
@@ -1446,7 +1423,7 @@ private fun CameraPreviewWithAnalysis(
     val detectionEnabledState by rememberUpdatedState(isDetectionEnabled)
     val onResultState by rememberUpdatedState(onResult)
     val onProcessingChangedState by rememberUpdatedState(onProcessingChanged)
-    val targetFpsState by rememberUpdatedState(targetFps)
+    val scanIntervalMsState by rememberUpdatedState(scanIntervalMs)
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -1495,7 +1472,7 @@ private fun CameraPreviewWithAnalysis(
 
             imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
                 val now = SystemClock.elapsedRealtime()
-                val throttleMs = (1000L / targetFpsState.coerceAtLeast(1))
+                val throttleMs = scanIntervalMsState.toLong()
                 var bmp: Bitmap? = null
                 var rotated: Bitmap? = null
 
@@ -1519,8 +1496,8 @@ private fun CameraPreviewWithAnalysis(
                         scoreThreshold = thresholdState
                     )
 
-                    // Perform OCR on detected plates if enabled
-                    if (enableOCRState && dets.isNotEmpty()) {
+                    // Perform OCR on detected plates
+                    if (dets.isNotEmpty()) {
                         dets = dets.map { detection ->
                             try {
                                 val croppedPlate = plateOCRState.cropToBounds(

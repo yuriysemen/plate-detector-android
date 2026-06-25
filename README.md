@@ -5,7 +5,7 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 ## Features
 - Real-time license plate detection (on-device, TFLite YOLO)
 - Bounding box overlay with confidence score
-- OCR — reads plate text using ML Kit (toggle in Settings)
+- OCR — reads plate text using ML Kit (always active; text shown in bounding box label)
 - Optional beep alert on detection
 - Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; frame files named `<date>_<time>_<seq>` with capture timestamp; configurable storage quota (default 500 MB) with 80%/100% banners
 - Dataset editor — review collected frames in read-only view mode; tap ✏ to enter edit mode and correct bounding boxes (move, resize, add, delete) with pinch-to-zoom; discard or save changes explicitly

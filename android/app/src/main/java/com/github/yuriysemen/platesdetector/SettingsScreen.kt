@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,21 +30,23 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import kotlin.math.roundToInt
+private val SCAN_OPTIONS = listOf(
+    5000 to "5 seconds",
+    2000 to "2 seconds",
+    1000 to "1 second",
+    500  to "½ second",
+    0    to "No delay"
+)
 
 @Composable
 fun SettingsScreen(
@@ -55,16 +57,14 @@ fun SettingsScreen(
     onDelete: (ModelSpec) -> Unit,
     confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
-    enableOCR: Boolean,
-    onEnableOCRChange: (Boolean) -> Unit,
     collectTrainingData: Boolean,
     onCollectTrainingDataChange: (Boolean) -> Unit,
     collectFirstTimeShown: Boolean,
     onCollectFirstTimeShownAck: () -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
-    targetFps: Int,
-    onTargetFpsChange: (Int) -> Unit,
+    scanIntervalMs: Int,
+    onScanIntervalMsChange: (Int) -> Unit,
     onNavigateToContribute: () -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
@@ -75,18 +75,12 @@ fun SettingsScreen(
 
     val applySelection = {
         val base = models.firstOrNull { it.id == selectedId } ?: models.firstOrNull()
-        if (base != null) {
-            onPick(base)
-        }
+        if (base != null) onPick(base)
     }
 
-    BackHandler {
-        applySelection()
-    }
+    BackHandler { applySelection() }
 
-    Scaffold(
-        contentWindowInsets = WindowInsets.safeDrawing
-    ) { padding ->
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -99,41 +93,29 @@ fun SettingsScreen(
 
             Text("Select model", style = MaterialTheme.typography.titleMedium)
 
-            OutlinedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 220.dp)
-            ) {
+            // Model list + custom model button inside one card
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(models) { m ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    if (selectedId != m.id) {
-                                        selectedId = m.id
-                                    }
-                                }
+                                .clickable { if (selectedId != m.id) selectedId = m.id }
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             RadioButton(
                                 selected = (selectedId == m.id),
-                                onClick = {
-                                    if (selectedId != m.id) {
-                                        selectedId = m.id
-                                    }
-                                }
+                                onClick = { if (selectedId != m.id) selectedId = m.id }
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(m.title, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    sourceLabel(m),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                                Text(sourceLabel(m), style = MaterialTheme.typography.bodySmall)
                                 if (!m.description.isNullOrBlank()) {
                                     Text(
                                         m.description,
@@ -145,17 +127,26 @@ fun SettingsScreen(
                             }
                             if (m.isDeletable) {
                                 IconButton(onClick = { onDelete(m) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete model"
-                                    )
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete model")
                                 }
                             }
                         }
                     }
                 }
+                HorizontalDivider()
+                TextButton(
+                    onClick = onPickFile,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Custom Model")
+                }
             }
 
+            // Confidence threshold for selected model
             val selected = models.firstOrNull { it.id == selectedId }
             if (selected != null) {
                 val currentConf = confFor(selected)
@@ -173,30 +164,28 @@ fun SettingsScreen(
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                androidx.compose.material3.Checkbox(
-                    checked = enableOCR,
-                    onCheckedChange = onEnableOCRChange
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Enable OCR", style = MaterialTheme.typography.bodyMedium)
+            // Scan interval
+            Text("Scan interval", style = MaterialTheme.typography.titleMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                SCAN_OPTIONS.forEach { (ms, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onScanIntervalMsChange(ms) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RadioButton(
+                            selected = scanIntervalMs == ms,
+                            onClick = { onScanIntervalMsChange(ms) }
+                        )
+                        Text(label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
 
-            Text(
-                "Frame rate: $targetFps fps (~${1000 / targetFps.coerceAtLeast(1)} ms/frame)",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Slider(
-                value = targetFps.toFloat(),
-                onValueChange = { onTargetFpsChange(it.roundToInt()) },
-                valueRange = 1f..15f,
-                steps = 13
-            )
-
+            // Analysis resolution
             Text("Analysis resolution", style = MaterialTheme.typography.titleMedium)
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 AnalysisResolution.entries.forEach { res ->
@@ -246,7 +235,7 @@ fun SettingsScreen(
                 )
             }
 
-            // Contribute data row: Switch + summary, row tap navigates to ContributeScreen
+            // Contribute data row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -267,23 +256,11 @@ fun SettingsScreen(
                 Switch(
                     checked = collectTrainingData,
                     onCheckedChange = { enable ->
-                        if (enable && !collectFirstTimeShown) {
-                            showCollectConsentDialog = true
-                        } else {
-                            onCollectTrainingDataChange(enable)
-                        }
+                        if (enable && !collectFirstTimeShown) showCollectConsentDialog = true
+                        else onCollectTrainingDataChange(enable)
                     },
                     modifier = Modifier.padding(start = 8.dp)
                 )
-            }
-
-            TextButton(onClick = onPickFile) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Choose custom model"
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Custom Model")
             }
         }
     }

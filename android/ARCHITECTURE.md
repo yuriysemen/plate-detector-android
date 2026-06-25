@@ -37,7 +37,7 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     └─ decode output [1, N, 6] → List<Detection>
   │           (unproject letterbox coords back to original-image pixels)
   │
-  ├─ PlateOCR.recognizePlate()  (if enableOCR && detections not empty)
+  ├─ PlateOCR.recognizePlate()  (if detections not empty — always enabled)
   │     ├─ crop+pad bitmap to detection bounds
   │     └─ ML Kit TextRecognizer → clean alphanumeric text
   │
@@ -65,7 +65,7 @@ Three model origins (tracked in `ModelOrigin` enum):
 
 `ModelSpec` carries a `ModelSource` sealed class (`Asset`, `FilePath`, `ContentUri`) so `PlateDetector` loads from any of the three sources via memory-mapping with a `readBytes` fallback.
 
-`ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, OCR-enabled flag, collect-training-data flag.
+`ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, collect-training-data flag, scan interval ms, analysis resolution, storage quota.
 
 A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings.
 
@@ -87,7 +87,7 @@ The top bar in `LiveDetectionUi` exposes:
 - **Zoom shortcut buttons** — 1×/2×/3× pill buttons at bottom center; filtered to `camera.cameraInfo.zoomState.maxZoomRatio`; tapping calls `setZoomRatio()`; active level highlighted in white
 - **EV slider** — horizontal slider above zoom buttons; range and step read from `camera.cameraInfo.exposureState`; calls `setExposureCompensationIndex()`; displays computed EV value (`index × step`); hidden when `isExposureCompensationSupported` is false; resets to 0 on model change
 - **Analysis resolution** — `AnalysisResolution` enum (`DEFAULT`/`LOW`/`HD`) persisted in `ModelPrefs`; wired into `ImageAnalysis.Builder` via `ResolutionSelector` + `ResolutionStrategy`; camera is fully rebound when changed (via `key(spec.id, analysisResolution)`); picker shown in `SettingsScreen`
-- **Frame rate** — target fps (1–15, default 8) persisted in `ModelPrefs`; `throttleMs` derived per-frame as `1000 / targetFpsState`; no camera rebind needed; slider shown in `SettingsScreen`
+- **Scan interval** — time between frames analysed (5 s / 2 s / 1 s / ½ s / No delay, default 1 s) persisted in `ModelPrefs` as `scan_interval_ms`; applied per-frame via `rememberUpdatedState`; RadioButton list in `SettingsScreen`; no camera rebind needed
 
 Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecycle event) and `keepScreenOn` is tied to the same flag.
 
@@ -100,7 +100,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `ModelSource` | `ModelTypes.kt` | Sealed: `Asset(path)`, `FilePath(file)`, `ContentUri(uri)` |
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
-| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, OCR toggle, `collect_training_data`, `collect_first_time_shown`, analysis resolution, target fps, storage quota |
+| `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
 | `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date) |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
