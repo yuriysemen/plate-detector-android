@@ -42,6 +42,7 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-016 | Model update system — remote download and auto-apply                       | draft                            |
 | REQ-017 | Auto-parking settings auto-configuration                                   | draft                            |
 | REQ-018 | AWS upload infrastructure — S3 bucket, Lambda, API Gateway (IaC)          | draft                            |
+| REQ-019 | Settings screen layout and controls (model picker, scan interval, etc.)    | done                             |
 
 ## Dependencies
 
