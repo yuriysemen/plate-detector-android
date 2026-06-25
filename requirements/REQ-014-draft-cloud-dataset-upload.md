@@ -12,7 +12,7 @@ Send the packaged dataset ZIP directly to an AWS S3 bucket using a pre-signed UR
 
 The infrastructure (S3 bucket + Lambda + API Gateway) is defined and deployed separately — see **REQ-018**.
 
-> **Authentication note:** The current implementation uses an unauthenticated (open) API endpoint — no Cognito or SigV4 signing. The endpoint URL is kept private (not hardcoded) and is configurable by the operator. SigV4 / Cognito authentication is a known future hardening task.
+> **Authentication:** The API Gateway endpoint requires SigV4-signed requests. The Android app must sign each request using short-lived STS credentials obtained from a Cognito Identity Pool. Users authenticate via a Cognito User Pool (email + password + email verification). The AWS infrastructure for this is complete (REQ-018). Android-side implementation (sign-in/sign-up screens, SigV4 signing in `UploadDatasetWorker`) is the pending step.
 
 ---
 

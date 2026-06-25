@@ -60,21 +60,77 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
+  # ── Cognito User Pool ──────────────────────────────────────────────────────
+  # Email is the sign-in identifier. Users self-register; email verification
+  # is required before the account becomes active.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: PlateDetectorUsers
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationSubject: "Plate Detector — verify your email"
+      EmailVerificationMessage: "Your verification code is {####}"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  # ── Cognito User Pool App Client ───────────────────────────────────────────
+  # No client secret — mobile apps cannot keep secrets safe.
+  # SRP auth is used instead of plain-text password exchange.
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: PlateDetectorAndroid
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
   # ── Cognito Identity Pool ──────────────────────────────────────────────────
-  # Allows Android devices to obtain short-lived STS credentials without
-  # embedding any static AWS keys in the APK. Unauthenticated (guest) access
-  # is enabled — no user login required.
+  # Exchanges a valid User Pool ID token for short-lived STS credentials.
+  # Unauthenticated access is disabled — a signed-in account is required.
   DeviceIdentityPool:
     Type: AWS::Cognito::IdentityPool
     Properties:
       IdentityPoolName: PlateDetectorDevices
-      AllowUnauthenticatedIdentities: true
+      AllowUnauthenticatedIdentities: false
       AllowClassicFlow: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          ServerSideTokenCheck: true
 
-  # ── IAM role assumed by unauthenticated Cognito identities ────────────────
+  # ── IAM role assumed by authenticated Cognito identities ──────────────────
   # Grants only the minimum needed: invoke the single API Gateway route that
-  # requests a pre-signed S3 upload URL. No S3 access is granted directly.
-  DeviceUnauthRole:
+  # requests a pre-signed S3 upload URL. No direct S3 access granted.
+  DeviceAuthRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -88,7 +144,7 @@ Resources:
               StringEquals:
                 "cognito-identity.amazonaws.com:aud": !Ref DeviceIdentityPool
               ForAnyValue:StringLike:
-                "cognito-identity.amazonaws.com:amr": unauthenticated
+                "cognito-identity.amazonaws.com:amr": authenticated
       Policies:
         - PolicyName: InvokeUploadApi
           PolicyDocument:
@@ -98,17 +154,15 @@ Resources:
                 Action: execute-api:Invoke
                 Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
 
-  # ── Attach the unauthenticated role to the Identity Pool ──────────────────
+  # ── Attach the authenticated role to the Identity Pool ────────────────────
   DeviceIdentityPoolRoleAttachment:
     Type: AWS::Cognito::IdentityPoolRoleAttachment
     Properties:
       IdentityPoolId: !Ref DeviceIdentityPool
       Roles:
-        unauthenticated: !GetAtt DeviceUnauthRole.Arn
+        authenticated: !GetAtt DeviceAuthRole.Arn
 
   # ── S3 bucket ──────────────────────────────────────────────────────────────
-  # AccessControl is omitted: AWS disabled ACLs by default (April 2023).
-  # Block Public Access + private-by-default provides equivalent protection.
   DatasetBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -150,7 +204,7 @@ Resources:
 
   # ── HTTP API (API Gateway v2) — IAM-authenticated ─────────────────────────
   # All routes require a valid SigV4 signature. Devices sign requests using
-  # short-lived STS credentials obtained from the Cognito Identity Pool above.
+  # short-lived STS credentials obtained from the Cognito Identity Pool.
   UploadApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -184,6 +238,16 @@ Outputs:
       API Gateway invoke URL — paste into Android app
       Settings → Export → Upload server URL
     Value: !Sub "https://${UploadApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+
+  UserPoolId:
+    Description: >
+      Cognito User Pool ID — used by the Android app to authenticate users
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: >
+      Cognito User Pool App Client ID — used by the Android app (no secret)
+    Value: !Ref UserPoolClient
 
   IdentityPoolId:
     Description: >

@@ -15,14 +15,23 @@ def handler(event, context):
         body = json.loads(event.get("body") or "{}")
         filename = body.get("filename", "")
         device_id = body.get("device_id", "unknown")
+        user_id = body.get("user_id", "")
 
         if not SAFE_FILENAME.match(filename):
             return _response(400, {"error": "invalid filename"})
 
+        if not user_id:
+            return _response(400, {"error": "user_id is required"})
+
         # Sanitize device_id: keep only hex characters, max 32 chars
         safe_device = re.sub(r"[^a-f0-9]", "", device_id.lower())[:32] or "unknown"
 
-        object_key = f"uploads/{safe_device}/{filename}"
+        # Sanitize user_id: Cognito sub is a UUID — keep alphanumeric and hyphens, max 36 chars
+        safe_user = re.sub(r"[^a-z0-9\-]", "", user_id.lower())[:36] or None
+        if not safe_user:
+            return _response(400, {"error": "invalid user_id"})
+
+        object_key = f"uploads/{safe_user}/{safe_device}/{filename}"
 
         url = s3.generate_presigned_url(
             "put_object",

@@ -138,7 +138,7 @@ Two `CoroutineWorker` classes handle dataset upload off the main thread:
 One instance per export ZIP. Enqueued immediately after a ZIP is created (both manual and auto-upload paths). Unique work name = ZIP file path (prevents duplicate uploads).
 
 Flow:
-1. POST to `<upload_service_url>/get-upload-url` with `filename` + `device_id` → receives S3 pre-signed URL.
+1. POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Request must be SigV4-signed using STS credentials obtained from the Cognito Identity Pool (pending: Android client auth not yet implemented).
 2. PUT the ZIP binary to the pre-signed URL.
 3. On S3 HTTP 200: delete the local ZIP, update sidecar to `UPLOADED`, post a notification if `KEY_IS_AUTO_UPLOAD == true`.
 4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.

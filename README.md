@@ -84,7 +84,7 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
-- **Upload authentication** — Cognito Identity Pool + SigV4-signed requests to replace the current open API endpoint.
+- **Upload authentication (Android client)** — sign-up / sign-in screens, SRP auth, SigV4-signed upload requests. AWS infrastructure (Cognito User Pool + Identity Pool, IAM-protected API Gateway) is complete; Android client implementation is pending.
 - **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 

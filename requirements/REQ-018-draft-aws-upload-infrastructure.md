@@ -1,6 +1,6 @@
 ---
 id: REQ-018
-title: AWS Upload Infrastructure — S3 Bucket, Lambda, and API Gateway
+title: AWS Upload Infrastructure — S3 Bucket, Lambda, API Gateway, and Cognito Auth
 status: done
 priority: high
 ---
@@ -75,11 +75,13 @@ No `GetObject`, `ListBucket`, or `DeleteObject`.
 - **Environment:** `BUCKET_NAME`, `URL_EXPIRY_SECONDS`
 
 Logic:
-1. Parse `filename` and `device_id` from the POST body.
+1. Parse `filename`, `device_id`, and `user_id` from the POST body.
 2. Validate `filename` against `^[\w\-. ]+\.zip$`; return 400 on failure.
-3. Strip non-hex characters from `device_id`; truncate to 32 chars.
-4. Call `s3.generate_presigned_url("put_object", ...)` for key `uploads/<device_id>/<filename>`.
-5. Return `{ upload_url, object_key, expires_in }`.
+3. Return 400 if `user_id` is missing or empty.
+4. Sanitize `user_id` (Cognito sub — UUID format): strip non-alphanumeric/hyphen chars, lowercase, max 36 chars; return 400 if nothing remains.
+5. Sanitize `device_id`: strip non-hex chars, max 32 chars; fall back to `"unknown"`.
+6. Call `s3.generate_presigned_url("put_object", ...)` for key `uploads/<user_id>/<device_id>/<filename>`.
+7. Return `{ upload_url, object_key, expires_in }`.
 
 ### 4. API Gateway (HTTP API v2, `UploadApi`)
 
@@ -87,20 +89,37 @@ Logic:
 - **Auth: `AWS_IAM`** — all requests must carry a valid SigV4 signature. Unsigned requests receive HTTP 403.
 - CORS: disabled (Android HTTP client does not use CORS).
 
-### 5. Cognito Identity Pool (`DeviceIdentityPool`)
+### 5. Cognito User Pool (`UserPool` — `PlateDetectorUsers`)
 
-- `AllowUnauthenticatedIdentities: true` — devices obtain guest (unauthenticated) STS credentials without user login.
+- Sign-in identifier: email.
+- Self-registration allowed (`AllowAdminCreateUserOnly: false`).
+- Email verification required before account is active.
+- Password policy: min 8 chars, upper + lower + digits required.
+- Account recovery: email only.
+
+### 6. Cognito User Pool App Client (`UserPoolClient` — `PlateDetectorAndroid`)
+
+- No client secret (mobile apps cannot keep secrets).
+- Auth flows: `ALLOW_USER_SRP_AUTH`, `ALLOW_REFRESH_TOKEN_AUTH`.
+- `PreventUserExistenceErrors: ENABLED` — sign-in errors do not reveal whether an email is registered.
+- Token validity: access token 1 h, ID token 1 h, refresh token 30 days.
+
+### 7. Cognito Identity Pool (`DeviceIdentityPool`)
+
+- Linked to the User Pool via `CognitoIdentityProviders`.
+- `AllowUnauthenticatedIdentities: false` — a signed-in account is required; unauthenticated access is disabled.
 - `AllowClassicFlow: false` — enhanced auth flow.
-- Unauthenticated IAM role (`DeviceUnauthRole`): `execute-api:Invoke` on `POST /get-upload-url` only. No S3 access.
-- Role attachment (`DeviceIdentityPoolRoleAttachment`) links the role to the pool's unauthenticated identity.
-
-The Identity Pool ID is emitted as a stack output (`IdentityPoolId`) and pasted into the Android app alongside the API URL.
+- `ServerSideTokenCheck: true` — Cognito validates the token server-side before issuing credentials.
+- Authenticated IAM role (`DeviceAuthRole`): `execute-api:Invoke` on `POST /get-upload-url` only. No direct S3 access.
 
 ### Stack outputs
 
 | Output | Description |
 |---|---|
 | `UploadServiceUrl` | API Gateway invoke URL — paste into app Settings → Upload server URL |
+| `UserPoolId` | Cognito User Pool ID — needed by Android app to sign in users |
+| `UserPoolClientId` | Cognito App Client ID — needed by Android app (no secret) |
+| `IdentityPoolId` | Cognito Identity Pool ID — needed by Android app to get STS credentials |
 
 ---
 
@@ -145,7 +164,7 @@ sam delete --stack-name plate-detector-upload
 
 | Property | Status |
 |---|---|
-| No static AWS credentials in APK | ✓ App stores URL + Identity Pool ID only |
+| No static AWS credentials in APK | ✓ App stores URL + 3 Cognito IDs only |
 | S3 Block Public Access | ✓ All four settings enabled |
 | Server-side encryption (AES-256) | ✓ |
 | Lambda cannot read or delete data | ✓ `PutObject` only |
@@ -153,8 +172,12 @@ sam delete --stack-name plate-detector-upload
 | Admin access scoped to one IAM principal | ✓ |
 | Filename injection prevented | ✓ Lambda validates against regex |
 | Device ID injection prevented | ✓ Lambda strips non-hex chars |
-| API endpoint authentication | ✓ `AWS_IAM` authorizer + Cognito Identity Pool |
-| Unauthenticated device role is least-privilege | ✓ `execute-api:Invoke` on one route only |
+| User ID injection prevented | ✓ Lambda strips non-UUID chars |
+| API endpoint requires authentication | ✓ `AWS_IAM` authorizer — unsigned requests get HTTP 403 |
+| Upload requires a verified user account | ✓ Cognito User Pool, email verification required |
+| Unauthenticated access disabled | ✓ `AllowUnauthenticatedIdentities: false` |
+| Authenticated role is least-privilege | ✓ `execute-api:Invoke` on one route only |
+| Per-user data isolation in S3 | ✓ `uploads/<user_sub>/<device_id>/<filename>` |
 
 ---
 
@@ -173,12 +196,26 @@ sam delete --stack-name plate-detector-upload
 - [x] A `POST /get-upload-url` with an invalid filename returns HTTP 400.
 - [x] `teardown.sh` empties the bucket (including versioned objects) then calls `sam delete --no-prompts`; prompts user to type the bucket name before proceeding; supports `--yes`, `--stack-name`, `--region` flags.
 
+### Cognito User Pool
+- [x] User Pool (`PlateDetectorUsers`) created with email sign-in and self-registration.
+- [x] Email verification required before account is active.
+- [x] App Client (`PlateDetectorAndroid`) has no secret; uses SRP auth + refresh token.
+- [x] `PreventUserExistenceErrors` enabled — sign-in failures don't reveal whether an email is registered.
+
 ### Cognito Identity Pool
-- [x] Cognito Identity Pool (`PlateDetectorDevices`) is created with unauthenticated access enabled.
-- [x] `GetCredentialsForIdentity` with the pool ID returns temporary STS credentials (AccessKeyId, SecretKey, SessionToken).
-- [x] STS credentials can be used to sign a `POST /get-upload-url` request that succeeds.
-- [x] The unauthenticated role cannot call any S3 API directly.
-- [x] The unauthenticated role cannot call any API Gateway route other than `POST /get-upload-url`.
+- [x] Identity Pool linked to the User Pool via `CognitoIdentityProviders` with `ServerSideTokenCheck: true`.
+- [x] `AllowUnauthenticatedIdentities: false` — unauthenticated access is disabled.
+- [x] A valid User Pool ID token can be exchanged for STS credentials via `GetCredentialsForIdentity`.
+- [x] STS credentials can be used to SigV4-sign a `POST /get-upload-url` request that succeeds.
+- [x] An unauthenticated request to `POST /get-upload-url` returns HTTP 403.
+- [x] The authenticated role cannot call any S3 API directly.
+- [x] The authenticated role cannot call any API Gateway route other than `POST /get-upload-url`.
+
+### Lambda / S3 path
+- [x] Lambda requires `user_id` in the request body; missing or invalid returns HTTP 400.
+- [x] S3 object key follows `uploads/<user_sub>/<device_id>/<filename>`.
+- [x] `user_id` is sanitized (non-UUID chars stripped, max 36 chars).
+- [x] 21 unit tests passing (handler logic tested locally without AWS).
 
 ### Admin access
 - [x] The IAM principal in `AdminPrincipalArn` can list and download objects in the bucket.
