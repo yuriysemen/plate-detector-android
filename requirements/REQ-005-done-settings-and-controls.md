@@ -98,6 +98,12 @@ When WorkManager reports `SUCCEEDED`:
 
 `UPLOADED` items persist indefinitely as a read-only history. The data is on S3 and the sidecar is the only local record of what was sent, so there is no in-app deletion. S3 data management (deletion, retention) is handled by the server operator via the AWS console or CLI.
 
+**Display cap:** the section shows at most **10 entries** (the 10 most recent by date). If the total number of entries exceeds 10, a non-interactive footer line is shown below the list:
+```
++ N more uploads not shown
+```
+where N is the count of hidden entries. Active entries (`PENDING`, `UPLOADING`, `FAILED`) always appear regardless of the cap — the cap applies to `UPLOADED` history entries only, trimmed from the oldest end.
+
 > Future: if per-upload removal from S3 is needed, a `DELETE /delete-upload` Lambda endpoint can be added. The sidecar already stores `s3_object_key` for this purpose.
 
 ---
@@ -168,6 +174,7 @@ The following items are removed and their underlying logic must be deleted:
 - [x] On upload success: ZIP deleted from device; sidecar kept; item moves to UPLOADED state showing frame count and upload date.
 - [x] UPLOADED items remain visible indefinitely as a read-only history (no in-app deletion).
 - [x] Failed items show a "Retry" button that re-enqueues the upload job on any network.
+- [x] Upload history section shows at most 10 entries; active entries (PENDING/UPLOADING/FAILED) are never hidden; if more than 10 total entries exist, a footer shows "+ N more uploads not shown".
 - [x] Dataset split sliders do not appear anywhere in the app.
 - [x] No share sheet is opened at any point in the upload flow.
 - [x] Disabling collection mid-session does not delete already-saved frames.

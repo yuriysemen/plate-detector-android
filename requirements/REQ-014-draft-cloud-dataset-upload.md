@@ -165,6 +165,8 @@ The sidecar is **never deleted by the app**. It is the permanent local record of
 
 Both are surfaced in the "Upload history" section in ContributeScreen, sorted by creation/upload date descending. ContributeScreen observes job state via `getWorkInfosByTagFlow` and maps `WorkInfo.State` to `UploadStatus` for active entries.
 
+**Display cap:** ContributeScreen shows at most 10 entries. Active entries (`PENDING`, `UPLOADING`, `FAILED`) are always shown; the cap trims the oldest `UPLOADED` history entries. A footer line `"+ N more uploads not shown"` appears when entries are hidden.
+
 ---
 
 ## Privacy and compliance
@@ -216,3 +218,4 @@ Both are surfaced in the "Upload history" section in ContributeScreen, sorted by
 - [x] Sidecar stores `frame_count`, `uploaded_at`, and `s3_object_key` on success.
 - [x] Failed items show a "Retry" button that re-enqueues the upload job.
 - [x] Section hidden only when there are no entries at all (no history and no active jobs).
+- [x] Section shows at most 10 entries; active entries never hidden; footer shows "+ N more uploads not shown" when entries are trimmed.

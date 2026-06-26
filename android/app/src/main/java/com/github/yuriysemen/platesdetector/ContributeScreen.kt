@@ -237,9 +237,14 @@ fun ContributeScreen(
     // Active upload jobs: list all ZIPs that have a non-idle status
     var exportsRefreshTick by remember { mutableStateOf(0) }
     val allExports = remember(stats, exportsRefreshTick) { exporter.listExports() }
-    val sessionJobs = allExports.filter {
-        it.uploadStatus != UploadStatus.NOT_QUEUED
-    }
+    val sessionJobs = allExports.filter { it.uploadStatus != UploadStatus.NOT_QUEUED }
+    val activeJobs   = sessionJobs.filter { it.uploadStatus != UploadStatus.UPLOADED }
+    val uploadedJobs = sessionJobs.filter { it.uploadStatus == UploadStatus.UPLOADED }
+    val slotsForUploaded = (10 - activeJobs.size).coerceAtLeast(0)
+    val visibleUploaded  = uploadedJobs.take(slotsForUploaded)
+    val hiddenCount      = uploadedJobs.size - visibleUploaded.size
+    val visibleJobs = (activeJobs + visibleUploaded)
+        .sortedByDescending { it.uploadedAt ?: it.createdAt }
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         LazyColumn(
@@ -450,7 +455,7 @@ fun ContributeScreen(
                 }
             }
 
-            // Upload history — all entries including completed uploads
+            // Upload history — active + up to 10 most recent entries
             if (sessionJobs.isNotEmpty()) {
                 item {
                     HorizontalDivider()
@@ -458,7 +463,7 @@ fun ContributeScreen(
                     Text("Upload history", style = MaterialTheme.typography.titleMedium)
                 }
 
-                items(sessionJobs, key = { it.file.absolutePath }) { exportFile ->
+                items(visibleJobs, key = { it.file.absolutePath }) { exportFile ->
                     // History entries have no ZIP on disk; observe WorkManager only for active entries.
                     val isHistory = !exportFile.file.exists()
                     val workInfos by WorkManager.getInstance(context)
@@ -482,6 +487,17 @@ fun ContributeScreen(
                         onRetry = { enqueueUpload(exportFile.file, exportFile.frameCount, forceAnyNetwork = true); refresh() },
                         onSucceeded = if (isHistory) null else ({ exportsRefreshTick++ })
                     )
+                }
+
+                if (hiddenCount > 0) {
+                    item {
+                        Text(
+                            "+ $hiddenCount more uploads not shown",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
                 }
             }
         }
