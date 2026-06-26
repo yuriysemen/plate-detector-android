@@ -125,14 +125,14 @@ A 200 response from S3 means the upload succeeded.
 - **Retry policy:** exponential backoff, maximum `MAX_ATTEMPTS = 5`.
 - **Input data:** `KEY_ZIP_PATH`, `KEY_DEVICE_ID`, `KEY_UPLOAD_URL`, `KEY_USER_ID`, `KEY_USER_POOL_ID`, `KEY_IDENTITY_POOL_ID`, `KEY_FRAME_COUNT`, `KEY_IS_AUTO_UPLOAD`.
 - The worker is idempotent: if it runs twice it re-requests a fresh pre-signed URL and re-uploads. S3 PutObject is also idempotent (overwrites with identical content).
-- **On success:** deletes the local ZIP; if `KEY_IS_AUTO_UPLOAD == true` posts a notification (see REQ-015).
-- **On final failure:** writes `FAILED` status to the export metadata; item shown with "Retry" button in ContributeScreen.
+- **On success:** deletes the local ZIP; writes `UPLOADED` status + `frame_count` + `uploaded_at` (ISO-8601) to the sidecar (sidecar is **kept** as the history record); if `KEY_IS_AUTO_UPLOAD == true` posts a notification (see REQ-015).
+- **On final failure:** writes `FAILED` status to the sidecar; item shown with "Retry" button in ContributeScreen.
 
 ---
 
 ## Upload status
 
-Upload status is tracked via the ZIP file's sidecar metadata and WorkManager state. Statuses:
+Upload status is tracked via the `.upload.json` sidecar file and WorkManager state. Statuses:
 
 | Status | Description |
 |---|---|
@@ -140,9 +140,30 @@ Upload status is tracked via the ZIP file's sidecar metadata and WorkManager sta
 | `PENDING` | Job enqueued, not yet started |
 | `UPLOADING` | Worker is actively uploading |
 | `FAILED` | All retries exhausted |
-| `UPLOADED` | Upload succeeded; ZIP deleted; item removed from UI |
+| `UPLOADED` | Upload succeeded; ZIP deleted from device; sidecar kept as history record |
 
-ContributeScreen observes job state via `getWorkInfosByTagFlow` and maps `WorkInfo.State` to `UploadStatus`. When `SUCCEEDED` is reported the item is immediately removed from the "Session in progress" list.
+### Sidecar JSON schema
+
+```json
+{
+  "status": "UPLOADED",
+  "frame_count": 247,
+  "uploaded_at": "2026-06-27T14:30:22Z",
+  "s3_object_key": "uploads/a3f8c1d4.../plates_dataset_20260627_143022.zip"
+}
+```
+
+`frame_count`, `uploaded_at`, and `s3_object_key` are written only on success. `frame_count` is sourced from `KEY_FRAME_COUNT` passed to the worker. `uploaded_at` is the UTC timestamp when the S3 PUT returned 200. `s3_object_key` is the key returned by the Lambda in the pre-signed URL response — stored so a future `DELETE /delete-upload` endpoint can remove the file from S3 without the app having to reconstruct the path.
+
+The sidecar is **never deleted by the app**. It is the permanent local record of what was sent. S3 data management is handled by the server operator.
+
+### History entries
+
+`DatasetExporter.listExports()` returns two kinds of entries:
+- **Active entries**: `.zip` file exists (status `NOT_QUEUED`, `PENDING`, `UPLOADING`, or `FAILED`).
+- **History entries**: only the `.upload.json` sidecar exists (ZIP was deleted after upload); status is always `UPLOADED`.
+
+Both are surfaced in the "Upload history" section in ContributeScreen, sorted by creation/upload date descending. ContributeScreen observes job state via `getWorkInfosByTagFlow` and maps `WorkInfo.State` to `UploadStatus` for active entries.
 
 ---
 
@@ -180,16 +201,18 @@ ContributeScreen observes job state via `getWorkInfosByTagFlow` and maps `WorkIn
 - [x] Worker obtains STS credentials via `CognitoAuthManager.getAwsCredentials()` before each upload.
 - [x] Worker POSTs to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id`; request is SigV4-signed using STS credentials.
 - [x] Worker PUTs the ZIP binary to the received pre-signed URL with `Content-Type: application/zip`.
-- [x] A 200 response from S3 deletes the local ZIP and removes the item from "Session in progress".
+- [x] A 200 response from S3 calls `onUploadSuccess`: writes sidecar with `frame_count`, `uploaded_at`, `s3_object_key`; deletes the local ZIP; item transitions to UPLOADED state in the "Upload history" section.
 - [x] If the pre-signed URL is expired (S3 returns 403), the worker re-requests a new URL and retries.
 - [x] `SessionExpiredException` causes immediate `Result.failure()` (no retry).
 - [x] Manual upload ("Upload collected data" button) and "Retry" always use `CONNECTED` (any network, including mobile data).
 - [x] Auto-upload respects the "Upload on mobile data" toggle (UNMETERED vs CONNECTED constraint).
 - [x] Retry policy: up to `MAX_ATTEMPTS = 5` with exponential backoff.
 
-### ContributeScreen status
-- [x] "Session in progress" section appears as soon as a job is enqueued.
-- [x] Status updates in real time as the WorkManager job progresses.
-- [x] When WorkManager reports SUCCEEDED, the item disappears immediately from the list.
+### ContributeScreen st atus
+- [x] "Upload history" section appears as soon as any job is enqueued and persists until history is cleared.
+- [x] Status updates in real time as WorkManager job progresses.
+- [x] When WorkManager reports SUCCEEDED: ZIP deleted; sidecar kept with `frame_count` and `uploaded_at`; item transitions to UPLOADED state in the list.
+- [x] UPLOADED items show upload date and frame count; they persist indefinitely (read-only history, no in-app deletion).
+- [x] Sidecar stores `frame_count`, `uploaded_at`, and `s3_object_key` on success.
 - [x] Failed items show a "Retry" button that re-enqueues the upload job.
-- [x] The section disappears when no active or failed jobs remain.
+- [x] Section hidden only when there are no entries at all (no history and no active jobs).

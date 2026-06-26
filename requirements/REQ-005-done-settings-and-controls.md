@@ -78,19 +78,27 @@ The upload server URL, User Pool ID, App Client ID, and Identity Pool ID are **n
 
 - **Upload collected data** — button below the upload configuration card (enabled when `total_frames > 0` AND the user is signed in). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
 
-### "Session in progress" section
+### "Upload history" section
 
-Shown **only** when there is at least one upload job in a PENDING, UPLOADING, or FAILED state. Hidden completely when no jobs are active.
+Shown whenever there is at least one entry in any state. Hidden only when the history is completely empty.
 
 Each item shows:
 
 | Status | Display |
 |---|---|
-| `PENDING` | Filename + `"Pending upload"` label |
-| `UPLOADING` | Filename + spinner + `"Uploading…"` |
-| `FAILED` | Filename + `"Upload failed"` + `"Retry"` button |
+| `PENDING` | Date + filename + `"Queued"` label |
+| `UPLOADING` | Date + filename + spinner + `"Uploading…"` |
+| `FAILED` | Date + filename + `"Upload failed"` + `"Retry"` button |
+| `UPLOADED` | Date + filename + `"✓ Uploaded"` + frame count (e.g. `"247 frames"`) |
 
-When WorkManager reports `SUCCEEDED` for a job, the item is immediately removed from the list and the ZIP is deleted from device storage. There is no persistent "previous uploads" history.
+When WorkManager reports `SUCCEEDED`:
+- The ZIP is **deleted from device storage**.
+- The `.upload.json` sidecar is **kept** (it is the history record) with `status`, `frame_count`, and `uploaded_at` written to it.
+- The item moves to `UPLOADED` state in the list — it does **not** disappear.
+
+`UPLOADED` items persist indefinitely as a read-only history. The data is on S3 and the sidecar is the only local record of what was sent, so there is no in-app deletion. S3 data management (deletion, retention) is handled by the server operator via the AWS console or CLI.
+
+> Future: if per-upload removal from S3 is needed, a `DELETE /delete-upload` Lambda endpoint can be added. The sidecar already stores `s3_object_key` for this purpose.
 
 ---
 
@@ -156,9 +164,10 @@ The following items are removed and their underlying logic must be deleted:
 - [x] Upload configuration card contains: auth status row, mobile data toggle, daily auto-upload time row, last auto-upload line.
 - [x] Auth status row shows signed-in email + Sign out, or a Sign in button when not authenticated.
 - [x] "Upload collected data" button is disabled when `total_frames == 0` or no user is signed in.
-- [x] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
-- [x] Completed items disappear from the list as soon as WorkManager reports SUCCEEDED; the ZIP is deleted from device storage.
-- [x] Failed items show a "Retry" button that re-enqueues the upload job.
+- [x] "Upload history" section appears as soon as any upload job is enqueued and persists until the history is cleared.
+- [x] On upload success: ZIP deleted from device; sidecar kept; item moves to UPLOADED state showing frame count and upload date.
+- [x] UPLOADED items remain visible indefinitely as a read-only history (no in-app deletion).
+- [x] Failed items show a "Retry" button that re-enqueues the upload job on any network.
 - [x] Dataset split sliders do not appear anywhere in the app.
 - [x] No share sheet is opened at any point in the upload flow.
 - [x] Disabling collection mid-session does not delete already-saved frames.

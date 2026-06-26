@@ -64,24 +64,26 @@ class UploadDatasetWorker(
 
         val region = regionFromUrl(uploadUrl).ifEmpty { identityPoolId.substringBefore(":") }
 
+        val frameCount = inputData.getInt(KEY_FRAME_COUNT, 0)
+
         return@withContext try {
-            var presignedUrl = requestPresignedUrl(
+            var (presignedUrl, objectKey) = requestPresignedUrl(
                 uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
             )
             var putSucceeded = putZip(presignedUrl, zipFile)
 
             if (!putSucceeded) {
                 // 403: presigned URL expired — re-request once and retry the PUT
-                presignedUrl = requestPresignedUrl(
+                requestPresignedUrl(
                     uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
-                )
+                ).also { presignedUrl = it.first; objectKey = it.second }
                 putSucceeded = putZip(presignedUrl, zipFile)
             }
 
             if (putSucceeded) {
-                exporter.deleteExport(zipFile)
+                exporter.onUploadSuccess(zipFile, frameCount, objectKey)
                 if (inputData.getBoolean(KEY_IS_AUTO_UPLOAD, false)) {
-                    showUploadNotification(inputData.getInt(KEY_FRAME_COUNT, 0))
+                    showUploadNotification(frameCount)
                 }
                 Result.success()
             } else {
@@ -121,7 +123,7 @@ class UploadDatasetWorker(
             Result.failure()
         }
 
-    // Returns the presigned upload URL from the Lambda endpoint.
+    // Returns (upload_url, object_key) from the Lambda endpoint.
     // The request is SigV4-signed using short-lived STS credentials from the Identity Pool.
     // Throws on network error or non-2xx response.
     private fun requestPresignedUrl(
@@ -133,7 +135,7 @@ class UploadDatasetWorker(
         identityPoolId: String,
         credentials: AWSSessionCredentials,
         region: String
-    ): String {
+    ): Pair<String, String> {
         val targetUrl  = "$baseUrl/get-upload-url"
         val bodyBytes  = JSONObject()
             .put("filename", filename)
@@ -158,7 +160,6 @@ class UploadDatasetWorker(
         val conn = URL(targetUrl).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
-            // Apply all signed headers (Authorization, X-Amz-Date, X-Amz-Security-Token, Content-Type)
             sdkRequest.headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
             conn.connectTimeout = 15_000
             conn.readTimeout    = 15_000
@@ -167,9 +168,8 @@ class UploadDatasetWorker(
             if (conn.responseCode !in 200..299) {
                 throw Exception("get-upload-url HTTP ${conn.responseCode}")
             }
-            return JSONObject(
-                conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
-            ).getString("upload_url")
+            val json = JSONObject(conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) })
+            return Pair(json.getString("upload_url"), json.getString("object_key"))
         } finally {
             conn.disconnect()
         }

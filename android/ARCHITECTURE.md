@@ -12,7 +12,7 @@ MainActivity
         ├── NoModelsScreen              (no .tflite assets found)
         ├── AuthScreen                  (sign-up / sign-in / verify email; Cognito SRP + email code)
         ├── SettingsScreen              (model picker + sliders + Contribute data row)
-        ├── ContributeScreen            (stats card; auth status row + sign-in/out; upload config — mobile data toggle, daily time, last upload; manual upload button; session in progress)
+        ├── ContributeScreen            (stats card; auth status row + sign-in/out; upload config — mobile data toggle, daily time, last upload; manual upload button; upload history — active/failed/completed entries)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)
@@ -105,9 +105,9 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
 | `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
-| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar |
+| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; sidecar kept permanently after upload as the history record |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
-| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; lists/deletes export files; reads/writes per-ZIP upload status sidecar; `exportSync()` for WorkManager callers |
+| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns active entries (ZIP present) and history entries (sidecar-only, ZIP deleted after successful upload); `ExportFile` carries `frameCount`, `uploadedAt`, `s3ObjectKey`; `onUploadSuccess(zipFile, frameCount, s3ObjectKey)` writes sidecar with all four fields then deletes the ZIP; `writeUploadStatus()` / `readUploadStatus()` preserve other sidecar fields; `deleteExport()` removes ZIP + sidecar (for non-success cases); `exportSync()` for WorkManager callers |
 | `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
 | `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
 | `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
@@ -122,8 +122,10 @@ training_data/
   labels/   <YYYYMMDD>_<HHmmss>_<NNNNNN>.txt   (YOLO format: classId xc yc w h, normalized)
   manifest.json                                  (next_seq, total_frames, total_detections, multi_detection_frames, date range, app_version, model_id)
 exports/
-  plates_dataset_<timestamp>.zip  (one per export; frames randomly shuffled then split into
-                                    train/, val/, test/ subdirs + data.yaml with device: metadata block)
+  plates_dataset_<timestamp>.zip             (one per export; frames randomly shuffled then split into
+                                               train/, val/, test/ subdirs + data.yaml with device: metadata block)
+  plates_dataset_<timestamp>.upload.json     (sidecar: status, frame_count, uploaded_at, s3_object_key;
+                                               kept permanently after upload — ZIP is deleted, sidecar is the history record)
 ```
 
 `TrainingDataSaver` is instantiated per `LiveDetectionUi` session (via `remember`). It reads `manifest.json` on first use to restore `next_seq`, then increments in memory and rewrites the manifest after every frame. Because `LiveDetectionUi` leaves composition when Settings opens, a fresh `TrainingDataSaver` is created on each return — reading the latest manifest, so any reset performed in `ContributeScreen` is picked up automatically.
@@ -144,7 +146,7 @@ Flow:
 1. Obtain short-lived STS credentials via `CognitoAuthManager.getAwsCredentials()` (exchanges current ID token via the Identity Pool). Throws `SessionExpiredException` → immediate `Result.failure()` if refresh token expired.
 2. SigV4-sign a POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Signing uses `AWS4Signer` from `aws-android-sdk-core`.
 3. PUT the ZIP binary to the pre-signed URL.
-3. On S3 HTTP 200: delete the local ZIP, update sidecar to `UPLOADED`, post a notification if `KEY_IS_AUTO_UPLOAD == true`.
+4. On S3 HTTP 200: call `exporter.onUploadSuccess(zipFile, frameCount, objectKey)` — writes sidecar with `status=UPLOADED`, `frame_count`, `uploaded_at` (ISO-8601 UTC), `s3_object_key`, then deletes the ZIP; sidecar is kept as the permanent history record. Posts a notification if `KEY_IS_AUTO_UPLOAD == true`.
 4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
 5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
 

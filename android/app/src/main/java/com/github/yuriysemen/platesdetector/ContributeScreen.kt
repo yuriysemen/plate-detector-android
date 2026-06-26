@@ -126,7 +126,7 @@ fun ContributeScreen(
         stats = exporter.readStats()
     }
 
-    fun enqueueUpload(zipFile: java.io.File, forceAnyNetwork: Boolean = false) {
+    fun enqueueUpload(zipFile: java.io.File, frameCount: Int, forceAnyNetwork: Boolean = false) {
         val networkType = if (forceAnyNetwork || uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
         val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
         val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
@@ -136,7 +136,8 @@ fun ContributeScreen(
                 UploadDatasetWorker.KEY_UPLOAD_URL       to uploadServiceUrl,
                 UploadDatasetWorker.KEY_USER_ID          to UploadPrefs.getCognitoUserId(context),
                 UploadDatasetWorker.KEY_USER_POOL_ID     to UploadPrefs.getUserPoolId(context),
-                UploadDatasetWorker.KEY_IDENTITY_POOL_ID to UploadPrefs.getIdentityPoolId(context)
+                UploadDatasetWorker.KEY_IDENTITY_POOL_ID to UploadPrefs.getIdentityPoolId(context),
+                UploadDatasetWorker.KEY_FRAME_COUNT      to frameCount
             ))
             .addTag(zipFile.absolutePath)
             .setConstraints(constraints)
@@ -157,7 +158,7 @@ fun ContributeScreen(
             isUploading = false
             result.fold(
                 onSuccess = { zipFile ->
-                    enqueueUpload(zipFile, forceAnyNetwork = true)
+                    enqueueUpload(zipFile, stats.totalFrames, forceAnyNetwork = true)
                     refresh()
                 },
                 onFailure = { errorMessage = it.message ?: "Export failed" }
@@ -237,7 +238,7 @@ fun ContributeScreen(
     var exportsRefreshTick by remember { mutableStateOf(0) }
     val allExports = remember(stats, exportsRefreshTick) { exporter.listExports() }
     val sessionJobs = allExports.filter {
-        it.uploadStatus != UploadStatus.NOT_QUEUED && it.uploadStatus != UploadStatus.UPLOADED
+        it.uploadStatus != UploadStatus.NOT_QUEUED
     }
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
@@ -449,33 +450,37 @@ fun ContributeScreen(
                 }
             }
 
-            // Session in progress — only when there are active/failed jobs
+            // Upload history — all entries including completed uploads
             if (sessionJobs.isNotEmpty()) {
                 item {
                     HorizontalDivider()
                     Spacer(Modifier.width(4.dp))
-                    Text("Session in progress", style = MaterialTheme.typography.titleMedium)
+                    Text("Upload history", style = MaterialTheme.typography.titleMedium)
                 }
 
                 items(sessionJobs, key = { it.file.absolutePath }) { exportFile ->
+                    // History entries have no ZIP on disk; observe WorkManager only for active entries.
+                    val isHistory = !exportFile.file.exists()
                     val workInfos by WorkManager.getInstance(context)
                         .getWorkInfosByTagFlow(exportFile.file.absolutePath)
                         .collectAsState(initial = emptyList())
-                    val liveStatus = workInfos.firstOrNull()?.let { info ->
-                        when (info.state) {
-                            WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> UploadStatus.PENDING
-                            WorkInfo.State.RUNNING                          -> UploadStatus.UPLOADING
-                            WorkInfo.State.SUCCEEDED                        -> UploadStatus.UPLOADED
-                            WorkInfo.State.FAILED                           -> UploadStatus.FAILED
-                            else                                            -> null
-                        }
-                    } ?: exportFile.uploadStatus
+                    val liveStatus = if (isHistory) exportFile.uploadStatus else {
+                        workInfos.firstOrNull()?.let { info ->
+                            when (info.state) {
+                                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> UploadStatus.PENDING
+                                WorkInfo.State.RUNNING                          -> UploadStatus.UPLOADING
+                                WorkInfo.State.SUCCEEDED                        -> UploadStatus.UPLOADED
+                                WorkInfo.State.FAILED                           -> UploadStatus.FAILED
+                                else                                            -> null
+                            }
+                        } ?: exportFile.uploadStatus
+                    }
 
                     UploadJobCard(
                         item = exportFile,
                         uploadStatus = liveStatus,
-                        onRetry = { enqueueUpload(exportFile.file, forceAnyNetwork = true); refresh() },
-                        onSucceeded = { exportsRefreshTick++ }
+                        onRetry = { enqueueUpload(exportFile.file, exportFile.frameCount, forceAnyNetwork = true); refresh() },
+                        onSucceeded = if (isHistory) null else ({ exportsRefreshTick++ })
                     )
                 }
             }
@@ -488,10 +493,10 @@ private fun UploadJobCard(
     item: DatasetExporter.ExportFile,
     uploadStatus: UploadStatus,
     onRetry: () -> Unit,
-    onSucceeded: () -> Unit
+    onSucceeded: (() -> Unit)?
 ) {
     LaunchedEffect(uploadStatus) {
-        if (uploadStatus == UploadStatus.UPLOADED) onSucceeded()
+        if (uploadStatus == UploadStatus.UPLOADED) onSucceeded?.invoke()
     }
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -499,10 +504,16 @@ private fun UploadJobCard(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Text(
-                "${formatBytes(item.sizeBytes)} · ${formatDate(item.createdAt)}",
-                style = MaterialTheme.typography.bodySmall
-            )
+            val subtitle = when {
+                uploadStatus == UploadStatus.UPLOADED -> buildString {
+                    if (item.frameCount > 0) append("${item.frameCount} frames · ")
+                    append(formatDate(item.uploadedAt ?: item.createdAt))
+                }
+                item.sizeBytes > 0 ->
+                    "${formatBytes(item.sizeBytes)} · ${formatDate(item.createdAt)}"
+                else -> formatDate(item.createdAt)
+            }
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -532,6 +543,11 @@ private fun UploadJobCard(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                         ) { Text("Retry", style = MaterialTheme.typography.labelSmall) }
                     }
+                    UploadStatus.UPLOADED -> Text(
+                        "✓ Uploaded",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     else -> {}
                 }
             }
