@@ -9,7 +9,7 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Optional beep alert on detection
 - Training data collection — opt-in toggle saves detected frames as a YOLO dataset directly on device; frame files named `<date>_<time>_<seq>` with capture timestamp; configurable storage quota (default 500 MB) with 80%/100% banners
 - Dataset editor — review collected frames in read-only view mode; tap ✏ to enter edit mode and correct bounding boxes (move, resize, add, delete) with pinch-to-zoom; discard or save changes explicitly
-- Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket via pre-signed URL; manual upload button or automatic daily upload at a configurable time (default 02:00); respects Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload
+- Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket; users register and sign in with email + password (Cognito User Pool); upload requests are SigV4-signed using short-lived STS credentials from a Cognito Identity Pool; manual upload button or automatic daily upload at a configurable time (default 02:00); respects Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload
 - Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
 - Multiple models selectable; custom `.tflite` import; per-model confidence threshold
 - Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
@@ -84,7 +84,6 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
-- **Upload authentication (Android client)** — sign-up / sign-in screens, SRP auth, SigV4-signed upload requests. AWS infrastructure (Cognito User Pool + Identity Pool, IAM-protected API Gateway) is complete; Android client implementation is pending.
 - **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 

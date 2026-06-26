@@ -83,7 +83,11 @@ fun ContributeScreen(
     autoUploadTime: String,
     onAutoUploadTimeChange: (String) -> Unit,
     autoUploadLastDate: String?,
-    deviceId: String
+    deviceId: String,
+    isSignedIn: Boolean,
+    signedInEmail: String,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
     val exporter = remember { DatasetExporter(context) }
@@ -116,7 +120,7 @@ fun ContributeScreen(
 
 
 
-    val uploadConfigured = uploadServiceUrl.isNotBlank()
+    val uploadConfigured = uploadServiceUrl.isNotBlank() && isSignedIn
 
     fun refresh() {
         stats = exporter.readStats()
@@ -127,9 +131,12 @@ fun ContributeScreen(
         val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
         val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
             .setInputData(workDataOf(
-                UploadDatasetWorker.KEY_ZIP_PATH   to zipFile.absolutePath,
-                UploadDatasetWorker.KEY_DEVICE_ID  to deviceId,
-                UploadDatasetWorker.KEY_UPLOAD_URL to uploadServiceUrl
+                UploadDatasetWorker.KEY_ZIP_PATH         to zipFile.absolutePath,
+                UploadDatasetWorker.KEY_DEVICE_ID        to deviceId,
+                UploadDatasetWorker.KEY_UPLOAD_URL       to uploadServiceUrl,
+                UploadDatasetWorker.KEY_USER_ID          to UploadPrefs.getCognitoUserId(context),
+                UploadDatasetWorker.KEY_USER_POOL_ID     to UploadPrefs.getUserPoolId(context),
+                UploadDatasetWorker.KEY_IDENTITY_POOL_ID to UploadPrefs.getIdentityPoolId(context)
             ))
             .addTag(zipFile.absolutePath)
             .setConstraints(constraints)
@@ -335,6 +342,38 @@ fun ContributeScreen(
                     ) {
                         Text("Upload configuration", style = MaterialTheme.typography.titleSmall)
 
+                        // Auth status
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                if (isSignedIn) {
+                                    Text("Signed in", style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        signedInEmail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Text("Not signed in", style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "Sign in to enable upload",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (isSignedIn) {
+                                TextButton(onClick = onSignOut) { Text("Sign out") }
+                            } else {
+                                TextButton(onClick = onSignIn) { Text("Sign in") }
+                            }
+                        }
+
+                        HorizontalDivider()
+
                         OutlinedTextField(
                             value = uploadServiceUrl,
                             onValueChange = onUploadServiceUrlChange,
@@ -378,7 +417,6 @@ fun ContributeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
                     }
                 }
             }
@@ -401,9 +439,10 @@ fun ContributeScreen(
                     } else {
                         Text(
                             when {
-                                stats.totalFrames == 0 -> "No data yet"
-                                !uploadConfigured      -> "Configure upload URL first"
-                                else                   -> "Upload collected data"
+                                stats.totalFrames == 0    -> "No data yet"
+                                !isSignedIn               -> "Sign in to upload"
+                                uploadServiceUrl.isBlank() -> "Configure upload URL first"
+                                else                      -> "Upload collected data"
                             }
                         )
                     }

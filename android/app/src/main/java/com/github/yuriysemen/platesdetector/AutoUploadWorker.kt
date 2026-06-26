@@ -29,8 +29,14 @@ class AutoUploadWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val uploadUrl = UploadPrefs.getUploadUrl(applicationContext)
-        if (uploadUrl.isBlank()) return@withContext Result.failure()
+        val uploadUrl     = UploadPrefs.getUploadUrl(applicationContext)
+        val userId        = UploadPrefs.getCognitoUserId(applicationContext)
+        val userPoolId    = UploadPrefs.getUserPoolId(applicationContext)
+        val identityPoolId = UploadPrefs.getIdentityPoolId(applicationContext)
+
+        if (uploadUrl.isBlank() || userId.isBlank() || userPoolId.isBlank() || identityPoolId.isBlank()) {
+            return@withContext Result.failure()
+        }
 
         val exporter = DatasetExporter(applicationContext)
         val frameCount = exporter.readStats().totalFrames
@@ -48,11 +54,14 @@ class AutoUploadWorker(
 
         val uploadRequest = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
             .setInputData(workDataOf(
-                UploadDatasetWorker.KEY_ZIP_PATH      to zipFile.absolutePath,
-                UploadDatasetWorker.KEY_DEVICE_ID     to deviceId,
-                UploadDatasetWorker.KEY_UPLOAD_URL    to uploadUrl,
-                UploadDatasetWorker.KEY_FRAME_COUNT   to frameCount,
-                UploadDatasetWorker.KEY_IS_AUTO_UPLOAD to true,
+                UploadDatasetWorker.KEY_ZIP_PATH         to zipFile.absolutePath,
+                UploadDatasetWorker.KEY_DEVICE_ID        to deviceId,
+                UploadDatasetWorker.KEY_UPLOAD_URL       to uploadUrl,
+                UploadDatasetWorker.KEY_USER_ID          to userId,
+                UploadDatasetWorker.KEY_USER_POOL_ID     to userPoolId,
+                UploadDatasetWorker.KEY_IDENTITY_POOL_ID to identityPoolId,
+                UploadDatasetWorker.KEY_FRAME_COUNT      to frameCount,
+                UploadDatasetWorker.KEY_IS_AUTO_UPLOAD   to true,
             ))
             .addTag(zipFile.absolutePath)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType).build())

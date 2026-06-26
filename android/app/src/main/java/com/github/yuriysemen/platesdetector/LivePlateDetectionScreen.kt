@@ -239,6 +239,41 @@ internal object UploadPrefs {
     fun setAutoUploadLastDate(context: Context, date: String) {
         prefs(context).edit { putString(KEY_AUTO_UPLOAD_LAST_DATE, date) }
     }
+
+    private const val KEY_USER_POOL_ID     = "cognito_user_pool_id"
+    private const val KEY_APP_CLIENT_ID    = "cognito_app_client_id"
+    private const val KEY_IDENTITY_POOL_ID = "cognito_identity_pool_id"
+    private const val KEY_COGNITO_USER_ID  = "cognito_user_id"
+    private const val KEY_COGNITO_USER_EMAIL = "cognito_user_email"
+
+    fun getUserPoolId(context: Context): String =
+        prefs(context).getString(KEY_USER_POOL_ID, "") ?: ""
+    fun setUserPoolId(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_USER_POOL_ID, v) }
+
+    fun getAppClientId(context: Context): String =
+        prefs(context).getString(KEY_APP_CLIENT_ID, "") ?: ""
+    fun setAppClientId(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_APP_CLIENT_ID, v) }
+
+    fun getIdentityPoolId(context: Context): String =
+        prefs(context).getString(KEY_IDENTITY_POOL_ID, "") ?: ""
+    fun setIdentityPoolId(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_IDENTITY_POOL_ID, v) }
+
+    fun getCognitoUserId(context: Context): String =
+        prefs(context).getString(KEY_COGNITO_USER_ID, "") ?: ""
+    fun setCognitoUserId(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_COGNITO_USER_ID, v) }
+    fun clearCognitoUserId(context: Context) =
+        prefs(context).edit { remove(KEY_COGNITO_USER_ID) }
+
+    fun getCognitoUserEmail(context: Context): String =
+        prefs(context).getString(KEY_COGNITO_USER_EMAIL, "") ?: ""
+    fun setCognitoUserEmail(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_COGNITO_USER_EMAIL, v) }
+    fun clearCognitoUserEmail(context: Context) =
+        prefs(context).edit { remove(KEY_COGNITO_USER_EMAIL) }
 }
 
 private fun customModelsDir(context: Context): File =
@@ -639,6 +674,10 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     val autoUploadLastDate = remember {
         UploadPrefs.getAutoUploadLastDate(context)
     }
+    val authManager = remember { CognitoAuthManager(context) }
+var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
+    var signedInEmail by rememberSaveable { mutableStateOf(authManager.currentUserEmail()) }
+    var showAuth by rememberSaveable { mutableStateOf(false) }
     val deviceId = remember {
         DatasetExporter.computeDeviceId(
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
@@ -653,6 +692,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        AppConfig.seedPrefsIfNeeded(context)
         if (openContribute) showExport = true
         AutoUploadWorker.schedule(context)
         withContext(Dispatchers.IO) {
@@ -716,8 +756,17 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
 
     val selected = models.firstOrNull { it.id == selectedId }
 
-    if (showSettings || selected == null || !isModelEnabled) {
+    if (showSettings || selected == null || !isModelEnabled || showAuth) {
         when {
+            showAuth -> AuthScreen(
+                authManager = authManager,
+                onSignedIn = { userId ->
+                    isSignedIn = true
+                    signedInEmail = authManager.currentUserEmail()
+                    showAuth = false
+                },
+                onCancel = { showAuth = false }
+            )
             showEditor -> DatasetEditorScreen(onBack = { showEditor = false })
             showExport -> ContributeScreen(
                 onBack = { showExport = false },
@@ -746,7 +795,16 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     AutoUploadWorker.schedule(context)
                 },
                 autoUploadLastDate = autoUploadLastDate,
-                deviceId = deviceId
+                deviceId = deviceId,
+                isSignedIn = isSignedIn,
+                signedInEmail = signedInEmail,
+                onSignIn = { showAuth = true },
+                onSignOut = {
+                    authManager.signOut()
+                    isSignedIn = false
+                    signedInEmail = ""
+                    AutoUploadWorker.cancel(context)
+                }
             )
             else -> SettingsScreen(
                 models = models,

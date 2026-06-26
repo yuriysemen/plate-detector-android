@@ -7,11 +7,16 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.amazonaws.DefaultRequest
+import com.amazonaws.auth.AWS4Signer
+import com.amazonaws.auth.AWSSessionCredentials
+import com.amazonaws.http.HttpMethodName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 class UploadDatasetWorker(
@@ -20,19 +25,25 @@ class UploadDatasetWorker(
 ) : CoroutineWorker(context, params) {
 
     companion object {
-        const val KEY_ZIP_PATH       = "zip_path"
-        const val KEY_DEVICE_ID      = "device_id"
-        const val KEY_UPLOAD_URL     = "upload_url"
-        const val KEY_FRAME_COUNT    = "frame_count"
-        const val KEY_IS_AUTO_UPLOAD = "is_auto_upload"
-        const val MAX_ATTEMPTS       = 5
+        const val KEY_ZIP_PATH          = "zip_path"
+        const val KEY_DEVICE_ID         = "device_id"
+        const val KEY_UPLOAD_URL        = "upload_url"
+        const val KEY_USER_ID           = "user_id"
+        const val KEY_IDENTITY_POOL_ID  = "identity_pool_id"
+        const val KEY_USER_POOL_ID      = "user_pool_id"
+        const val KEY_FRAME_COUNT       = "frame_count"
+        const val KEY_IS_AUTO_UPLOAD    = "is_auto_upload"
+        const val MAX_ATTEMPTS          = 5
         private const val NOTIFICATION_ID = 1001
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val zipPath   = inputData.getString(KEY_ZIP_PATH)   ?: return@withContext Result.failure()
-        val deviceId  = inputData.getString(KEY_DEVICE_ID)  ?: return@withContext Result.failure()
-        val uploadUrl = inputData.getString(KEY_UPLOAD_URL) ?: return@withContext Result.failure()
+        val zipPath       = inputData.getString(KEY_ZIP_PATH)         ?: return@withContext Result.failure()
+        val deviceId      = inputData.getString(KEY_DEVICE_ID)        ?: return@withContext Result.failure()
+        val uploadUrl     = inputData.getString(KEY_UPLOAD_URL)       ?: return@withContext Result.failure()
+        val userId        = inputData.getString(KEY_USER_ID)          ?: return@withContext Result.failure()
+        val identityPoolId = inputData.getString(KEY_IDENTITY_POOL_ID) ?: return@withContext Result.failure()
+        val userPoolId    = inputData.getString(KEY_USER_POOL_ID)     ?: return@withContext Result.failure()
 
         val zipFile = File(zipPath)
         if (!zipFile.exists()) return@withContext Result.failure()
@@ -40,13 +51,30 @@ class UploadDatasetWorker(
         val exporter = DatasetExporter(applicationContext)
         exporter.writeUploadStatus(zipFile, UploadStatus.UPLOADING)
 
+        // Obtain short-lived STS credentials via the Cognito Identity Pool.
+        // SessionExpiredException means the user must sign in again — don't retry.
+        val credentials = try {
+            CognitoAuthManager(applicationContext).getAwsCredentials()
+        } catch (e: SessionExpiredException) {
+            exporter.writeUploadStatus(zipFile, UploadStatus.FAILED)
+            return@withContext Result.failure()
+        } catch (e: Exception) {
+            return@withContext retry(exporter, zipFile)
+        }
+
+        val region = regionFromUrl(uploadUrl).ifEmpty { identityPoolId.substringBefore(":") }
+
         return@withContext try {
-            var presignedUrl = requestPresignedUrl(uploadUrl, zipFile.name, deviceId)
+            var presignedUrl = requestPresignedUrl(
+                uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
+            )
             var putSucceeded = putZip(presignedUrl, zipFile)
 
             if (!putSucceeded) {
                 // 403: presigned URL expired — re-request once and retry the PUT
-                presignedUrl = requestPresignedUrl(uploadUrl, zipFile.name, deviceId)
+                presignedUrl = requestPresignedUrl(
+                    uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
+                )
                 putSucceeded = putZip(presignedUrl, zipFile)
             }
 
@@ -94,20 +122,48 @@ class UploadDatasetWorker(
         }
 
     // Returns the presigned upload URL from the Lambda endpoint.
+    // The request is SigV4-signed using short-lived STS credentials from the Identity Pool.
     // Throws on network error or non-2xx response.
-    private fun requestPresignedUrl(baseUrl: String, filename: String, deviceId: String): String {
-        val conn = URL("$baseUrl/get-upload-url").openConnection() as HttpURLConnection
+    private fun requestPresignedUrl(
+        baseUrl: String,
+        filename: String,
+        deviceId: String,
+        userId: String,
+        userPoolId: String,
+        identityPoolId: String,
+        credentials: AWSSessionCredentials,
+        region: String
+    ): String {
+        val targetUrl  = "$baseUrl/get-upload-url"
+        val bodyBytes  = JSONObject()
+            .put("filename", filename)
+            .put("device_id", deviceId)
+            .put("user_id", userId)
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+
+        val parsedUrl  = URL(targetUrl)
+        val sdkRequest = DefaultRequest<Any>("execute-api").apply {
+            httpMethod   = HttpMethodName.POST
+            endpoint     = URI("${parsedUrl.protocol}://${parsedUrl.host}")
+            resourcePath = parsedUrl.path
+            addHeader("Content-Type", "application/json")
+            content      = bodyBytes.inputStream()
+        }
+        AWS4Signer().apply {
+            setServiceName("execute-api")
+            setRegionName(region)
+        }.sign(sdkRequest, credentials)
+
+        val conn = URL(targetUrl).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
+            // Apply all signed headers (Authorization, X-Amz-Date, X-Amz-Security-Token, Content-Type)
+            sdkRequest.headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
             conn.connectTimeout = 15_000
-            conn.readTimeout = 15_000
-            conn.doOutput = true
-            val body = JSONObject()
-                .put("filename", filename)
-                .put("device_id", deviceId)
-                .toString()
-            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            conn.readTimeout    = 15_000
+            conn.doOutput       = true
+            conn.outputStream.use { it.write(bodyBytes) }
             if (conn.responseCode !in 200..299) {
                 throw Exception("get-upload-url HTTP ${conn.responseCode}")
             }
@@ -118,6 +174,10 @@ class UploadDatasetWorker(
             conn.disconnect()
         }
     }
+
+    private fun regionFromUrl(url: String): String =
+        Regex("""execute-api\.([a-z0-9-]+)\.amazonaws\.com""")
+            .find(url)?.groupValues?.get(1) ?: ""
 
     // Returns true on HTTP 200, false on 403 (expired URL), throws on other failures.
     private fun putZip(presignedUrl: String, zipFile: File): Boolean {

@@ -10,15 +10,16 @@ Single-Activity, fully Jetpack Compose app. No navigation library — navigation
 MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
         ├── NoModelsScreen              (no .tflite assets found)
-        ├── SettingsScreen              (model picker + sliders + OCR toggle + Contribute data row)
-        ├── ContributeScreen            (stats card with storage/quota/view/reset; upload config with auto-upload time; manual upload button; session in progress)
+        ├── AuthScreen                  (sign-up / sign-in / verify email; Cognito SRP + email code)
+        ├── SettingsScreen              (model picker + sliders + Contribute data row)
+        ├── ContributeScreen            (stats card; auth status + sign-in/out; upload config; manual upload button; session in progress)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)
               └── CameraPreviewWithAnalysis   (CameraX binding)
 ```
 
-`LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `isModelEnabled`, `selectedId`). When no model is selected on first launch it opens Settings automatically. `ContributeScreen` is shown instead of `SettingsScreen` when `showExport` is true.
+`LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `showAuth`, `isModelEnabled`, `selectedId`). `showAuth` takes priority in the `when` block — it renders `AuthScreen` from anywhere in the flow. When no model is selected on first launch it opens Settings automatically. `ContributeScreen` is shown when `showExport` is true.
 
 `ContributeScreen` owns the sub-navigation to `DatasetEditorScreen` via a local state flag. `DatasetEditorScreen` owns the sub-navigation to `FrameDetailScreen` via a `openFrame: FrameEntry?` state — when non-null the detail screen renders in place of the grid.
 
@@ -101,7 +102,9 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
-| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date) |
+| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
+| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions: `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
+| `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
 | `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; lists/deletes export files; reads/writes per-ZIP upload status sidecar; `exportSync()` for WorkManager callers |
@@ -138,8 +141,9 @@ Two `CoroutineWorker` classes handle dataset upload off the main thread:
 One instance per export ZIP. Enqueued immediately after a ZIP is created (both manual and auto-upload paths). Unique work name = ZIP file path (prevents duplicate uploads).
 
 Flow:
-1. POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Request must be SigV4-signed using STS credentials obtained from the Cognito Identity Pool (pending: Android client auth not yet implemented).
-2. PUT the ZIP binary to the pre-signed URL.
+1. Obtain short-lived STS credentials via `CognitoAuthManager.getAwsCredentials()` (exchanges current ID token via the Identity Pool). Throws `SessionExpiredException` → immediate `Result.failure()` if refresh token expired.
+2. SigV4-sign a POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Signing uses `AWS4Signer` from `aws-android-sdk-core`.
+3. PUT the ZIP binary to the pre-signed URL.
 3. On S3 HTTP 200: delete the local ZIP, update sidecar to `UPLOADED`, post a notification if `KEY_IS_AUTO_UPLOAD == true`.
 4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
 5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
@@ -151,9 +155,9 @@ Network constraint: `UNMETERED` (Wi-Fi) unless "Upload on mobile data" is on (`C
 Scheduled as a `PeriodicWorkRequest` (24 h period, ±30 min flex). Registered by `AutoUploadWorker.schedule(context)` whenever upload settings change or the app starts. Cancelled when the upload URL is cleared or contribution is disabled.
 
 Flow:
-1. Skip if URL is blank or `total_frames == 0`.
+1. Skip if URL is blank, `user_id` is empty, or `total_frames == 0`.
 2. Call `exportSync()` — packages frames into a ZIP and resets collected frames atomically.
-3. Enqueue `UploadDatasetWorker` with `KEY_IS_AUTO_UPLOAD = true`.
+3. Enqueue `UploadDatasetWorker` with `KEY_IS_AUTO_UPLOAD = true` and the three auth keys (`KEY_USER_ID`, `KEY_USER_POOL_ID`, `KEY_IDENTITY_POOL_ID`).
 4. Write today's date to `auto_upload_last_date`.
 
 `runCatchUpIfNeeded()` is called in `LaunchedEffect(Unit)` on every app start. It enqueues a one-shot `AutoUploadWorker` if the URL is configured, frames exist, today's date is not in `auto_upload_last_date`, and the network constraint is currently satisfied — covering the case where the device was offline at the scheduled time.

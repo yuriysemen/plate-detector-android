@@ -3,6 +3,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -14,6 +15,12 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_17)
     }
 }
+
+val localProperties = Properties().also { props ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
+}
+fun localProp(key: String) = localProperties.getProperty(key, "")
 
 val modelReleaseBaseUrl = "https://github.com/yuriysemen/plate-detector-android/releases/latest/download"
 
@@ -104,6 +111,11 @@ android {
         versionName = "0.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "COGNITO_USER_POOL_ID",   "\"${localProp("COGNITO_USER_POOL_ID")}\"")
+        buildConfigField("String", "COGNITO_APP_CLIENT_ID",  "\"${localProp("COGNITO_APP_CLIENT_ID")}\"")
+        buildConfigField("String", "COGNITO_IDENTITY_POOL_ID","\"${localProp("COGNITO_IDENTITY_POOL_ID")}\"")
+        buildConfigField("String", "UPLOAD_SERVICE_URL",     "\"${localProp("UPLOAD_SERVICE_URL")}\"")
     }
     val releaseSigningConfig = if (hasSigningEnv) {
         signingConfigs.create("release") {
@@ -131,6 +143,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     androidResources {
         noCompress.add("tflite")
@@ -164,6 +177,8 @@ dependencies {
 
     implementation(libs.tensorflow.lite)
     implementation(libs.mlkit.text.recognition)
+
+    implementation(libs.aws.cognitoidentityprovider)
 
     testImplementation(libs.junit)
 
