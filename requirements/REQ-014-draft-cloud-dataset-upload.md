@@ -183,7 +183,8 @@ ContributeScreen observes job state via `getWorkInfosByTagFlow` and maps `WorkIn
 - [x] A 200 response from S3 deletes the local ZIP and removes the item from "Session in progress".
 - [x] If the pre-signed URL is expired (S3 returns 403), the worker re-requests a new URL and retries.
 - [x] `SessionExpiredException` causes immediate `Result.failure()` (no retry).
-- [x] Upload respects the "Upload on mobile data" toggle (UNMETERED vs CONNECTED constraint).
+- [x] Manual upload ("Upload collected data" button) and "Retry" always use `CONNECTED` (any network, including mobile data).
+- [x] Auto-upload respects the "Upload on mobile data" toggle (UNMETERED vs CONNECTED constraint).
 - [x] Retry policy: up to `MAX_ATTEMPTS = 5` with exponential backoff.
 
 ### ContributeScreen status

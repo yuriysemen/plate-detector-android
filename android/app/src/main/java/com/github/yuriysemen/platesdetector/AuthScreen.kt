@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,7 +45,7 @@ import androidx.compose.ui.unit.dp
 
 private enum class AuthMode { SIGN_IN, SIGN_UP, CONFIRM }
 
-private fun friendlyAuthError(e: Exception): String = when (e.javaClass.simpleName) {
+private fun friendlyAuthError(e: Throwable): String = when (e.javaClass.simpleName) {
     "UsernameExistsException"    -> "An account with this email already exists. Try signing in instead."
     "InvalidPasswordException"   -> e.message
         ?.substringAfter("failed to satisfy constraint: ", "")
@@ -65,7 +66,7 @@ private fun friendlyAuthError(e: Exception): String = when (e.javaClass.simpleNa
     "UnknownHostException",
     "SocketTimeoutException"     -> "No internet connection."
     "IllegalArgumentException"   -> e.message ?: "Invalid input."
-    else                         -> e.message?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred."
+    else                         -> e.message?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred (${e.javaClass.simpleName})."
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,7 +103,9 @@ fun AuthScreen(
         scope.launch {
             try {
                 block()
-            } catch (e: Exception) {
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
                 errorMessage = friendlyAuthError(e)
             } finally {
                 isLoading = false

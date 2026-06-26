@@ -103,7 +103,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
 | `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
-| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions: `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
+| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
@@ -148,7 +148,9 @@ Flow:
 4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
 5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
 
-Network constraint: `UNMETERED` (Wi-Fi) unless "Upload on mobile data" is on (`CONNECTED`).
+Network constraint depends on the trigger:
+- **Manual upload / Retry**: always `CONNECTED` (any network, including mobile data) — the user explicitly requested the upload now.
+- **Auto-upload** (`AutoUploadWorker`): `UNMETERED` (Wi-Fi only) unless "Upload on mobile data" is on (`CONNECTED`).
 
 ### `AutoUploadWorker`
 

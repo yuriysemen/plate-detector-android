@@ -20,11 +20,11 @@ import com.amazonaws.mobileconnectors.cognitoidentityprovider.handlers.Verificat
 import com.amazonaws.services.cognitoidentityprovider.model.SignUpResult
 import com.amazonaws.regions.Regions
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 class CognitoAuthManager(private val context: Context) {
 
@@ -64,7 +64,7 @@ class CognitoAuthManager(private val context: Context) {
     suspend fun signUp(email: String, password: String): Unit = withContext(Dispatchers.IO) {
         val p = requirePool()
         val attrs = CognitoUserAttributes().apply { addAttribute("email", email) }
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             p.signUpInBackground(email, password, attrs, null, object : SignUpHandler {
                 override fun onSuccess(user: CognitoUser, result: SignUpResult) {
                     cont.resume(Unit)
@@ -80,7 +80,7 @@ class CognitoAuthManager(private val context: Context) {
 
     suspend fun resendConfirmationCode(email: String): Unit = withContext(Dispatchers.IO) {
         val user = requirePool().getUser(email)
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             user.resendConfirmationCodeInBackground(object : VerificationHandler {
                 override fun onSuccess(verificationCodeDeliveryMedium: com.amazonaws.mobileconnectors.cognitoidentityprovider.CognitoUserCodeDeliveryDetails) {
                     cont.resume(Unit)
@@ -94,7 +94,7 @@ class CognitoAuthManager(private val context: Context) {
 
     suspend fun confirmSignUp(email: String, code: String): Unit = withContext(Dispatchers.IO) {
         val user = requirePool().getUser(email)
-        suspendCoroutine { cont ->
+        suspendCancellableCoroutine { cont ->
             user.confirmSignUpInBackground(code, false, object : GenericHandler {
                 override fun onSuccess() { cont.resume(Unit) }
                 override fun onFailure(exception: Exception) { cont.resumeWithException(exception) }
@@ -107,7 +107,7 @@ class CognitoAuthManager(private val context: Context) {
     // Returns the Cognito sub (user ID) on success; saves email + sub to prefs.
     suspend fun signIn(email: String, password: String): String = withContext(Dispatchers.IO) {
         val user = requirePool().getUser(email)
-        val session = suspendCoroutine { cont ->
+        val session = suspendCancellableCoroutine { cont ->
             user.getSessionInBackground(object : AuthenticationHandler {
                 override fun onSuccess(userSession: CognitoUserSession, newDevice: CognitoDevice?) {
                     cont.resume(userSession)
@@ -148,7 +148,7 @@ class CognitoAuthManager(private val context: Context) {
     suspend fun getIdToken(): String = withContext(Dispatchers.IO) {
         val currentUser = requirePool().currentUser
             ?: throw SessionExpiredException("No current user — please sign in")
-        val session = suspendCoroutine { cont ->
+        val session = suspendCancellableCoroutine { cont ->
             currentUser.getSessionInBackground(object : AuthenticationHandler {
                 override fun onSuccess(userSession: CognitoUserSession, newDevice: CognitoDevice?) {
                     cont.resume(userSession)

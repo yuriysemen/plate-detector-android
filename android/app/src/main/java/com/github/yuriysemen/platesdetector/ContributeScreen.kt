@@ -126,8 +126,8 @@ fun ContributeScreen(
         stats = exporter.readStats()
     }
 
-    fun enqueueUpload(zipFile: java.io.File) {
-        val networkType = if (uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
+    fun enqueueUpload(zipFile: java.io.File, forceAnyNetwork: Boolean = false) {
+        val networkType = if (forceAnyNetwork || uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
         val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
         val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
             .setInputData(workDataOf(
@@ -157,7 +157,7 @@ fun ContributeScreen(
             isUploading = false
             result.fold(
                 onSuccess = { zipFile ->
-                    enqueueUpload(zipFile)
+                    enqueueUpload(zipFile, forceAnyNetwork = true)
                     refresh()
                 },
                 onFailure = { errorMessage = it.message ?: "Export failed" }
@@ -474,7 +474,7 @@ fun ContributeScreen(
                     UploadJobCard(
                         item = exportFile,
                         uploadStatus = liveStatus,
-                        onRetry = { enqueueUpload(exportFile.file); refresh() },
+                        onRetry = { enqueueUpload(exportFile.file, forceAnyNetwork = true); refresh() },
                         onSucceeded = { exportsRefreshTick++ }
                     )
                 }
