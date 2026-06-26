@@ -79,7 +79,8 @@
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
-### Training data collection (requirements: REQ-007)
+### Training data collection (requirements: REQ-007, REQ-020)
+- [x] **Manual frame capture** — `CameraAlt` button in top bar; visible only when collection is on; saves latest analyzed frame via `TrainingDataSaver.saveFrameManual()` with empty label file (missed-plate marker, `total_frames` +1); toast "Frame saved"; 1 s cooldown with 35% alpha dimming; quota-full guard shows toast without cooldown; empty-label frames distinguishable from auto-detected frames (always ≥ 1 annotation) (REQ-020)
 - [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
 
 ### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)

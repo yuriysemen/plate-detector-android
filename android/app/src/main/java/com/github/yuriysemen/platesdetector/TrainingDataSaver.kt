@@ -91,6 +91,34 @@ class TrainingDataSaver(context: Context) {
         manifestFile.writeText(json.toString(2))
     }
 
+    /** Saves a frame with an empty label file — used for manually captured missed-plate cases. */
+    fun saveFrameManual(bitmap: Bitmap, appVersion: String, modelId: String) {
+        ensureInit()
+        val seq = nextSeq++
+        val captureTime = Date()
+        val name = "${filenameDateFormat.format(captureTime)}_${"%06d".format(seq)}"
+        val now = isoFormat.format(captureTime)
+        if (collectedFrom == null) collectedFrom = now
+
+        FileOutputStream(File(imagesDir, "$name.jpg")).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        }
+        File(labelsDir, "$name.txt").writeText("")
+
+        totalFrames++
+
+        val json = JSONObject()
+        json.put("app_version", appVersion)
+        json.put("model_id", modelId)
+        json.put("collected_from", collectedFrom)
+        json.put("collected_to", now)
+        json.put("total_frames", totalFrames)
+        json.put("total_detections", totalDetections)
+        json.put("multi_detection_frames", multiDetectionFrames)
+        json.put("next_seq", nextSeq)
+        manifestFile.writeText(json.toString(2))
+    }
+
     fun reset() {
         imagesDir.listFiles()?.forEach { it.delete() }
         labelsDir.listFiles()?.forEach { it.delete() }

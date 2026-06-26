@@ -83,6 +83,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.runtime.rememberCoroutineScope
+import android.widget.Toast
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 // ------------------------
@@ -963,6 +967,10 @@ private fun LiveDetectionUi(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" }.getOrDefault("")
     }
 
+    val scope = rememberCoroutineScope()
+    var latestFrame by remember { mutableStateOf<Bitmap?>(null) }
+    var captureOnCooldown by remember { mutableStateOf(false) }
+
     var storageUsageBytes by remember { mutableLongStateOf(0L) }
     val quotaBytes = storageQuotaMb.toLong() * 1024L * 1024L
     val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
@@ -1167,7 +1175,12 @@ private fun LiveDetectionUi(
                             lastFrameW = w
                             lastFrameH = h
                             lastMs = ms
-                        }
+                        },
+                        onLatestFrame = if (collectTrainingData) { bmp ->
+                            val old = latestFrame
+                            latestFrame = bmp
+                            old?.recycle()
+                        } else null
                     )
                 }
 
@@ -1416,14 +1429,45 @@ private fun LiveDetectionUi(
                         color = Color.White
                     )
 
-                    val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
-                    if (hasFlash) {
-                        IconButton(onClick = { torchEnabled = !torchEnabled }) {
-                            Icon(
-                                imageVector = if (torchEnabled) Icons.Default.FlashlightOff else Icons.Default.FlashlightOn,
-                                contentDescription = if (torchEnabled) "Turn off torch" else "Turn on torch",
-                                tint = if (torchEnabled) Color.Yellow else Color.White
-                            )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (collectTrainingData) {
+                            val captureEnabled = !captureOnCooldown && latestFrame != null
+                            IconButton(
+                                onClick = {
+                                    if (captureOnCooldown) return@IconButton
+                                    val frame = latestFrame ?: return@IconButton
+                                    if (quotaReached) {
+                                        Toast.makeText(context, "Storage quota full", Toast.LENGTH_SHORT).show()
+                                        return@IconButton
+                                    }
+                                    captureOnCooldown = true
+                                    scope.launch(Dispatchers.IO) {
+                                        trainingSaver.saveFrameManual(frame, appVersion, spec.id)
+                                    }
+                                    Toast.makeText(context, "Frame saved", Toast.LENGTH_SHORT).show()
+                                    scope.launch {
+                                        delay(1_000)
+                                        captureOnCooldown = false
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Capture frame manually",
+                                    tint = if (captureEnabled) Color.White else Color.White.copy(alpha = 0.35f)
+                                )
+                            }
+                        }
+
+                        val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
+                        if (hasFlash) {
+                            IconButton(onClick = { torchEnabled = !torchEnabled }) {
+                                Icon(
+                                    imageVector = if (torchEnabled) Icons.Default.FlashlightOff else Icons.Default.FlashlightOn,
+                                    contentDescription = if (torchEnabled) "Turn off torch" else "Turn on torch",
+                                    tint = if (torchEnabled) Color.Yellow else Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -1467,7 +1511,8 @@ private fun CameraPreviewWithAnalysis(
     isDetectionEnabled: Boolean,
     onProcessingChanged: (Boolean) -> Unit,
     onCameraReady: (Camera, MeteringPointFactory) -> Unit,
-    onResult: (List<Detection>, Int, Int, Long) -> Unit
+    onResult: (List<Detection>, Int, Int, Long) -> Unit,
+    onLatestFrame: ((Bitmap) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1590,7 +1635,13 @@ private fun CameraPreviewWithAnalysis(
 
                     val ms = (System.nanoTime() - t0) / 1_000_000
 
+                    val onLatestFrameState = onLatestFrame
+                    val frameCopy = if (onLatestFrameState != null)
+                        rotated?.copy(rotated.config ?: Bitmap.Config.ARGB_8888, false)
+                    else null
+
                     mainExecutor.execute {
+                        if (frameCopy != null) onLatestFrameState?.invoke(frameCopy)
                         onResultState(dets, rotated.width, rotated.height, ms)
                     }
                 } catch (t: Throwable) {

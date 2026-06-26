@@ -42,14 +42,17 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     ├─ crop+pad bitmap to detection bounds
   │     └─ ML Kit TextRecognizer → clean alphanumeric text
   │
-  └─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
-        ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
-        ├─ if no valid lines → return (no files written)
-        ├─ write JPEG (quality 90) → filesDir/training_data/images/<YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg
-        ├─ write YOLO .txt → filesDir/training_data/labels/<YYYYMMDD>_<HHmmss>_<NNNNNN>.txt
-        │     (one line per valid detection: classId x_center y_center width height, all normalized to [0,1])
-        │     (date/time = capture wall-clock time in local timezone; NNNNNN = 6-digit monotonic counter)
-        └─ overwrite manifest.json (next_seq, total_frames, total_detections=valid annotations, multi_detection_frames, date range)
+  ├─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
+  │     ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
+  │     ├─ if no valid lines → return (no files written)
+  │     ├─ write JPEG (quality 90) → filesDir/training_data/images/<YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg
+  │     ├─ write YOLO .txt → filesDir/training_data/labels/<YYYYMMDD>_<HHmmss>_<NNNNNN>.txt
+  │     │     (one line per valid detection: classId x_center y_center width height, all normalized to [0,1])
+  │     │     (date/time = capture wall-clock time in local timezone; NNNNNN = 6-digit monotonic counter)
+  │     └─ overwrite manifest.json (next_seq, total_frames, total_detections=valid annotations, multi_detection_frames, date range)
+  │
+  └─ frame copy → onLatestFrame callback  (only when collectTrainingData; posted to main thread)
+        └─ stored as latestFrame state in LiveDetectionUi for the manual capture button
 
 Results posted to main thread → recompose overlay Canvas
 ```
@@ -82,6 +85,7 @@ The overlay `Canvas` (sibling of the camera view in a `Box`) handles:
 The top bar in `LiveDetectionUi` exposes:
 - **Settings button** (hamburger) — opens `SettingsScreen`
 - **Stats text** — zoom ratio, detection count, inference latency
+- **Manual capture button** (`CameraAlt` icon) — visible only when `collect_training_data` is on; saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); empty label files are distinguishable from auto-captured frames which always carry ≥ 1 annotation (REQ-020)
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
 
 `SettingsScreen` bottom section: **"Contribute data"** row — Switch on the right (default off; first enable shows a one-time consent dialog; `collect_training_data` + `collect_first_time_shown` prefs); tapping the row navigates to `ContributeScreen`.
@@ -106,7 +110,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; sidecar kept permanently after upload as the history record |
-| `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files |
+| `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files; `saveFrameManual()` saves a frame with an empty label file (manual missed-plate capture, `total_frames` +1, `total_detections` unchanged) |
 | `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns active entries (ZIP present) and history entries (sidecar-only, ZIP deleted after successful upload); `ExportFile` carries `frameCount`, `uploadedAt`, `s3ObjectKey`; `onUploadSuccess(zipFile, frameCount, s3ObjectKey)` writes sidecar with all four fields then deletes the ZIP; `writeUploadStatus()` / `readUploadStatus()` preserve other sidecar fields; `deleteExport()` removes ZIP + sidecar (for non-success cases); `exportSync()` for WorkManager callers |
 | `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
 | `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
