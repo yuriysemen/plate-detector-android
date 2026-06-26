@@ -116,10 +116,10 @@ Logic:
 
 | Output | Description |
 |---|---|
-| `UploadServiceUrl` | API Gateway invoke URL — paste into app Settings → Upload server URL |
-| `UserPoolId` | Cognito User Pool ID — needed by Android app to sign in users |
-| `UserPoolClientId` | Cognito App Client ID — needed by Android app (no secret) |
-| `IdentityPoolId` | Cognito Identity Pool ID — needed by Android app to get STS credentials |
+| `UploadServiceUrl` | API Gateway invoke URL — set as `UPLOAD_SERVICE_URL` in `android/local.properties` |
+| `UserPoolId` | Cognito User Pool ID — set as `COGNITO_USER_POOL_ID` in `android/local.properties` |
+| `UserPoolClientId` | Cognito App Client ID — set as `COGNITO_APP_CLIENT_ID` in `android/local.properties` |
+| `IdentityPoolId` | Cognito Identity Pool ID — set as `COGNITO_IDENTITY_POOL_ID` in `android/local.properties` |
 
 ---
 
@@ -222,6 +222,6 @@ sam delete --stack-name plate-detector-upload
 - [x] No other IAM principal (other than the Lambda execution role for PutObject) has S3 access.
 
 ### Developer experience
-- [x] `README.md` documents deploy commands, how to retrieve both `UploadServiceUrl` and `IdentityPoolId`, and where to paste them in the app.
+- [x] `README.md` documents deploy commands, how to retrieve stack outputs, and how to set them as `local.properties` keys so the Android build embeds them via `BuildConfig`.
 - [x] `samconfig.toml` is committed without secret values.
 - [x] `.gitignore` excludes `.aws-sam/` build artefacts.

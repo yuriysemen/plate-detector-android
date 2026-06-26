@@ -12,7 +12,7 @@ MainActivity
         ├── NoModelsScreen              (no .tflite assets found)
         ├── AuthScreen                  (sign-up / sign-in / verify email; Cognito SRP + email code)
         ├── SettingsScreen              (model picker + sliders + Contribute data row)
-        ├── ContributeScreen            (stats card; auth status + sign-in/out; upload config; manual upload button; session in progress)
+        ├── ContributeScreen            (stats card; auth status row + sign-in/out; upload config — mobile data toggle, daily time, last upload; manual upload button; session in progress)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)

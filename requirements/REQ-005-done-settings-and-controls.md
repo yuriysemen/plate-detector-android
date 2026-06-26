@@ -65,18 +65,18 @@ At the bottom of the card, side by side in a single row:
 
 ### Upload configuration
 
-Always visible. Required for uploads to work.
+Always visible.
 
-- **Upload server URL** — text field (URL input type). Placeholder: `https://your-api.execute-api.eu-west-1.amazonaws.com/prod`. Stored in `SharedPreferences` key `upload_service_url`.
+- **Auth status row** — shows signed-in email with a **Sign out** link, or a **Sign in** button that opens `AuthScreen`. Written after successful sign-in; cleared on sign-out.
 - **Upload on mobile data** — toggle, default off.
 - **Daily auto-upload time** — tappable row showing current scheduled time; tapping opens a 24-hour clock picker (Material3 `TimePicker`). Default 02:00. Stored in `SharedPreferences` key `auto_upload_time`. See REQ-015.
 - **Last auto-upload** — read-only line: `"Last auto-upload: YYYY-MM-DD"` or `"Not yet auto-uploaded"`. Sourced from `SharedPreferences` key `auto_upload_last_date`.
 
-A warning banner is shown if the URL field is empty: `"Upload not configured — data will be collected but not sent."`
+The upload server URL, User Pool ID, App Client ID, and Identity Pool ID are **not shown in the UI**. They are embedded at build time via `BuildConfig` fields read from `local.properties` and seeded into `UploadPrefs` on first app launch by `AppConfig.seedPrefsIfNeeded()`. No manual configuration is required or possible for end users.
 
 ### Actions
 
-- **Upload collected data** — button below the upload configuration card (enabled when `total_frames > 0` AND `upload_service_url` is non-blank). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
+- **Upload collected data** — button below the upload configuration card (enabled when `total_frames > 0` AND the user is signed in). Packages frames into a ZIP and enqueues an upload job (see REQ-014). The dataset split is always applied with default ratios (70 / 20 / 10); this is not user-configurable.
 
 ### "Session in progress" section
 
@@ -108,16 +108,15 @@ When WorkManager reports `SUCCEEDED` for a job, the item is immediately removed 
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `upload_service_url` | String | `""` | API Gateway endpoint URL |
+| `upload_service_url` | String | `""` | API Gateway endpoint URL (seeded from `BuildConfig.UPLOAD_SERVICE_URL` on first launch; not editable in UI) |
 | `upload_on_mobile_data` | Boolean | `false` | Allow uploads over metered connections |
 | `auto_upload_time` | String | `"02:00"` | Daily auto-upload time in HH:mm (24h); see REQ-015 |
 | `auto_upload_last_date` | String? | `null` | ISO date of last successful auto-upload; see REQ-015 |
-| `cognito_user_pool_id` | String | `""` | Cognito User Pool ID (e.g. `us-east-1_xxxxxxxx`); from stack output `UserPoolId` |
-| `cognito_app_client_id` | String | `""` | Cognito App Client ID; from stack output `UserPoolClientId` |
-| `cognito_identity_pool_id` | String | `""` | Cognito Identity Pool ID (e.g. `us-east-1:uuid`); from stack output `IdentityPoolId` |
+| `cognito_user_pool_id` | String | `""` | Cognito User Pool ID (seeded from `BuildConfig.COGNITO_USER_POOL_ID` on first launch; not editable in UI) |
+| `cognito_app_client_id` | String | `""` | Cognito App Client ID (seeded from `BuildConfig.COGNITO_APP_CLIENT_ID` on first launch; not editable in UI) |
+| `cognito_identity_pool_id` | String | `""` | Cognito Identity Pool ID (seeded from `BuildConfig.COGNITO_IDENTITY_POOL_ID` on first launch; not editable in UI) |
 | `cognito_user_id` | String | `""` | Cognito sub of the signed-in user; written after successful sign-in, cleared on sign-out |
-
-> The Cognito preference keys and corresponding UI fields in ContributeScreen (User Pool ID, App Client ID, Identity Pool ID inputs; sign-in/sign-up flow) are pending the Android auth client implementation (REQ-014).
+| `cognito_user_email` | String | `""` | Email of the signed-in user; shown in the auth status row; cleared on sign-out |
 
 ---
 
@@ -154,8 +153,9 @@ The following items are removed and their underlying logic must be deleted:
 - [x] Tapping the ✏ icon opens a dialog pre-filled with the current quota; saving updates `training_data_quota_mb`.
 - [x] "View dataset" and "Reset collected data" buttons are side by side at the bottom of the stats card; both disabled when `total_frames == 0`.
 - [x] No separate "Storage limit" card appears anywhere.
-- [x] Upload configuration card contains: URL field, mobile data toggle, daily auto-upload time row, last auto-upload line.
-- [x] "Upload collected data" button is disabled when `total_frames == 0` or `upload_service_url` is blank.
+- [x] Upload configuration card contains: auth status row, mobile data toggle, daily auto-upload time row, last auto-upload line.
+- [x] Auth status row shows signed-in email + Sign out, or a Sign in button when not authenticated.
+- [x] "Upload collected data" button is disabled when `total_frames == 0` or no user is signed in.
 - [x] "Session in progress" section is hidden when no jobs are active; it appears as soon as a job is enqueued.
 - [x] Completed items disappear from the list as soon as WorkManager reports SUCCEEDED; the ZIP is deleted from device storage.
 - [x] Failed items show a "Retry" button that re-enqueues the upload job.
@@ -165,10 +165,11 @@ The following items are removed and their underlying logic must be deleted:
 - [x] "Reset collected data" requires confirmation and deletes all frames under `training_data/`.
 - [x] Clearing data while collection is active resets correctly without leaving orphaned files.
 
-## Pending (Android auth client — REQ-014)
+## Completed (Android auth client — REQ-014)
 
-- [ ] Upload configuration card includes three additional fields: User Pool ID, App Client ID, Identity Pool ID.
-- [ ] ContributeScreen shows a sign-in / sign-up entry point when the user is not authenticated.
-- [ ] After successful sign-in the `cognito_user_id` pref is written; it is cleared on sign-out.
-- [ ] "Upload collected data" button is also disabled when no user is signed in.
+- [x] Cognito config (User Pool ID, App Client ID, Identity Pool ID, Upload URL) embedded via `BuildConfig` from `local.properties`; no UI fields shown to end users.
+- [x] `AppConfig.seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch from `BuildConfig`.
+- [x] ContributeScreen shows an auth status row: signed-in email + Sign out, or a Sign in button.
+- [x] After successful sign-in the `cognito_user_id` and `cognito_user_email` prefs are written; both cleared on sign-out.
+- [x] "Upload collected data" button disabled when no user is signed in (shows "Sign in to upload").
 - [ ] Privacy policy (REQ-007) updated with a formal contact address for data deletion requests.

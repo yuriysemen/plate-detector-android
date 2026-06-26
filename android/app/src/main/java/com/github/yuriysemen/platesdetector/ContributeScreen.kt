@@ -374,16 +374,6 @@ fun ContributeScreen(
 
                         HorizontalDivider()
 
-                        OutlinedTextField(
-                            value = uploadServiceUrl,
-                            onValueChange = onUploadServiceUrlChange,
-                            label = { Text("Upload server URL") },
-                            placeholder = { Text("https://…execute-api.amazonaws.com/prod") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -439,10 +429,9 @@ fun ContributeScreen(
                     } else {
                         Text(
                             when {
-                                stats.totalFrames == 0    -> "No data yet"
-                                !isSignedIn               -> "Sign in to upload"
-                                uploadServiceUrl.isBlank() -> "Configure upload URL first"
-                                else                      -> "Upload collected data"
+                                stats.totalFrames == 0 -> "No data yet"
+                                !isSignedIn            -> "Sign in to upload"
+                                else                   -> "Upload collected data"
                             }
                         )
                     }
