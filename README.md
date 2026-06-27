@@ -12,19 +12,30 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket; users register and sign in with email + password (Cognito User Pool); upload requests are SigV4-signed using short-lived STS credentials from a Cognito Identity Pool; AWS configuration is embedded at build time (no in-app URL or key entry); manual upload button works on any network (Wi-Fi or mobile); automatic daily upload at a configurable time (default 02:00) respects the Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload; upload history shows completed uploads with frame count and date — ZIP deleted from device after upload, sidecar kept as permanent local record
 - Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
 - Multiple models selectable; custom `.tflite` import; per-model confidence threshold
-- Model artifacts published via GitHub Releases (`best.pt`, `best_float16.tflite`)
+- Model artifacts published via GitHub Releases (tagged `model_v*`); signed-in users receive automatic in-app model updates from S3
 
 ## Getting a model for the Android app
-The Android app expects one or more `.tflite` files in the assets directory. When you start working on the app:
 
-1. Choose a training experiment (for example, `training/ultralytics` or `experiments/ultralytics`) and produce a `.tflite` model.
-   - Each experiment README explains how it trains, exports, and validates the model.
-2. Copy the exported `.tflite` file into the Android assets folder:
-   - Preferred location: `android/app/src/main/assets/models/`
-   - Fallback location (if no `models/` folder exists): `android/app/src/main/assets/`
-3. Rebuild the app. The UI will list all available `.tflite` files so you can choose which model to run.
+The Gradle build downloads a bundled default model automatically from the latest GitHub Release
+tagged `model_v<x.y.z>`. For a local build you have three options:
 
-> The app supports multiple models. Drop additional `.tflite` files into the assets folder and they will appear in the model picker. This is designed for future iterations of training so that you can compare or ship multiple models at once.
+**Option 1 — GitHub token (recommended):** Add to `android/local.properties` (gitignored):
+```
+MODEL_DOWNLOAD_TOKEN=ghp_<your_personal_access_token>
+```
+The token needs `repo` read scope. The build picks the latest `model_v*` release by semantic
+version.
+
+**Option 2 — Manual placement:** Copy a compatible `.tflite` (and its `.txt` sidecar) to
+`android/app/src/main/assets/models/`. The download step is skipped when the file already exists.
+
+**Option 3 — No model at build time:** If neither a token nor a local file is present, the build
+succeeds with a warning. The app installs and shows a "No detection model" screen until a model
+is downloaded at runtime after sign-in.
+
+At runtime, signed-in users automatically receive model updates from S3 (`models/v<semver>/` in
+the dataset bucket). The app checks on startup and every hour; the user confirms before any
+download is applied.
 
 ## Project structure (high level)
 - `android/` — Android application source.
@@ -84,7 +95,7 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
-- **Model auto-update** — download updated `.tflite` models from GitHub Releases without a full app update.
+- **Model auto-update** — S3-hosted models with per-version `min/max_app_version` metadata; signed-in users get the best compatible model delivered automatically (REQ-016).
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 
 See `android/ROADMAP.md` for the full backlog.

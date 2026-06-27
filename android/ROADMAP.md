@@ -95,7 +95,11 @@
 - [x] **Manual upload bypasses network preference** — "Upload collected data" button and "Retry" always use `CONNECTED` (any network including mobile data); only the scheduled auto-upload respects the "Upload on mobile data" toggle (REQ-014)
 
 ### Model update system (requirements: REQ-016)
-- [ ] **Remote model download** — fetch `model_manifest.json` from GitHub Releases; compare version; download updated `.tflite` on configured schedule (Off / On launch / Daily / Weekly); SHA-256 verification before applying; notify-before-switch or auto-apply mode; one rollback version kept; "Check now" and "Roll back" buttons in Settings (REQ-016)
+- [ ] **S3 model storage** — models stored in existing bucket under `models/v<semver>/` with `metadata.json` (REQ-016)
+- [ ] **GetModelUrl Lambda** — `GET /get-model-url?app_version=` returns compatible + latest pre-signed download URLs; SigV4 auth (REQ-016)
+- [ ] **Build fix** — GitHub API release discovery for `model_v*` tags by semver; Bearer token auth for private repo; graceful failure if no release found; `MODEL_DOWNLOAD_TOKEN` in `local.properties` for local dev (REQ-016)
+- [ ] **On-device auto-update** — check on startup + 1 h periodic (signed-in only); confirmation dialog; old downloaded model deleted on success; all downloaded models deleted on sign-out; bundled asset never deleted (REQ-016)
+- [ ] **Mobile data toggle renamed** — "Use mobile data" covers uploads and model downloads (REQ-016)
 
 ### Auto-parking settings (requirements: REQ-017)
 - [ ] **Auto-parking settings auto-configuration** — detect device capability on first enable; apply High-quality / Balanced / Efficient preset based on camera resolution and CPU cores; one-time informational banner; "Reset to recommended defaults" button in Settings (REQ-017)

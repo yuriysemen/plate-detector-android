@@ -32,13 +32,19 @@ Signed release builds require env vars: `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTO
 
 ## Model files
 
-The app requires `.tflite` model files in the assets directory. They are **gitignored** and downloaded automatically during `preBuild` from GitHub Releases (`plate_numbers.tflite` + `plate_numbers.txt`). To override, set the Gradle property `MODEL_FILES` (comma-separated filenames) or `MODEL_DOWNLOAD_TOKEN`/`GITHUB_TOKEN` for private releases.
+The `preBuild` task downloads a bundled default model from the latest GitHub Release tagged
+`model_v<x.y.z>` (semantic version, private repo). For local builds, three options:
 
-To use a locally trained model instead, copy the `.tflite` file to:
-- `app/src/main/assets/models/` (preferred), or
-- `app/src/main/assets/` (fallback)
+1. **Token in `local.properties`** (recommended) — add `MODEL_DOWNLOAD_TOKEN=ghp_<pat>` (needs
+   `repo` scope). The token is also resolved from the Gradle property `MODEL_DOWNLOAD_TOKEN` or
+   env vars `MODEL_DOWNLOAD_TOKEN` / `GITHUB_TOKEN` (set automatically in GitHub Actions).
+2. **Manual placement** — copy `.tflite` + `.txt` sidecar to
+   `app/src/main/assets/models/`; the download step is skipped when the file already exists.
+3. **No model** — if neither is available the build succeeds with a `[WARN]`; the app shows a
+   "No detection model" screen and waits for a runtime download after sign-in.
 
-A `.txt` file with the same base name is read as the model description shown in the UI.
+At runtime, signed-in users receive model updates via `GET /get-model-url` (Lambda); downloaded
+models live in `filesDir/models/downloaded/` and are deleted on sign-out.
 
 ## Architecture
 

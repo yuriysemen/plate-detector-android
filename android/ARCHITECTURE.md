@@ -63,15 +63,20 @@ Three model origins (tracked in `ModelOrigin` enum):
 
 | Origin | Storage | Deletable |
 |---|---|---|
-| `DEFAULT` | `assets/models/*.tflite` (bundled at build time, downloaded by Gradle) | No |
+| `DEFAULT` | `assets/models/*.tflite` (bundled at build time, downloaded by Gradle from latest `model_v*` GitHub Release) | No |
+| `DOWNLOADED` | `context.filesDir/models/downloaded/` (fetched at runtime via `GET /get-model-url`; one file at a time; deleted on sign-out) | Yes (on sign-out or when superseded by a newer download) |
 | `CUSTOM` | `context.filesDir/models/custom/` (imported by user) | Yes |
 | `LEGACY_EXTERNAL` | Content URI (old approach, kept for migration) | Yes (removes from prefs) |
+
+Model selection priority at runtime: `DOWNLOADED` (if file exists) → `DEFAULT` (bundled asset) → "No models" error screen.
 
 `ModelSpec` carries a `ModelSource` sealed class (`Asset`, `FilePath`, `ContentUri`) so `PlateDetector` loads from any of the three sources via memory-mapping with a `readBytes` fallback.
 
 `ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, collect-training-data flag, scan interval ms, analysis resolution, storage quota.
 
-A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings.
+`DownloadedModelPrefs` (SharedPreferences) persists: `downloaded_model_version` (semver string, empty if none), `downloaded_model_s3_key` (S3 key used for change detection).
+
+A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings. For downloaded models the sidecar is written from the `description` field in the Lambda response.
 
 ## Camera
 
@@ -106,7 +111,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
-| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data`, `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
+| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` (toggle label: **"Use mobile data"** — covers uploads and model downloads), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
 | `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; sidecar kept permanently after upload as the history record |
@@ -118,9 +123,14 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 
 ## Training data collection
 
-Collected frames are stored under `context.filesDir`:
+Collected frames and downloaded models are stored under `context.filesDir`:
 
 ```
+models/
+  downloaded/
+    plate_numbers_v0.1.0.tflite    ← active downloaded model (one at a time)
+    plate_numbers_v0.1.0.txt       ← description sidecar written from Lambda response
+
 training_data/
   images/   <YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg   (JPEG quality 90, rotated bitmap; date/time = capture time)
   labels/   <YYYYMMDD>_<HHmmss>_<NNNNNN>.txt   (YOLO format: classId xc yc w h, normalized)
@@ -140,7 +150,7 @@ exports/
 
 ## Background upload jobs (WorkManager)
 
-Two `CoroutineWorker` classes handle dataset upload off the main thread:
+Three `CoroutineWorker` classes handle background network work:
 
 ### `UploadDatasetWorker`
 
@@ -171,6 +181,20 @@ Flow:
 `runCatchUpIfNeeded()` is called in `LaunchedEffect(Unit)` on every app start. It enqueues a one-shot `AutoUploadWorker` if the URL is configured, frames exist, today's date is not in `auto_upload_last_date`, and the network constraint is currently satisfied — covering the case where the device was offline at the scheduled time.
 
 **Scheduling triggers** — `schedule()` is called after any of these pref changes: upload URL, mobile-data toggle, auto-upload time, or app start.
+
+### `ModelCheckWorker`
+
+Scheduled as a `PeriodicWorkRequest` (1-hour repeat interval). Enqueued at sign-in; cancelled at sign-out. Network constraint: `CONNECTED`; additionally `UNMETERED` when "Use mobile data" pref is `false`.
+
+Flow:
+1. Call `GET <upload_service_url>/get-model-url?app_version=<BuildConfig.VERSION_NAME>` SigV4-signed using current STS credentials.
+2. Parse `compatible` from the response. If `null` or network error: exit silently.
+3. Compare `compatible.s3_key` with `downloaded_model_s3_key` pref. If identical: no update needed.
+4. Show a confirmation dialog on the main thread. On "Later": exit.
+5. On "Update": download the `.tflite` to `filesDir/models/downloaded/<filename>.download`, then on success delete any previous downloaded model, rename temp file to final path, write the description sidecar, update prefs, and reload the detector.
+6. On download failure: show a toast and leave current model unchanged.
+
+Also run once at sign-in (startup check). If `latest.model_version > compatible.model_version` (newer model requires a higher app version), a banner is shown in Settings (display-only).
 
 **Notification**: on auto-upload success `UploadDatasetWorker` posts to the `"Dataset"` `NotificationChannel` (created in `MainActivity.onCreate`). `POST_NOTIFICATIONS` runtime permission is requested on Android 13+ at first app launch.
 
