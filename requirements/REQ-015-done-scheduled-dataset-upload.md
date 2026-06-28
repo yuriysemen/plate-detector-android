@@ -1,7 +1,7 @@
 ---
 id: REQ-015
 title: Scheduled Automatic Dataset Upload (Daily)
-status: draft
+status: done
 priority: medium
 depends_on: REQ-005, REQ-014, REQ-018
 ---
@@ -131,29 +131,29 @@ There is no "Auto-upload daily" toggle. Auto-upload is always on when upload is 
 ## Acceptance criteria
 
 ### Scheduling
-- [ ] `PeriodicWorkRequest` is registered on every app start when conditions are met.
-- [ ] No toggle exists — auto-upload is always active when URL is configured and contribution is on.
-- [ ] Changing the scheduled time cancels the existing job and registers a new one with the correct initial delay.
-- [ ] The job is cancelled when "Contribute data" is disabled or upload URL is cleared.
-- [ ] Changing "Upload on mobile data" re-registers the job with the updated network constraint.
+- [x] `PeriodicWorkRequest` is registered on every app start when conditions are met.
+- [x] No toggle exists — auto-upload is always active when URL is configured and contribution is on.
+- [x] Changing the scheduled time cancels the existing job and registers a new one with the correct initial delay.
+- [x] The job is cancelled when "Contribute data" is disabled or upload URL is cleared.
+- [x] Changing "Upload on mobile data" re-registers the job with the updated network constraint.
 
 ### Scheduled job
-- [ ] The job fires at approximately the configured time each day (within the ±30 min flex window).
-- [ ] If `total_frames == 0` the job exits without uploading or resetting.
-- [ ] If `total_frames > 0` the job creates a ZIP, resets frames, enqueues `UploadDatasetWorker`, and updates `auto_upload_last_date`.
-- [ ] Job uses `UNMETERED` constraint when "Upload on mobile data" is off; `CONNECTED` when on.
-- [ ] If no network at scheduled time, the job runs as soon as the network constraint is satisfied.
+- [x] The job fires at approximately the configured time each day (within the ±30 min flex window).
+- [x] If `total_frames == 0` the job exits without uploading or resetting.
+- [x] If `total_frames > 0` the job creates a ZIP, resets frames, enqueues `UploadDatasetWorker`, and updates `auto_upload_last_date`.
+- [x] Job uses `UNMETERED` constraint when "Upload on mobile data" is off; `CONNECTED` when on.
+- [x] If no network at scheduled time, the job runs as soon as the network constraint is satisfied.
 
 ### On-start catch-up
-- [ ] On every app start, a background catch-up check runs.
-- [ ] The check triggers an immediate upload if URL is configured, `auto_upload_last_date != today`, `total_frames > 0`, and network constraint is satisfied.
-- [ ] The catch-up check does nothing if `total_frames == 0`, network is unavailable, or already uploaded today.
+- [x] On every app start, a background catch-up check runs.
+- [x] The check triggers an immediate upload if URL is configured, `auto_upload_last_date != today`, `total_frames > 0`, and network constraint is satisfied.
+- [x] The catch-up check does nothing if `total_frames == 0`, network is unavailable, or already uploaded today.
 
 ### UI
-- [ ] "Daily auto-upload time" row is visible in the Upload configuration card when URL is configured.
-- [ ] Tapping the time row opens a 24-hour TimePicker dialog; confirming saves and reschedules.
-- [ ] "Last auto-upload: YYYY-MM-DD" (or "Not yet auto-uploaded") is shown below the time row.
+- [x] "Daily auto-upload time" row is visible in the Upload configuration card when URL is configured.
+- [x] Tapping the time row opens a 24-hour TimePicker dialog; confirming saves and reschedules.
+- [x] "Last auto-upload: YYYY-MM-DD" (or "Not yet auto-uploaded") is shown below the time row.
 
 ### Notifications
-- [ ] A notification is shown on successful auto-upload with frame count; tapping opens ContributeScreen.
-- [ ] No notification when the job skips due to no frames or network unavailability.
+- [x] A notification is shown on successful auto-upload with frame count; tapping opens ContributeScreen.
+- [x] No notification when the job skips due to no frames or network unavailability.

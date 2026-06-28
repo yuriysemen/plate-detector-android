@@ -3,10 +3,8 @@ package com.github.yuriysemen.platesdetector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -19,11 +17,21 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.WindowInsets
@@ -31,7 +39,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
@@ -60,7 +67,6 @@ fun SettingsScreen(
     models: List<ModelSpec>,
     selectedModelId: String,
     onPick: (ModelSpec) -> Unit,
-    onPickFile: () -> Unit,
     onDelete: (ModelSpec) -> Unit,
     confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
@@ -72,11 +78,20 @@ fun SettingsScreen(
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     scanIntervalMs: Int,
     onScanIntervalMsChange: (Int) -> Unit,
-    onNavigateToContribute: () -> Unit
+    onNavigateToContribute: () -> Unit,
+    latestModelVersion: String = "",
+    compatibleModelVersion: String = "",
+    lastModelCheckTime: Long = 0L,
+    onCheckNow: (suspend () -> Unit)? = null
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
     var showCollectConsentDialog by rememberSaveable { mutableStateOf(false) }
+    val logEntries by ModelUpdateLog.entries.collectAsState()
+    val latestLogEntry = logEntries.lastOrNull()
+    var showLogDialog by remember { mutableStateOf(false) }
+    var isChecking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
@@ -122,7 +137,29 @@ fun SettingsScreen(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(m.title, style = MaterialTheme.typography.titleMedium)
-                                Text(sourceLabel(m), style = MaterialTheme.typography.bodySmall)
+                                val label = if (m.version != null)
+                                    "${sourceLabel(m)} · v${m.version}"
+                                else
+                                    sourceLabel(m)
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                if (selectedId == m.id) {
+                                    val detail = when (m.origin) {
+                                        ModelOrigin.DEFAULT    -> "Bundled with the app · always available"
+                                        ModelOrigin.DOWNLOADED -> "On-device copy · updates automatically when signed in"
+                                        else                   -> null
+                                    }
+                                    if (detail != null) {
+                                        Text(
+                                            detail,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                                 if (!m.description.isNullOrBlank()) {
                                     Text(
                                         m.description,
@@ -140,16 +177,80 @@ fun SettingsScreen(
                         }
                     }
                 }
-                HorizontalDivider()
-                TextButton(
-                    onClick = onPickFile,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Custom Model")
+            }
+
+            // Model activity — one-line status + Details + Check now
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = latestLogEntry?.message ?: "No model activity since app start",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (latestLogEntry?.level) {
+                        ModelUpdateLog.Level.ERROR   -> MaterialTheme.colorScheme.error
+                        ModelUpdateLog.Level.SUCCESS -> Color(0xFF4CAF50)
+                        else -> MaterialTheme.colorScheme.outline
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                if (logEntries.isNotEmpty()) {
+                    TextButton(onClick = { showLogDialog = true }) {
+                        Text("Details", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                if (onCheckNow != null) {
+                    if (isChecking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .padding(start = 8.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        TextButton(onClick = {
+                            scope.launch {
+                                isChecking = true
+                                try { onCheckNow() } catch (_: Exception) {}
+                                isChecking = false
+                            }
+                        }) {
+                            Text("Check now", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+
+            if (lastModelCheckTime > 0L) {
+                val now = System.currentTimeMillis()
+                val agoMs = now - lastModelCheckTime
+                val lastStr = when {
+                    agoMs < 60_000L          -> "just now"
+                    agoMs < 3_600_000L       -> "${agoMs / 60_000} min ago"
+                    agoMs < 86_400_000L      -> "${agoMs / 3_600_000} h ago"
+                    else                     -> "${agoMs / 86_400_000} d ago"
+                }
+                val nextMs = lastModelCheckTime + 3_600_000L - now
+                val nextStr = when {
+                    nextMs <= 0              -> "soon"
+                    nextMs < 3_600_000L      -> "in ${nextMs / 60_000} min"
+                    else                     -> "in ${nextMs / 3_600_000} h"
+                }
+                Text(
+                    "Model check: last $lastStr · next $nextStr",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            }
+
+            if (latestModelVersion.isNotEmpty() && latestModelVersion != compatibleModelVersion) {
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Model v$latestModelVersion is available but requires a newer app version.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
             }
 
@@ -206,6 +307,47 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            if (showLogDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLogDialog = false },
+                    title = { Text("Model update log") },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 320.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (logEntries.isEmpty()) {
+                                Text(
+                                    "No activity recorded yet.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            } else {
+                                logEntries.reversed().forEach { entry ->
+                                    val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+                                        .format(Date(entry.timeMs))
+                                    val color = when (entry.level) {
+                                        ModelUpdateLog.Level.ERROR   -> MaterialTheme.colorScheme.error
+                                        ModelUpdateLog.Level.SUCCESS -> Color(0xFF4CAF50)
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    }
+                                    Text(
+                                        "$time  ${entry.message}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = color
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showLogDialog = false }) { Text("Close") }
+                    }
+                )
             }
 
             if (showCollectConsentDialog) {

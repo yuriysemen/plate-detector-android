@@ -11,8 +11,8 @@ YOLO is the first (and currently implemented) experiment, with room for addition
 - Dataset editor — review collected frames in read-only view mode; tap ✏ to enter edit mode and correct bounding boxes (move, resize, add, delete) with pinch-to-zoom; discard or save changes explicitly
 - Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket; users register and sign in with email + password (Cognito User Pool); upload requests are SigV4-signed using short-lived STS credentials from a Cognito Identity Pool; AWS configuration is embedded at build time (no in-app URL or key entry); manual upload button works on any network (Wi-Fi or mobile); automatic daily upload at a configurable time (default 02:00) respects the Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload; upload history shows completed uploads with frame count and date — ZIP deleted from device after upload, sidecar kept as permanent local record
 - Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
-- Multiple models selectable; custom `.tflite` import; per-model confidence threshold
-- Model artifacts published via GitHub Releases (tagged `model_v*`); signed-in users receive automatic in-app model updates from S3
+- Multiple models selectable in Settings; per-model confidence threshold
+- Model artifacts published via GitHub Releases (tagged `model_v*`) and stored in S3 (`models/v<semver>/`); signed-in users receive automatic in-app model updates — confirmation dialog, then auto-selected immediately; manual "Check now" button in Settings; in-memory activity log shows check and download events per session
 
 ## Getting a model for the Android app
 
@@ -95,7 +95,6 @@ When those secrets are set, the workflow produces:
 
 ## Roadmap (planned)
 - **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
-- **Model auto-update** — S3-hosted models with per-version `min/max_app_version` metadata; signed-in users get the best compatible model delivered automatically (REQ-016).
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 
 See `android/ROADMAP.md` for the full backlog.

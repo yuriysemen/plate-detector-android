@@ -152,7 +152,9 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: execute-api:Invoke
-                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+                Resource:
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/GET/get-model-url"
 
   # ── Attach the authenticated role to the Identity Pool ────────────────────
   DeviceIdentityPoolRoleAttachment:
@@ -193,6 +195,12 @@ Resources:
               AWS: !GetAtt UploadLambdaRole.Arn
             Action: s3:PutObject
             Resource: !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+          - Sid: ModelLambdaGetModels
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt ModelLambdaRole.Arn
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${BucketName}/models/*"
           - Sid: AdminFullAccess
             Effect: Allow
             Principal:
@@ -213,7 +221,44 @@ Resources:
         EnableIamAuthorizer: true
         DefaultAuthorizer: AWS_IAM
 
-  # ── Lambda function ────────────────────────────────────────────────────────
+  # ── IAM role for the model Lambda function ───────────────────────────────────
+  ModelLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ListAndGetModels
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${BucketName}"
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "models/*"
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/models/*"
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── Lambda function (upload URL) ───────────────────────────────────────────
   GetUploadUrlFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -231,6 +276,25 @@ Resources:
             ApiId: !Ref UploadApi
             Path: /get-upload-url
             Method: POST
+
+  # ── Lambda function (model download URL) ──────────────────────────────────
+  GetModelUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/get_model_url/
+      Handler: handler.handler
+      Role: !GetAtt ModelLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          URL_EXPIRY_SECONDS: !Ref PresignedUrlExpirySeconds
+      Events:
+        GetModelUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UploadApi
+            Path: /get-model-url
+            Method: GET
 
 Outputs:
   UploadServiceUrl:

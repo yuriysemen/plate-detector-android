@@ -27,15 +27,15 @@
 - [x] OCR always enabled — runs automatically on every detection
 
 ### Model management
-- [x] Bundled default models (downloaded at build time from GitHub Releases)
-- [x] Custom model import (copy to internal storage, validate TFLite flatbuffer)
+- [x] Bundled default models (downloaded at build time from GitHub Releases via `model_v*` tag; graceful fallback when no release found)
 - [x] Multiple models selectable in Settings
 - [x] Model description from `.txt` sidecar file
-- [x] Delete custom/external models
+- [x] Delete downloaded model (cleared on sign-out; auto-replaced when update is applied)
+- ~~Custom model import from device storage~~ — removed in REQ-016; server download is now the only runtime update path
 
 ### UI
-- [x] Settings screen (model picker + custom model import inside card, confidence slider, scan interval picker, analysis resolution picker, Contribute data row)
-- [x] "No models" error screen with retry + file picker
+- [x] Settings screen (model picker, confidence slider, scan interval picker, analysis resolution picker, model activity log with "Check now" + "Details", Contribute data row)
+- [x] "No models" error screen with retry
 
 ### Training data collection
 - [x] Opt-in "Contribute data" row in Settings (Switch + summary + tap-to-navigate to ContributeScreen); default off; persisted in SharedPreferences (`collect_training_data`)
@@ -48,6 +48,17 @@
 - [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
 - [x] Frame file names include capture date, time, and 6-digit sequence (`<YYYYMMDD>_<HHmmss>_<NNNNNN>`); image and label always share the same base name (REQ-013)
 - [x] Exported `data.yaml` includes a `device:` metadata block: phone model, manufacturer, Android version, SDK, app version, model ID, anonymised device ID (SHA-256 hash, first 16 hex chars), export timestamp, and collection date range; block is ignored by `yolo train` (REQ-013)
+
+### Model distribution and auto-update (requirements: REQ-016)
+- [x] **S3 model storage** — models in bucket under `models/v<semver>/` with `metadata.json` (version, min/max app version, description) (REQ-016)
+- [x] **GetModelUrl Lambda** — `GET /get-model-url?app_version=` returns compatible + latest pre-signed download URLs; SigV4 auth; HTTP 400/403/404 error cases (REQ-016)
+- [x] **Build fix** — GitHub API release discovery for `model_v*` tags by semver; Bearer token auth for private repo; graceful `[WARN]` if no release found; `MODEL_DOWNLOAD_TOKEN` in `local.properties` for local dev (REQ-016)
+- [x] **On-device auto-update** — startup one-shot + 1 h periodic `ModelCheckWorker`; confirmation dialog; downloaded model auto-selected after install; old model deleted on update; all downloaded models deleted on sign-out; bundled asset never deleted (REQ-016)
+- [x] **Manual "Check now"** — button in Settings (signed-in only) triggers inline `ModelCheckWorker.performCheck()` with spinner; picks up pending update immediately on return (REQ-016)
+- [x] **Model update activity log** — in-memory `ModelUpdateLog` singleton records check, result, and download events per session; Settings shows latest entry (colour-coded) + "Details" button for full timestamped list (REQ-016)
+- [x] **Latest-model version banner** — Settings card when `latest.model_version > compatible.model_version` (newer model requires app update) (REQ-016)
+- [x] **Mobile data toggle renamed** — "Use mobile data" (covers uploads and model downloads); pref key unchanged (REQ-016)
+- [x] **Custom model import removed** — `.tflite` import from device storage removed; server download is the only runtime update path (REQ-016)
 
 ---
 
@@ -94,12 +105,7 @@
 - [x] **Upload authentication — Android client** — `AuthScreen` with sign-up / sign-in / verify-email flows; friendly error messages for all Cognito exception types; `UserNotConfirmedException` auto-routes to verify screen; `CognitoAuthManager` wraps SDK callbacks as `suspendCancellableCoroutine` (late callbacks after navigation are safely dropped); ID token exchanged for STS credentials via `CognitoCachingCredentialsProvider`; `UploadDatasetWorker` SigV4-signs requests using `AWS4Signer`; Cognito config and upload URL embedded via `BuildConfig` from `local.properties` (`AppConfig.seedPrefsIfNeeded()` seeds `UploadPrefs` on first launch — no UI entry fields); auth status row in ContributeScreen with Sign in / Sign out; `AutoUploadWorker` skips when user not signed in; sign-out cancels auto-upload schedule (REQ-014)
 - [x] **Manual upload bypasses network preference** — "Upload collected data" button and "Retry" always use `CONNECTED` (any network including mobile data); only the scheduled auto-upload respects the "Upload on mobile data" toggle (REQ-014)
 
-### Model update system (requirements: REQ-016)
-- [ ] **S3 model storage** — models stored in existing bucket under `models/v<semver>/` with `metadata.json` (REQ-016)
-- [ ] **GetModelUrl Lambda** — `GET /get-model-url?app_version=` returns compatible + latest pre-signed download URLs; SigV4 auth (REQ-016)
-- [ ] **Build fix** — GitHub API release discovery for `model_v*` tags by semver; Bearer token auth for private repo; graceful failure if no release found; `MODEL_DOWNLOAD_TOKEN` in `local.properties` for local dev (REQ-016)
-- [ ] **On-device auto-update** — check on startup + 1 h periodic (signed-in only); confirmation dialog; old downloaded model deleted on success; all downloaded models deleted on sign-out; bundled asset never deleted (REQ-016)
-- [ ] **Mobile data toggle renamed** — "Use mobile data" covers uploads and model downloads (REQ-016)
+### Auto-parking settings (requirements: REQ-017)
 
 ### Auto-parking settings (requirements: REQ-017)
 - [ ] **Auto-parking settings auto-configuration** — detect device capability on first enable; apply High-quality / Balanced / Efficient preset based on camera resolution and CPU cores; one-time informational banner; "Reset to recommended defaults" button in Settings (REQ-017)

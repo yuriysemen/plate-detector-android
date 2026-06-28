@@ -2,6 +2,7 @@ package com.github.yuriysemen.platesdetector
 
 enum class ModelOrigin {
     DEFAULT,
+    DOWNLOADED,
     CUSTOM,
     LEGACY_EXTERNAL
 }
@@ -13,7 +14,8 @@ data class ModelSpec(
     val coordFormat: CoordFormat,  // fixed
     val conf: Float,               // threshold, editable in picker
     val description: String?,      // optional text from *.txt
-    val origin: ModelOrigin
+    val origin: ModelOrigin,
+    val version: String? = null    // semver string, set for DOWNLOADED models
 ) {
     val isDeletable: Boolean
         get() = origin != ModelOrigin.DEFAULT

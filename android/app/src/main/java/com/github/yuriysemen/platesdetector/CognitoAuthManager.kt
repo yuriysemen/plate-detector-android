@@ -203,6 +203,9 @@ class CognitoAuthManager(private val context: Context) {
         runCatching { pool?.currentUser?.signOut() }
         UploadPrefs.clearCognitoUserId(context)
         UploadPrefs.clearCognitoUserEmail(context)
+        java.io.File(context.filesDir, "models/downloaded").deleteRecursively()
+        DownloadedModelPrefs.clearActive(context)
+        DownloadedModelPrefs.clearPending(context)
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────

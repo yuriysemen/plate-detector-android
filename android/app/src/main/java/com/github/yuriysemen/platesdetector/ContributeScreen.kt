@@ -385,7 +385,7 @@ fun ContributeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Upload on mobile data", style = MaterialTheme.typography.bodyMedium)
+                            Text("Use mobile data", style = MaterialTheme.typography.bodyMedium)
                             Switch(
                                 checked = uploadOnMobileData,
                                 onCheckedChange = onUploadOnMobileDataChange

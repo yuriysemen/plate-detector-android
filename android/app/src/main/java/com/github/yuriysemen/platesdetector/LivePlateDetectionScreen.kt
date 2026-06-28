@@ -280,14 +280,33 @@ internal object UploadPrefs {
         prefs(context).edit { remove(KEY_COGNITO_USER_EMAIL) }
 }
 
-private fun customModelsDir(context: Context): File =
-    File(context.filesDir, "models/custom")
-
 private fun availableModels(context: Context): List<ModelSpec> {
-    val defaults = listAssetModels(context)
-    val custom = listCustomModels(context)
-    val legacy = listLegacyExternalModels(context)
-    return defaults + custom + legacy
+    val downloaded = listDownloadedModels(context)
+    val defaults   = listAssetModels(context)
+    return downloaded + defaults
+}
+
+private fun listDownloadedModels(context: Context): List<ModelSpec> {
+    val version = DownloadedModelPrefs.getVersion(context)
+    if (version.isEmpty()) return emptyList()
+    val dir = File(context.filesDir, "models/downloaded")
+    return dir.listFiles { f -> f.extension.equals("tflite", ignoreCase = true) }
+        ?.sortedBy { it.name.lowercase() }
+        ?.map { file ->
+            val base = file.nameWithoutExtension
+            val id = "downloaded:$base"
+            ModelSpec(
+                id = id,
+                title = base,
+                source = ModelSource.FilePath(file),
+                coordFormat = CoordFormat.XYXY_SCORE_CLASS,
+                conf = ModelPrefs.getConf(context, id),
+                description = readDescription(File(dir, "$base.txt")),
+                origin = ModelOrigin.DOWNLOADED,
+                version = version
+            )
+        }
+        .orEmpty()
 }
 
 private fun listAssetModels(context: Context): List<ModelSpec> {
@@ -329,56 +348,6 @@ private fun listAssetModels(context: Context): List<ModelSpec> {
     }
 }
 
-private fun listCustomModels(context: Context): List<ModelSpec> {
-    val dir = customModelsDir(context)
-    val files = dir.listFiles()
-        ?.filter { it.extension.equals("tflite", ignoreCase = true) }
-        ?.sortedBy { it.name.lowercase() }
-        .orEmpty()
-
-    return files.map { file ->
-        val base = file.nameWithoutExtension
-        val id = "custom:$base"
-        val descriptionFile = File(dir, "$base.txt")
-        ModelSpec(
-            id = id,
-            title = base,
-            source = ModelSource.FilePath(file),
-            coordFormat = CoordFormat.XYXY_SCORE_CLASS,
-            conf = ModelPrefs.getConf(context, id),
-            description = readDescription(descriptionFile),
-            origin = ModelOrigin.CUSTOM
-        )
-    }
-}
-
-private fun listLegacyExternalModels(context: Context): List<ModelSpec> {
-    return ModelPrefs.getExternalUris(context)
-        .sorted()
-        .mapNotNull { uriString ->
-            runCatching { uriString.toUri() }.getOrNull()
-        }
-        .map { uri ->
-            val uriString = uri.toString()
-            if (!isValidTfliteModel(context, uri)) {
-                Log.w("ModelPicker", "Invalid model file, removing from prefs: $uriString")
-                ModelPrefs.removeExternalUri(context, uriString)
-                return@map null
-            }
-            val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: uriString
-            val id = ModelPrefs.externalIdForUri(uriString)
-            ModelSpec(
-                id = id,
-                title = displayName,
-                source = ModelSource.ContentUri(uri),
-                coordFormat = CoordFormat.XYXY_SCORE_CLASS,
-                conf = ModelPrefs.getConf(context, id),
-                description = null,
-                origin = ModelOrigin.LEGACY_EXTERNAL
-            )
-        }
-        .filterNotNull()
-}
 
 private fun readDescription(file: File): String? {
     if (!file.exists()) return null
@@ -393,60 +362,6 @@ private fun readAssetDescription(context: Context, path: String): String? {
     }.getOrNull()?.takeIf { it.isNotEmpty() }
 }
 
-private fun sanitizeFileName(name: String): String {
-    val cleaned = name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-    return cleaned.ifBlank { "model_${System.currentTimeMillis()}" }
-}
-
-private fun uniqueFileName(dir: File, fileName: String): String {
-    val base = fileName.substringBeforeLast(".")
-    val ext = fileName.substringAfterLast(".", "")
-    var candidate = fileName
-    var index = 1
-    while (File(dir, candidate).exists()) {
-        candidate = if (ext.isEmpty()) {
-            "${base}_$index"
-        } else {
-            "${base}_$index.$ext"
-        }
-        index++
-    }
-    return candidate
-}
-
-private fun importCustomModel(context: Context, uri: Uri): String? {
-    val displayName = queryDisplayName(context, uri)
-    val safeName = sanitizeFileName(displayName ?: "model.tflite")
-    val fileName = if (safeName.endsWith(".tflite", ignoreCase = true)) safeName else "$safeName.tflite"
-    val dir = customModelsDir(context).apply { mkdirs() }
-    val targetName = uniqueFileName(dir, fileName)
-    val destFile = File(dir, targetName)
-
-    runCatching {
-        copyUriToFile(context, uri, destFile)
-    }.onFailure {
-        runCatching { destFile.delete() }
-        return null
-    }
-
-    if (!isValidTfliteModel(destFile)) {
-        runCatching { destFile.delete() }
-        return null
-    }
-
-    val base = destFile.nameWithoutExtension
-    val descriptionFile = File(dir, "$base.txt")
-    if (!descriptionFile.exists()) {
-        runCatching {
-            descriptionFile.writeText(
-                "Custom model imported from ${displayName ?: "file"}."
-            )
-        }
-    }
-
-    return "custom:$base"
-}
-
 private fun deleteModel(context: Context, model: ModelSpec): Boolean {
     return when (val source = model.source) {
         is ModelSource.FilePath -> {
@@ -454,23 +369,12 @@ private fun deleteModel(context: Context, model: ModelSpec): Boolean {
             val description = File(file.parentFile, "${file.nameWithoutExtension}.txt")
             val deleted = runCatching { file.delete() }.getOrDefault(false)
             runCatching { if (description.exists()) description.delete() }
+            if (model.origin == ModelOrigin.DOWNLOADED) DownloadedModelPrefs.clearActive(context)
             deleted
         }
-        is ModelSource.ContentUri -> {
-            val uriString = source.uri.toString()
-            ModelPrefs.removeExternalUri(context, uriString)
-            true
-        }
+        is ModelSource.ContentUri -> false
         is ModelSource.Asset -> false
     }
-}
-
-private fun copyUriToFile(context: Context, uri: Uri, destFile: File) {
-    context.contentResolver.openInputStream(uri)?.use { input ->
-        FileOutputStream(destFile).use { output ->
-            input.copyTo(output)
-        }
-    } ?: error("Cannot read $uri")
 }
 
 private val cocoClassNames = listOf(
@@ -564,72 +468,65 @@ private fun classColorFor(classId: Int): Color {
     return Color.hsv(hue.toFloat(), 0.85f, 0.95f)
 }
 
-private fun isValidTfliteModel(context: Context, uri: Uri): Boolean {
-    return runCatching {
-        val buffer = loadUriBytes(context, uri)
-        val interpreter = Interpreter(buffer)
-        interpreter.use { _ ->
-            // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
-        }
-        true
-    }.getOrElse { false }
-}
 
-private fun isValidTfliteModel(file: File): Boolean {
-    return runCatching {
-        val buffer = loadFileBytes(file)
-        val interpreter = Interpreter(buffer)
-        interpreter.use { _ ->
-            // Constructor validates the flatbuffer; no-op here to avoid API mismatches.
-        }
-        true
-    }.getOrElse { false }
-}
+// ------------------------
+// Model update types + logic
+// ------------------------
 
-private fun loadUriBytes(context: Context, uri: Uri): ByteBuffer {
-    return runCatching {
-        val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: error("Cannot open $uri")
-        java.io.FileInputStream(pfd.fileDescriptor).use { fis ->
-            val channel = fis.channel
-            channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, pfd.statSize)
-        }
-    }.getOrElse {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Cannot read $uri")
-        ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-            put(bytes)
-            rewind()
-        }
-    }
-}
+data class PendingModelUpdate(
+    val version: String,
+    val downloadUrl: String,
+    val description: String,
+    val s3Key: String
+)
 
-private fun loadFileBytes(file: File): ByteBuffer {
-    return runCatching {
-        java.io.FileInputStream(file).use { fis ->
-            val channel = fis.channel
-            channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, 0, file.length())
-        }
-    }.getOrElse {
-        val bytes = file.readBytes()
-        ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-            put(bytes)
-            rewind()
-        }
-    }
-}
+private suspend fun applyModelUpdate(
+    context: Context,
+    update: PendingModelUpdate,
+    onComplete: (modelId: String) -> Unit
+) = withContext(Dispatchers.IO) {
+    val filename = update.s3Key.substringAfterLast("/")
+    val dir = File(context.filesDir, "models/downloaded").apply { mkdirs() }
+    val dest = File(dir, filename)
+    val tmp  = File(dir, "$filename.download")
 
-private fun queryDisplayName(context: Context, uri: Uri): String? {
-    return runCatching {
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex >= 0 && cursor.moveToFirst()) {
-                cursor.getString(nameIndex)
-            } else {
-                null
+    ModelUpdateLog.log("Downloading model v${update.version}…")
+    try {
+        val conn = java.net.URL(update.downloadUrl).openConnection() as java.net.HttpURLConnection
+        try {
+            conn.connectTimeout = 15_000
+            conn.readTimeout    = 120_000
+            if (conn.responseCode !in 200..299) {
+                throw Exception("HTTP ${conn.responseCode}")
             }
+            conn.inputStream.use { i -> FileOutputStream(tmp).use { o -> i.copyTo(o) } }
+        } finally {
+            conn.disconnect()
         }
-    }.getOrNull()
+
+        // Remove old downloaded models
+        dir.listFiles()?.forEach { f ->
+            if (f != tmp) runCatching { f.delete() }
+        }
+        if (!tmp.renameTo(dest)) throw Exception("rename failed")
+
+        val base = filename.substringBeforeLast(".")
+        if (update.description.isNotEmpty()) {
+            runCatching { File(dir, "$base.txt").writeText(update.description) }
+        }
+
+        DownloadedModelPrefs.setActive(context, update.version, update.s3Key)
+        DownloadedModelPrefs.clearPending(context)
+        ModelUpdateLog.log("Model v${update.version} installed", ModelUpdateLog.Level.SUCCESS)
+
+        withContext(Dispatchers.Main) { onComplete("downloaded:$base") }
+    } catch (e: Exception) {
+        runCatching { tmp.delete() }
+        ModelUpdateLog.log("Model download failed: ${e.message}", ModelUpdateLog.Level.ERROR)
+        withContext(Dispatchers.Main) {
+            android.widget.Toast.makeText(context, "Model download failed", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 }
 
 // ------------------------
@@ -679,8 +576,15 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         UploadPrefs.getAutoUploadLastDate(context)
     }
     val authManager = remember { CognitoAuthManager(context) }
-var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
+    var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
     var signedInEmail by rememberSaveable { mutableStateOf(authManager.currentUserEmail()) }
+    var pendingUpdate by remember { mutableStateOf<PendingModelUpdate?>(null) }
+    val latestModelVersion    = remember(reloadKey) { DownloadedModelPrefs.getLatestVersion(context) }
+    val compatibleModelVersion = remember(reloadKey) {
+        DownloadedModelPrefs.getPendingVersion(context).takeIf { it.isNotEmpty() }
+            ?: DownloadedModelPrefs.getVersion(context)
+    }
+    val lastModelCheckTime = remember(reloadKey) { DownloadedModelPrefs.getLastCheckTime(context) }
     var showAuth by rememberSaveable { mutableStateOf(false) }
     val deviceId = remember {
         DatasetExporter.computeDeviceId(
@@ -697,6 +601,7 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
 
     LaunchedEffect(Unit) {
         AppConfig.seedPrefsIfNeeded(context)
+        if (uploadServiceUrl.isBlank()) uploadServiceUrl = UploadPrefs.getUploadUrl(context)
         if (openContribute) showExport = true
         AutoUploadWorker.schedule(context)
         withContext(Dispatchers.IO) {
@@ -720,41 +625,57 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
         }
     }
 
-    fun handlePickedUri(uri: Uri) {
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
+    LaunchedEffect(isSignedIn, reloadKey) {
+        if (!isSignedIn) return@LaunchedEffect
+        val version = DownloadedModelPrefs.getPendingVersion(context)
+        if (version.isNotEmpty()) {
+            pendingUpdate = PendingModelUpdate(
+                version     = version,
+                downloadUrl = DownloadedModelPrefs.getPendingDownloadUrl(context),
+                description = DownloadedModelPrefs.getPendingDescription(context),
+                s3Key       = DownloadedModelPrefs.getPendingS3Key(context)
             )
         }
-        val id = importCustomModel(context, uri)
-        if (id == null) {
-            Log.w("ModelPicker", "Selected file is not a valid TFLite model: $uri")
-            return
-        }
-        ModelPrefs.setSelectedId(context, id)
-        selectedId = id
-        ModelPrefs.setShowLabels(context, false)
-        showClassNames = false
-        isModelEnabled = true
-        showSettings = false
-        reloadKey++
     }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            handlePickedUri(uri)
-        }
+    val scope = rememberCoroutineScope()
+
+    pendingUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingUpdate = null
+                DownloadedModelPrefs.clearPending(context)
+            },
+            title = { Text("Detection model update") },
+            text  = { Text("Model v${update.version} is available. Download and apply now?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val captured = pendingUpdate
+                    pendingUpdate = null
+                    if (captured != null) {
+                        scope.launch {
+                            applyModelUpdate(context, captured) { modelId ->
+                                ModelPrefs.setSelectedId(context, modelId)
+                                selectedId = modelId
+                                isModelEnabled = true
+                                reloadKey++
+                            }
+                        }
+                    }
+                }) { Text("Update") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    pendingUpdate = null
+                    DownloadedModelPrefs.clearPending(context)
+                }) { Text("Later") }
+            }
+        )
     }
 
     // If no models: show error and DO NOT init any detector.
     if (models.isEmpty()) {
-        NoModelsScreen(
-            onRetry = { reloadKey++ },
-            onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) }
-        )
+        NoModelsScreen(onRetry = { reloadKey++ })
         return
     }
 
@@ -768,6 +689,9 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
                     isSignedIn = true
                     signedInEmail = authManager.currentUserEmail()
                     showAuth = false
+                    ModelUpdateLog.log("Signed in — checking for model updates")
+                    ModelCheckWorker.schedule(context)
+                    ModelCheckWorker.runOnce(context)
                 },
                 onCancel = { showAuth = false }
             )
@@ -808,6 +732,9 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
                     isSignedIn = false
                     signedInEmail = ""
                     AutoUploadWorker.cancel(context)
+                    ModelCheckWorker.cancel(context)
+                    ModelUpdateLog.log("Signed out — downloaded model removed")
+                    reloadKey++
                 }
             )
             else -> SettingsScreen(
@@ -827,7 +754,6 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
                     showEditor = false
                     stopDetectionRequested = false
                 },
-                onPickFile = { filePickerLauncher.launch(arrayOf("*/*")) },
                 onDelete = { spec ->
                     if (!spec.isDeletable) return@SettingsScreen
                     deleteModel(context, spec)
@@ -861,7 +787,14 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
                     ModelPrefs.setCollectFirstTimeShown(context, true)
                     collectFirstTimeShown = true
                 },
-                onNavigateToContribute = { showExport = true }
+                onNavigateToContribute = { showExport = true },
+                latestModelVersion = latestModelVersion,
+                compatibleModelVersion = compatibleModelVersion,
+                lastModelCheckTime = lastModelCheckTime,
+                onCheckNow = if (isSignedIn) ({
+                    ModelCheckWorker.performCheck(context)
+                    reloadKey++
+                }) else null
             )
         }
     } else {
@@ -904,10 +837,7 @@ var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
 // ------------------------
 
 @Composable
-private fun NoModelsScreen(
-    onRetry: () -> Unit,
-    onPickFile: () -> Unit
-) {
+private fun NoModelsScreen(onRetry: () -> Unit) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = Color.Black,
@@ -920,11 +850,11 @@ private fun NoModelsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("No TFLite models found", style = MaterialTheme.typography.titleLarge)
+            Text("No detection model found", style = MaterialTheme.typography.titleLarge)
             Text(
-                "The app did not find any bundled models.\n\n" +
-                        "Default models are packaged into the app at build time.\n" +
-                        "If you do not see them, rebuild the app or import a model file from your device.",
+                "No model was bundled with this build.\n\n" +
+                        "Sign in to download a model automatically, " +
+                        "or rebuild the app with a valid MODEL_DOWNLOAD_TOKEN.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -932,10 +862,6 @@ private fun NoModelsScreen(
 
             OutlinedButton(onClick = onRetry) {
                 Text("Retry")
-            }
-
-            Button(onClick = onPickFile) {
-                Text("Pick model file")
             }
         }
     }
@@ -1420,14 +1346,26 @@ private fun LiveDetectionUi(
                         )
                     }
 
-                    Text(
-                        text = if (lastFrameW > 0 && lastFrameH > 0)
-                            "${"%.1f".format(zoomRatio)}× | ${lastDetections.size} det | $lastMs ms"
-                        else
-                            "Detected: —",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (lastFrameW > 0 && lastFrameH > 0)
+                                "${"%.1f".format(zoomRatio)}× | ${lastDetections.size} det | $lastMs ms"
+                            else
+                                "Detected: —",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+                        val modelLabel = buildString {
+                            append(spec.title)
+                            if (spec.version != null) append(" v${spec.version}")
+                            append(" · ${sourceLabel(spec)}")
+                        }
+                        Text(
+                            text = modelLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (collectTrainingData) {
@@ -1760,7 +1698,8 @@ private fun yuv420888ToNv21(image: ImageProxy): ByteArray {
 
 fun sourceLabel(model: ModelSpec): String {
     return when (model.origin) {
-        ModelOrigin.DEFAULT -> "default model"
+        ModelOrigin.DEFAULT -> "Built into app"
+        ModelOrigin.DOWNLOADED -> "Downloaded from server"
         ModelOrigin.CUSTOM -> "custom model"
         ModelOrigin.LEGACY_EXTERNAL -> "external file"
     }

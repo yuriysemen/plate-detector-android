@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -22,8 +23,6 @@ val localProperties = Properties().also { props ->
 }
 fun localProp(key: String) = localProperties.getProperty(key, "")
 
-val modelReleaseBaseUrl = "https://github.com/yuriysemen/plate-detector-android/releases/latest/download"
-
 val defaultModelFiles = listOf(
     "plate_numbers.tflite",
     "plate_numbers.txt"
@@ -38,9 +37,74 @@ val modelFilesFromProperty = providers.gradleProperty("MODEL_FILES")
 
 val modelFiles = modelFilesFromProperty ?: defaultModelFiles
 
-val modelDownloadToken = providers.gradleProperty("MODEL_DOWNLOAD_TOKEN").orNull
-    ?: System.getenv("MODEL_DOWNLOAD_TOKEN")
-    ?: System.getenv("GITHUB_TOKEN")
+val modelDownloadToken =
+    localProp("MODEL_DOWNLOAD_TOKEN").takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty("MODEL_DOWNLOAD_TOKEN").orNull
+        ?: System.getenv("MODEL_DOWNLOAD_TOKEN")
+        ?: System.getenv("GITHUB_TOKEN")
+
+// ── GitHub release helpers ─────────────────────────────────────────────────
+
+data class GithubAsset(val name: String, val url: String)
+data class GithubRelease(val tagName: String, val assets: List<GithubAsset>)
+
+fun findLatestModelRelease(token: String?): GithubRelease? {
+    val apiUrl = "https://api.github.com/repos/yuriysemen/plate-detector-android/releases"
+    val conn = URI(apiUrl).toURL().openConnection() as HttpURLConnection
+    conn.setRequestProperty("Accept", "application/vnd.github+json")
+    conn.setRequestProperty("User-Agent", "PlateDetector-Gradle")
+    if (!token.isNullOrBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+    conn.connectTimeout = 15_000
+    conn.readTimeout = 30_000
+    return try {
+        if (conn.responseCode !in 200..299) return null
+        val json = JSONArray(conn.inputStream.bufferedReader().readText())
+        val tagRegex = Regex("""^model_v(\d+)\.(\d+)\.(\d+)$""")
+        (0 until json.length())
+            .mapNotNull { i ->
+                val obj = json.getJSONObject(i)
+                val tag = obj.getString("tag_name")
+                val m = tagRegex.matchEntire(tag) ?: return@mapNotNull null
+                val (x, y, z) = m.destructured
+                val assetsArr = obj.getJSONArray("assets")
+                val assets = (0 until assetsArr.length()).map { j ->
+                    val a = assetsArr.getJSONObject(j)
+                    GithubAsset(a.getString("name"), a.getString("url"))
+                }
+                Triple(Triple(x.toInt(), y.toInt(), z.toInt()), tag, assets)
+            }
+            .maxByOrNull { (ver, _, _) -> ver.first * 1_000_000 + ver.second * 1_000 + ver.third }
+            ?.let { (_, tag, assets) -> GithubRelease(tag, assets) }
+    } catch (e: Exception) {
+        null
+    } finally {
+        conn.disconnect()
+    }
+}
+
+fun downloadAsset(assetApiUrl: String, dest: File, token: String?) {
+    val tmp = File(dest.parent, "${dest.name}.download")
+    val conn = URI(assetApiUrl).toURL().openConnection() as HttpURLConnection
+    conn.setRequestProperty("Accept", "application/octet-stream")
+    conn.setRequestProperty("User-Agent", "PlateDetector-Gradle")
+    if (!token.isNullOrBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+    conn.instanceFollowRedirects = true
+    conn.connectTimeout = 15_000
+    conn.readTimeout = 60_000
+    try {
+        if (conn.responseCode !in 200..299) {
+            logger.warn("[WARN] Failed to download asset from $assetApiUrl (HTTP ${conn.responseCode}). Skipping.")
+            return
+        }
+        conn.inputStream.use { i -> FileOutputStream(tmp).use { o -> i.copyTo(o) } }
+        if (!tmp.renameTo(dest)) logger.warn("[WARN] Could not rename ${tmp.name} → ${dest.name}.")
+    } catch (e: Exception) {
+        logger.warn("[WARN] Download error for ${dest.name}: ${e.message}. Skipping.")
+    } finally {
+        runCatching { tmp.delete() }
+        conn.disconnect()
+    }
+}
 
 val defaultModelsDir = layout.buildDirectory.dir("generated/assets/defaultModels")
 
@@ -49,45 +113,25 @@ val downloadDefaultModels = tasks.register("downloadDefaultModels") {
     outputs.dir(outputDir)
     doLast {
         val modelsDir = File(outputDir, "models").apply { mkdirs() }
-        val baseUrl = modelReleaseBaseUrl.trimEnd('/')
+
+        val release = findLatestModelRelease(modelDownloadToken) ?: run {
+            logger.warn("[WARN] No model_v* release found on GitHub. Building without bundled model.")
+            return@doLast
+        }
+        logger.lifecycle("Using model release: ${release.tagName}")
 
         modelFiles.forEach { fileName ->
             val destFile = File(modelsDir, fileName)
-            if (destFile.exists() && destFile.length() > 0L) return@forEach
-
-            val tmpFile = File(modelsDir, "${fileName}.download")
-            val url = "$baseUrl/$fileName"
-            val connection = URI(url).toURL().openConnection() as HttpURLConnection
-            try {
-                connection.instanceFollowRedirects = true
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
-                connection.setRequestProperty("User-Agent", "PlateDetector-Android-Gradle")
-                if (!modelDownloadToken.isNullOrBlank()) {
-                    connection.setRequestProperty("Authorization", "token $modelDownloadToken")
-                }
-                connection.connect()
-                val code = connection.responseCode
-                if (code !in 200..299) {
-                    if (modelDownloadToken.isNullOrBlank()) {
-                        error("Failed to download $url (HTTP $code). Set MODEL_DOWNLOAD_TOKEN for private releases.")
-                    }
-                    error("Failed to download $url (HTTP $code)")
-                }
-                connection.inputStream.use { input ->
-                    FileOutputStream(tmpFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                if (!tmpFile.renameTo(destFile)) {
-                    error("Failed to move ${tmpFile.name} to ${destFile.name}")
-                }
-            } catch (t: Throwable) {
-                runCatching { tmpFile.delete() }
-                throw t
-            } finally {
-                connection.disconnect()
+            if (destFile.exists() && destFile.length() > 0L) {
+                logger.lifecycle("Skipping $fileName (already present).")
+                return@forEach
             }
+            val asset = release.assets.firstOrNull { it.name == fileName } ?: run {
+                logger.warn("[WARN] Asset '$fileName' not found in release '${release.tagName}'. Skipping.")
+                return@forEach
+            }
+            logger.lifecycle("Downloading $fileName from ${release.tagName}...")
+            downloadAsset(asset.url, destFile, modelDownloadToken)
         }
     }
 }

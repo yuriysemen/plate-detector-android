@@ -74,7 +74,7 @@ Model selection priority at runtime: `DOWNLOADED` (if file exists) → `DEFAULT`
 
 `ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, collect-training-data flag, scan interval ms, analysis resolution, storage quota.
 
-`DownloadedModelPrefs` (SharedPreferences) persists: `downloaded_model_version` (semver string, empty if none), `downloaded_model_s3_key` (S3 key used for change detection).
+`DownloadedModelPrefs` (SharedPreferences) persists: active model (`downloaded_model_version`, `downloaded_model_s3_key`); pending update (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`); server info (`latest_model_version`, `model_last_check_time`).
 
 A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings. For downloaded models the sidecar is written from the `description` field in the Lambda response.
 
@@ -92,6 +92,8 @@ The top bar in `LiveDetectionUi` exposes:
 - **Stats text** — zoom ratio, detection count, inference latency
 - **Manual capture button** (`CameraAlt` icon) — visible only when `collect_training_data` is on; saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); empty label files are distinguishable from auto-captured frames which always carry ≥ 1 annotation (REQ-020)
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
+
+`SettingsScreen` model section: below the model list card, a one-line **model activity row** shows the latest `ModelUpdateLog` entry (grey/green/red by level) and a "Details" button (opens `AlertDialog` with the full log, newest first). When signed in, a "Check now" `TextButton` is also shown in that row; tapping it runs `ModelCheckWorker.performCheck()` in a `rememberCoroutineScope()`, shows a `CircularProgressIndicator` during the request, then increments `reloadKey` to pick up any newly-stored pending update. Below that row: last check time + next scheduled check; and an incompatibility banner when `latest_model_version > compatible_model_version`.
 
 `SettingsScreen` bottom section: **"Contribute data"** row — Switch on the right (default off; first enable shows a one-time consent dialog; `collect_training_data` + `collect_first_time_shown` prefs); tapping the row navigates to `ContributeScreen`.
 - **Zoom shortcut buttons** — 1×/2×/3× pill buttons at bottom center; filtered to `camera.cameraInfo.zoomState.maxZoomRatio`; tapping calls `setZoomRatio()`; active level highlighted in white
@@ -114,6 +116,7 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` (toggle label: **"Use mobile data"** — covers uploads and model downloads), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
 | `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
+| `ModelUpdateLog` | `ModelUpdateLog.kt` | In-memory singleton `object`; `MutableStateFlow<List<Entry>>`; never persisted; resets on app restart. Each `Entry` has `timeMs`, `message`, and `level` (INFO / SUCCESS / ERROR). Appended by `ModelCheckWorker.performCheck()` and `applyModelUpdate()`. Collected as Compose state in `SettingsScreen` to drive the one-line status row and "Details" dialog. |
 | `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; sidecar kept permanently after upload as the history record |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files; `saveFrameManual()` saves a frame with an empty label file (manual missed-plate capture, `total_frames` +1, `total_detections` unchanged) |
 | `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns active entries (ZIP present) and history entries (sidecar-only, ZIP deleted after successful upload); `ExportFile` carries `frameCount`, `uploadedAt`, `s3ObjectKey`; `onUploadSuccess(zipFile, frameCount, s3ObjectKey)` writes sidecar with all four fields then deletes the ZIP; `writeUploadStatus()` / `readUploadStatus()` preserve other sidecar fields; `deleteExport()` removes ZIP + sidecar (for non-success cases); `exportSync()` for WorkManager callers |
@@ -184,17 +187,19 @@ Flow:
 
 ### `ModelCheckWorker`
 
-Scheduled as a `PeriodicWorkRequest` (1-hour repeat interval). Enqueued at sign-in; cancelled at sign-out. Network constraint: `CONNECTED`; additionally `UNMETERED` when "Use mobile data" pref is `false`.
+Scheduled as a `PeriodicWorkRequest` (1-hour repeat interval). Enqueued at sign-in; cancelled at sign-out. Network constraint: `CONNECTED`; additionally `UNMETERED` when "Use mobile data" pref is `false`. Also run once at sign-in (startup check).
 
-Flow:
-1. Call `GET <upload_service_url>/get-model-url?app_version=<BuildConfig.VERSION_NAME>` SigV4-signed using current STS credentials.
-2. Parse `compatible` from the response. If `null` or network error: exit silently.
-3. Compare `compatible.s3_key` with `downloaded_model_s3_key` pref. If identical: no update needed.
-4. Show a confirmation dialog on the main thread. On "Later": exit.
-5. On "Update": download the `.tflite` to `filesDir/models/downloaded/<filename>.download`, then on success delete any previous downloaded model, rename temp file to final path, write the description sidecar, update prefs, and reload the detector.
-6. On download failure: show a toast and leave current model unchanged.
+The check logic lives in `companion object suspend fun performCheck(context)` so it can be called both by the WorkManager `doWork()` wrapper and directly from the "Check now" button in Settings (inline, without WorkManager scheduling).
 
-Also run once at sign-in (startup check). If `latest.model_version > compatible.model_version` (newer model requires a higher app version), a banner is shown in Settings (display-only).
+`performCheck` flow:
+1. Call `GET /get-model-url?app_version=…` SigV4-signed. Log all outcomes to `ModelUpdateLog`.
+2. Store `latest_model_version` and check time in `DownloadedModelPrefs`.
+3. Compare `compatible.s3_key` with `downloaded_model_s3_key` pref. If identical: log "up to date"; exit.
+4. Write pending update fields (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`) to `DownloadedModelPrefs`.
+
+The foreground UI (`LivePlateDetectionScreen`) reads pending prefs in `LaunchedEffect(isSignedIn, reloadKey)` and shows a confirmation `AlertDialog`. On "Update": `applyModelUpdate()` downloads the `.tflite` to a `.download` temp file, replaces the old model on success, auto-selects and persists the new model ID, and increments `reloadKey`. On "Later": pending prefs cleared; re-prompted on next check.
+
+If `latest.model_version > compatible.model_version` (newer model requires a higher app version), a banner is shown in Settings (display-only).
 
 **Notification**: on auto-upload success `UploadDatasetWorker` posts to the `"Dataset"` `NotificationChannel` (created in `MainActivity.onCreate`). `POST_NOTIFICATIONS` runtime permission is requested on Android 13+ at first app launch.
 
