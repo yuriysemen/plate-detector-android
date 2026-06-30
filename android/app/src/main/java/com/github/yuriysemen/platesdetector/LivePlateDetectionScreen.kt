@@ -2,7 +2,6 @@ package com.github.yuriysemen.platesdetector
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,11 +12,8 @@ import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.AudioManager
 import android.media.ToneGenerator
-import android.net.Uri
-import androidx.core.net.toUri
 import android.os.Build
 import android.os.SystemClock
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -63,7 +59,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
-import org.tensorflow.lite.Interpreter
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -72,8 +67,6 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.core.content.edit
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
@@ -88,6 +81,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import android.widget.Toast
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
+import androidx.compose.material.icons.filled.BurstMode
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 
 // ------------------------
 // Model listing & prefs
@@ -529,6 +533,35 @@ private suspend fun applyModelUpdate(
     }
 }
 
+private fun enqueueDatasetUpload(
+    context: Context,
+    zipFile: java.io.File,
+    frameCount: Int,
+    uploadServiceUrl: String,
+    uploadOnMobileData: Boolean,
+    deviceId: String
+) {
+    val networkType = if (uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
+    val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
+    val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
+        .setInputData(workDataOf(
+            UploadDatasetWorker.KEY_ZIP_PATH        to zipFile.absolutePath,
+            UploadDatasetWorker.KEY_DEVICE_ID       to deviceId,
+            UploadDatasetWorker.KEY_UPLOAD_URL      to uploadServiceUrl,
+            UploadDatasetWorker.KEY_USER_ID         to UploadPrefs.getCognitoUserId(context),
+            UploadDatasetWorker.KEY_USER_POOL_ID    to UploadPrefs.getUserPoolId(context),
+            UploadDatasetWorker.KEY_IDENTITY_POOL_ID to UploadPrefs.getIdentityPoolId(context),
+            UploadDatasetWorker.KEY_FRAME_COUNT     to frameCount
+        ))
+        .addTag(zipFile.absolutePath)
+        .setConstraints(constraints)
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
+        .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(
+        zipFile.absolutePath, ExistingWorkPolicy.KEEP, request
+    )
+}
+
 // ------------------------
 // Public entry composable
 // ------------------------
@@ -591,6 +624,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
         )
     }
+    val exporter = remember { DatasetExporter(context) }
 
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
@@ -813,6 +847,36 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
             storageQuotaMb = storageQuotaMb,
             analysisResolution = analysisResolution,
             scanIntervalMs = scanIntervalMs,
+            isSignedIn = isSignedIn,
+            onUploadNow = if (isSignedIn && uploadServiceUrl.isNotBlank()) {
+                {
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { exporter.exportSync(DatasetExporter.SplitConfig()) }
+                        }
+                        result.fold(
+                            onSuccess = { zipFile ->
+                                val frameCount = exporter.readStats().totalFrames
+                                enqueueDatasetUpload(
+                                    context, zipFile, frameCount,
+                                    uploadServiceUrl, uploadOnMobileData, deviceId
+                                )
+                                Toast.makeText(context, "Upload queued", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = {
+                                Toast.makeText(context, "Export failed: ${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+            } else null,
+            onOpenContribute = {
+                isModelEnabled = false
+                showSettings = true
+                showExport = true
+                showEditor = false
+                stopDetectionRequested = false
+            },
             onRequestOpenSettings = { stopDetectionRequested = true },
             onOpenEditor = {
                 isModelEnabled = false
@@ -878,6 +942,9 @@ private fun LiveDetectionUi(
     storageQuotaMb: Int,
     analysisResolution: AnalysisResolution,
     scanIntervalMs: Int,
+    isSignedIn: Boolean,
+    onUploadNow: (() -> Unit)?,
+    onOpenContribute: () -> Unit,
     onRequestOpenSettings: () -> Unit,
     onOpenEditor: () -> Unit,
     onDetectionStopped: () -> Unit
@@ -896,6 +963,13 @@ private fun LiveDetectionUi(
     val scope = rememberCoroutineScope()
     var latestFrame by remember { mutableStateOf<Bitmap?>(null) }
     var captureOnCooldown by remember { mutableStateOf(false) }
+
+    var burstActive by remember { mutableStateOf(false) }
+    var burstTarget by remember { mutableIntStateOf(100) }
+    var burstCollected by remember { mutableIntStateOf(0) }
+    var burstTargetText by remember { mutableStateOf("100") }
+    var showBurstSetupDialog by remember { mutableStateOf(false) }
+    var showBurstCompleteDialog by remember { mutableStateOf(false) }
 
     var storageUsageBytes by remember { mutableLongStateOf(0L) }
     val quotaBytes = storageQuotaMb.toLong() * 1024L * 1024L
@@ -1042,6 +1116,79 @@ private fun LiveDetectionUi(
         }
     }
 
+    if (showBurstSetupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBurstSetupDialog = false },
+            title = { Text("Burst collection") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Number of photos to collect before pausing:")
+                    OutlinedTextField(
+                        value = burstTargetText,
+                        onValueChange = { burstTargetText = it.filter { c -> c.isDigit() }.take(4) },
+                        label = { Text("Count") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val count = burstTargetText.toIntOrNull()?.coerceAtLeast(1) ?: 100
+                    burstTarget = count
+                    burstTargetText = count.toString()
+                    burstCollected = 0
+                    burstActive = true
+                    showBurstSetupDialog = false
+                }) { Text("Start") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBurstSetupDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showBurstCompleteDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Collection complete") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("$burstTarget photos collected and saved.")
+                    if (!isSignedIn || onUploadNow == null) {
+                        Text(
+                            "Sign in and configure the upload URL to send data to the server.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (onUploadNow != null) {
+                        onUploadNow()
+                        burstCollected = 0
+                        burstActive = true
+                        showBurstCompleteDialog = false
+                    } else {
+                        showBurstCompleteDialog = false
+                        burstActive = false
+                        onOpenContribute()
+                    }
+                }) {
+                    Text(if (onUploadNow != null) "Send to server" else "Go to upload screen")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    burstActive = false
+                    showBurstCompleteDialog = false
+                }) { Text("Stop collecting") }
+            }
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         containerColor = Color.Black,
@@ -1072,7 +1219,17 @@ private fun LiveDetectionUi(
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         plateOCR = plateOCR,
-                        collectTrainingData = collectTrainingData && !quotaReached,
+                        collectTrainingData = collectTrainingData && !quotaReached && !burstActive,
+                        burstModeActive = burstActive,
+                        onBurstFrameSaved = {
+                            if (burstActive) {
+                                burstCollected++
+                                if (burstCollected >= burstTarget) {
+                                    burstActive = false
+                                    showBurstCompleteDialog = true
+                                }
+                            }
+                        },
                         trainingSaver = trainingSaver,
                         appVersion = appVersion,
                         modelId = spec.id,
@@ -1365,14 +1522,21 @@ private fun LiveDetectionUi(
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White.copy(alpha = 0.6f)
                         )
+                        if (burstActive) {
+                            Text(
+                                text = "Burst: $burstCollected / $burstTarget",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Yellow.copy(alpha = 0.9f)
+                            )
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (collectTrainingData) {
-                            val captureEnabled = !captureOnCooldown && latestFrame != null
+                            val captureEnabled = !captureOnCooldown && latestFrame != null && !burstActive
                             IconButton(
                                 onClick = {
-                                    if (captureOnCooldown) return@IconButton
+                                    if (captureOnCooldown || burstActive) return@IconButton
                                     val frame = latestFrame ?: return@IconButton
                                     if (quotaReached) {
                                         Toast.makeText(context, "Storage quota full", Toast.LENGTH_SHORT).show()
@@ -1393,6 +1557,23 @@ private fun LiveDetectionUi(
                                     imageVector = Icons.Default.CameraAlt,
                                     contentDescription = "Capture frame manually",
                                     tint = if (captureEnabled) Color.White else Color.White.copy(alpha = 0.35f)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    if (burstActive) {
+                                        burstActive = false
+                                    } else {
+                                        burstTargetText = burstTarget.toString()
+                                        showBurstSetupDialog = true
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.BurstMode,
+                                    contentDescription = if (burstActive) "Stop burst collection" else "Start burst collection",
+                                    tint = if (burstActive) Color.Yellow else Color.White
                                 )
                             }
                         }
@@ -1440,6 +1621,8 @@ private fun CameraPreviewWithAnalysis(
     detector: PlateDetector,
     plateOCR: PlateOCR,
     collectTrainingData: Boolean,
+    burstModeActive: Boolean = false,
+    onBurstFrameSaved: (() -> Unit)? = null,
     trainingSaver: TrainingDataSaver,
     appVersion: String,
     modelId: String,
@@ -1458,6 +1641,8 @@ private fun CameraPreviewWithAnalysis(
     val detectorState by rememberUpdatedState(detector)
     val plateOCRState by rememberUpdatedState(plateOCR)
     val collectTrainingDataState by rememberUpdatedState(collectTrainingData)
+    val burstModeActiveState by rememberUpdatedState(burstModeActive)
+    val onBurstFrameSavedState by rememberUpdatedState(onBurstFrameSaved)
     val appVersionState by rememberUpdatedState(appVersion)
     val modelIdState by rememberUpdatedState(modelId)
     val thresholdState by rememberUpdatedState(scoreThreshold)
@@ -1567,8 +1752,18 @@ private fun CameraPreviewWithAnalysis(
                         }
                     }
 
-                    if (collectTrainingDataState && dets.isNotEmpty()) {
-                        trainingSaver.saveFrame(rotated, dets, appVersionState, modelIdState)
+                    when {
+                        burstModeActiveState -> {
+                            if (dets.isNotEmpty()) {
+                                trainingSaver.saveFrame(rotated, dets, appVersionState, modelIdState)
+                            } else {
+                                trainingSaver.saveFrameManual(rotated, appVersionState, modelIdState)
+                            }
+                            mainExecutor.execute { onBurstFrameSavedState?.invoke() }
+                        }
+                        collectTrainingDataState && dets.isNotEmpty() -> {
+                            trainingSaver.saveFrame(rotated, dets, appVersionState, modelIdState)
+                        }
                     }
 
                     val ms = (System.nanoTime() - t0) / 1_000_000

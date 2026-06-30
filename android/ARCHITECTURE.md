@@ -42,14 +42,18 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     ├─ crop+pad bitmap to detection bounds
   │     └─ ML Kit TextRecognizer → clean alphanumeric text
   │
-  ├─ TrainingDataSaver.saveFrame()  (if collectTrainingData && detections not empty)
-  │     ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
-  │     ├─ if no valid lines → return (no files written)
-  │     ├─ write JPEG (quality 90) → filesDir/training_data/images/<YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg
-  │     ├─ write YOLO .txt → filesDir/training_data/labels/<YYYYMMDD>_<HHmmss>_<NNNNNN>.txt
-  │     │     (one line per valid detection: classId x_center y_center width height, all normalized to [0,1])
-  │     │     (date/time = capture wall-clock time in local timezone; NNNNNN = 6-digit monotonic counter)
-  │     └─ overwrite manifest.json (next_seq, total_frames, total_detections=valid annotations, multi_detection_frames, date range)
+  ├─ burst mode active? (mutually exclusive with regular auto-save)
+  │   ├── YES → saveFrame() if dets present, else saveFrameManual()   (every frame; no quota check)
+  │   │         mainExecutor.execute { onBurstFrameSaved() }
+  │   │             └─ increments burstCollected on main thread; triggers completion dialog at target
+  │   └── NO + collectTrainingData && detections not empty
+  │         └── TrainingDataSaver.saveFrame()
+  │               ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
+  │               ├─ if no valid lines → return (no files written)
+  │               ├─ write JPEG (quality 90) → filesDir/training_data/images/<YYYYMMDD>_<HHmmss>_<NNNNNN>.jpg
+  │               ├─ write YOLO .txt → filesDir/training_data/labels/<YYYYMMDD>_<HHmmss>_<NNNNNN>.txt
+  │               │     (one line per valid detection: classId x_center y_center width height, normalized [0,1])
+  │               └─ overwrite manifest.json (next_seq, total_frames, total_detections, multi_detection_frames, date range)
   │
   └─ frame copy → onLatestFrame callback  (only when collectTrainingData; posted to main thread)
         └─ stored as latestFrame state in LiveDetectionUi for the manual capture button
@@ -80,7 +84,7 @@ A `.txt` sidecar file with the same base name as a `.tflite` is shown as the mod
 
 ## Camera
 
-`CameraPreviewWithAnalysis` binds CameraX `Preview` + `ImageAnalysis` to the lifecycle inside a `DisposableEffect`. It exposes the `Camera` object and `MeteringPointFactory` via `onCameraReady` so `LiveDetectionUi` can attach gesture controls without coupling camera setup to UI logic.
+`CameraPreviewWithAnalysis` binds CameraX `Preview` + `ImageAnalysis` to the lifecycle inside a `DisposableEffect`. It exposes the `Camera` object and `MeteringPointFactory` via `onCameraReady` so `LiveDetectionUi` can attach gesture controls without coupling camera setup to UI logic. Additional parameters `burstModeActive` and `onBurstFrameSaved` control burst collection; both are captured via `rememberUpdatedState` so they take effect without triggering a camera rebind.
 
 The overlay `Canvas` (sibling of the camera view in a `Box`) handles:
 - Bounding box + label rendering (fit-center coordinate mapping matches `PreviewView.ScaleType.FIT_CENTER`)
@@ -89,8 +93,9 @@ The overlay `Canvas` (sibling of the camera view in a `Box`) handles:
 
 The top bar in `LiveDetectionUi` exposes:
 - **Settings button** (hamburger) — opens `SettingsScreen`
-- **Stats text** — zoom ratio, detection count, inference latency
-- **Manual capture button** (`CameraAlt` icon) — visible only when `collect_training_data` is on; saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); empty label files are distinguishable from auto-captured frames which always carry ≥ 1 annotation (REQ-020)
+- **Stats text** — zoom ratio, detection count, inference latency; model label shows burst progress `"Burst: N / M"` in yellow when burst is active
+- **Manual capture button** (`CameraAlt` icon) — visible only when `collect_training_data` is on; saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); disabled (dimmed, non-interactive) while burst collection is active (REQ-020)
+- **Burst collection button** (`BurstMode` icon) — visible only when `collect_training_data` is on; tapping while inactive opens a setup dialog (count field, default 100); tapping while active stops burst immediately; yellow tint while active; on completion shows a dialog with "Send to server" (enqueues `UploadDatasetWorker`, resets counter, starts next round) or "Stop collecting"; `onUploadNow` lambda provided by `LivePlateDetectionScreen` when signed in and URL is configured; burst state is plain `remember` (not `rememberSaveable`) so it resets on rotation (REQ-021)
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
 
 `SettingsScreen` model section: below the model list card, a one-line **model activity row** shows the latest `ModelUpdateLog` entry (grey/green/red by level) and a "Details" button (opens `AlertDialog` with the full log, newest first). When signed in, a "Check now" `TextButton` is also shown in that row; tapping it runs `ModelCheckWorker.performCheck()` in a `rememberCoroutineScope()`, shows a `CircularProgressIndicator` during the request, then increments `reloadKey` to pick up any newly-stored pending update. Below that row: last check time + next scheduled check; and an incompatibility banner when `latest_model_version > compatible_model_version`.

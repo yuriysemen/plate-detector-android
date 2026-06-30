@@ -48,6 +48,8 @@
 - [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
 - [x] Frame file names include capture date, time, and 6-digit sequence (`<YYYYMMDD>_<HHmmss>_<NNNNNN>`); image and label always share the same base name (REQ-013)
 - [x] Exported `data.yaml` includes a `device:` metadata block: phone model, manufacturer, Android version, SDK, app version, model ID, anonymised device ID (SHA-256 hash, first 16 hex chars), export timestamp, and collection date range; block is ignored by `yolo train` (REQ-013)
+- [x] **Manual frame capture** — `CameraAlt` button in top bar; visible only when collection is on; saves latest analyzed frame via `TrainingDataSaver.saveFrameManual()` with empty label file (missed-plate marker, `total_frames` +1); toast "Frame saved"; 1 s cooldown with 35% alpha dimming; quota-full guard shows toast without cooldown; empty-label frames distinguishable from auto-detected frames (always ≥ 1 annotation) (REQ-020)
+- [x] **Burst frame collection** — `BurstMode` button in top bar (visible when collecting is on); setup dialog to configure count (default 100, min 1); captures every analyzed frame (YOLO labels when detections present, empty label file otherwise); regular auto-save suspended during burst to prevent double-saves; yellow icon tint + `"Burst: N / M"` progress line in subtitle while active; single-shot capture button disabled during burst; tapping the button while active cancels immediately; completion dialog offers "Send to server" (enqueues `UploadDatasetWorker` + resets counter + starts next round) or "Stop collecting"; falls back to "Go to upload screen" when not signed in / URL not configured (REQ-021)
 
 ### Model distribution and auto-update (requirements: REQ-016)
 - [x] **S3 model storage** — models in bucket under `models/v<semver>/` with `metadata.json` (version, min/max app version, description) (REQ-016)
@@ -90,8 +92,7 @@
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
-### Training data collection (requirements: REQ-007, REQ-020)
-- [x] **Manual frame capture** — `CameraAlt` button in top bar; visible only when collection is on; saves latest analyzed frame via `TrainingDataSaver.saveFrameManual()` with empty label file (missed-plate marker, `total_frames` +1); toast "Frame saved"; 1 s cooldown with 35% alpha dimming; quota-full guard shows toast without cooldown; empty-label frames distinguishable from auto-detected frames (always ≥ 1 annotation) (REQ-020)
+### Training data collection (requirements: REQ-007)
 - [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
 
 ### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)
@@ -104,8 +105,6 @@
 - [x] **Upload authentication — AWS infrastructure** — Cognito User Pool (email + password, self-registration, email verification required); Identity Pool linked to User Pool (`AllowUnauthenticatedIdentities: false`); API Gateway requires SigV4; S3 path now `uploads/<user_sub>/<device_id>/<filename>` (REQ-018)
 - [x] **Upload authentication — Android client** — `AuthScreen` with sign-up / sign-in / verify-email flows; friendly error messages for all Cognito exception types; `UserNotConfirmedException` auto-routes to verify screen; `CognitoAuthManager` wraps SDK callbacks as `suspendCancellableCoroutine` (late callbacks after navigation are safely dropped); ID token exchanged for STS credentials via `CognitoCachingCredentialsProvider`; `UploadDatasetWorker` SigV4-signs requests using `AWS4Signer`; Cognito config and upload URL embedded via `BuildConfig` from `local.properties` (`AppConfig.seedPrefsIfNeeded()` seeds `UploadPrefs` on first launch — no UI entry fields); auth status row in ContributeScreen with Sign in / Sign out; `AutoUploadWorker` skips when user not signed in; sign-out cancels auto-upload schedule (REQ-014)
 - [x] **Manual upload bypasses network preference** — "Upload collected data" button and "Retry" always use `CONNECTED` (any network including mobile data); only the scheduled auto-upload respects the "Upload on mobile data" toggle (REQ-014)
-
-### Auto-parking settings (requirements: REQ-017)
 
 ### Auto-parking settings (requirements: REQ-017)
 - [ ] **Auto-parking settings auto-configuration** — detect device capability on first enable; apply High-quality / Balanced / Efficient preset based on camera resolution and CPU cores; one-time informational banner; "Reset to recommended defaults" button in Settings (REQ-017)
