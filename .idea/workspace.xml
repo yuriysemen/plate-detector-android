@@ -4,11 +4,9 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="partially implement zoom">
+    <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetEditorScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetEditorScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/FrameDetailScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/FrameDetailScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements/REQ-012-draft-frame-detail-zoom.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-012-draft-frame-detail-zoom.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements/REQ-001-draft-overview.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-001-draft-overview.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -19,7 +17,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="21440" />
+    <option name="cachedIndexableFilesCount" value="21949" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -31,23 +29,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.0052992356540924" />
-      <entry key="MS500" value="1.3506248126606002" />
-      <entry key="S2" value="1.7695036100804313" />
-      <entry key="S5" value="1.9005011352299646" />
-      <entry key="S10" value="1.9489473838429945" />
-      <entry key="S30" value="1.9848258788731403" />
-      <entry key="S60" value="2.071455406063942" />
-      <entry key="M2" value="2.4859993551447763" />
-      <entry key="M5" value="3.4519616495817966" />
-      <entry key="M10" value="4.0874560297584335" />
-      <entry key="M15" value="4.355767239028765" />
-      <entry key="M30" value="4.6584769604332354" />
-      <entry key="H1" value="4.8240896822310395" />
-      <entry key="H2" value="4.911935855451004" />
-      <entry key="H4" value="5.082829990799701" />
-      <entry key="D1" value="11.364525391157136" />
-      <entry key="W1" value="17.50827317358763" />
+      <entry key="MS100" value="1.6925547340554623" />
+      <entry key="MS500" value="1.9291606742509133" />
+      <entry key="S2" value="1.9817992705948826" />
+      <entry key="S5" value="1.9926795657513536" />
+      <entry key="S10" value="1.9963330596499111" />
+      <entry key="S30" value="1.9987761894486769" />
+      <entry key="S60" value="1.9993879073956604" />
+      <entry key="M2" value="1.9996939068513222" />
+      <entry key="M5" value="1.9998775514955311" />
+      <entry key="M10" value="1.9999387738734464" />
+      <entry key="M15" value="1.9999591821657718" />
+      <entry key="M30" value="1.9999797024585337" />
+      <entry key="H1" value="2.001095715118395" />
+      <entry key="H2" value="2.1102377822313385" />
+      <entry key="H4" value="3.1031661701234268" />
+      <entry key="D1" value="14.007743420418922" />
+      <entry key="W1" value="50.2298429208331" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -69,23 +67,23 @@
       <entry key="W1" value="0.0" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.9845746253633834" />
-      <entry key="MS500" value="1.3445356696820594" />
-      <entry key="S2" value="1.767398410195529" />
-      <entry key="S5" value="1.8995861279547308" />
-      <entry key="S10" value="1.9484763936966463" />
-      <entry key="S30" value="1.9846654059854474" />
-      <entry key="S60" value="2.0713684692932763" />
-      <entry key="M2" value="2.4859392087896865" />
-      <entry key="M5" value="3.451921987088172" />
-      <entry key="M10" value="4.087431061584767" />
-      <entry key="M15" value="4.355749147377092" />
-      <entry key="M30" value="4.6584670987233" />
-      <entry key="H1" value="4.824084528175628" />
-      <entry key="H2" value="4.9119332195686525" />
-      <entry key="H4" value="5.082828625032036" />
-      <entry key="D1" value="11.364524771156557" />
-      <entry key="W1" value="17.50827302214991" />
+      <entry key="MS100" value="1.3254330310406022" />
+      <entry key="MS500" value="1.8417261627943653" />
+      <entry key="S2" value="1.9591850370056878" />
+      <entry key="S5" value="1.9835717526683299" />
+      <entry key="S10" value="1.9917687365858827" />
+      <entry key="S30" value="1.997252427756956" />
+      <entry key="S60" value="1.9986257360972557" />
+      <entry key="M2" value="1.9993127485612991" />
+      <entry key="M5" value="1.9997250707421799" />
+      <entry key="M10" value="1.9998625305902518" />
+      <entry key="M15" value="1.999908352664394" />
+      <entry key="M30" value="1.9999542873845368" />
+      <entry key="H1" value="2.0010830057673847" />
+      <entry key="H2" value="2.110231341333166" />
+      <entry key="H4" value="3.103162555964428" />
+      <entry key="D1" value="14.007741642556052" />
+      <entry key="W1" value="50.22984178064153" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -123,7 +121,7 @@
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "settings.editor.selected.configurable": "vcs.Git",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
@@ -167,7 +165,10 @@
       <workItem from="1771416259359" duration="306000" />
       <workItem from="1771420647890" duration="3979000" />
       <workItem from="1781464010815" duration="220000" />
-      <workItem from="1782035894453" duration="32422000" />
+      <workItem from="1782035894453" duration="110041000" />
+      <workItem from="1783073595939" duration="593000" />
+      <workItem from="1784901530269" duration="19000" />
+      <workItem from="1785673872684" duration="126000" />
     </task>
     <task id="LOCAL-00001" summary="partially implement zoom">
       <option name="closed" value="true" />

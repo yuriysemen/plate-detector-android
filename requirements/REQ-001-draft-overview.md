@@ -43,6 +43,9 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-017 | Auto-parking settings auto-configuration                                   | draft                            |
 | REQ-018 | AWS upload infrastructure — S3 bucket, Lambda, API Gateway, Cognito (IaC) | done                             |
 | REQ-019 | Settings screen layout and controls (model picker, scan interval, etc.)    | done                             |
+| REQ-022 | Curation web app — overview, Cognito auth, and AWS infrastructure          | draft                            |
+| REQ-023 | Curation web app — package lifecycle (not processed/in progress/processed) | draft                            |
+| REQ-024 | Curation web app — annotation editor (verify, edit, reject)                | draft                            |
 
 ## Dependencies
 
