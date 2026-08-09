@@ -38,10 +38,7 @@ class DatasetExporter(context: Context) {
         val name: String,
         val sizeBytes: Long,
         val createdAt: Long,
-        val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED,
-        val frameCount: Int = 0,
-        val uploadedAt: Long? = null,
-        val s3ObjectKey: String? = null
+        val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED
     )
 
     data class SplitConfig(val trainRatio: Float = 0.70f, val valRatio: Float = 0.20f) {
@@ -73,27 +70,19 @@ class DatasetExporter(context: Context) {
 
     fun listExports(): List<ExportFile> {
         if (!exportsDir.exists()) return emptyList()
-        val active = exportsDir.listFiles()
-            ?.filter { it.extension.equals("zip", ignoreCase = true) }
-            ?.map { f ->
-                val sc = readSidecarData(sidecarFor(f))
-                ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(),
-                    sc.status, sc.frameCount, sc.uploadedAt, sc.s3ObjectKey)
+        val files = exportsDir.listFiles().orEmpty()
+        // Sidecars whose ZIP is gone are leftovers (e.g. from a prior app version); clean them up.
+        files.filter { it.name.endsWith(".upload.json") }
+            .forEach { sidecar ->
+                val zip = File(exportsDir, sidecar.name.removeSuffix(".upload.json") + ".zip")
+                if (!zip.exists()) sidecar.delete()
             }
-            .orEmpty()
-        val history = exportsDir.listFiles()
-            ?.filter { it.name.endsWith(".upload.json") }
-            ?.mapNotNull { sidecar ->
-                val baseName = sidecar.name.removeSuffix(".upload.json")
-                val zip = File(exportsDir, "$baseName.zip")
-                if (zip.exists()) return@mapNotNull null   // already in active list
-                val sc = readSidecarData(sidecar)
-                if (sc.status != UploadStatus.UPLOADED) return@mapNotNull null
-                ExportFile(zip, baseName, 0L, sidecar.lastModified(),
-                    UploadStatus.UPLOADED, sc.frameCount, sc.uploadedAt, sc.s3ObjectKey)
+        return files.filter { it.extension.equals("zip", ignoreCase = true) }
+            .map { f ->
+                val status = readUploadStatus(f)
+                ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(), status)
             }
-            .orEmpty()
-        return (active + history).sortedByDescending { it.uploadedAt ?: it.createdAt }
+            .sortedByDescending { it.createdAt }
     }
 
     fun exportSync(splitConfig: SplitConfig = SplitConfig()): File {
@@ -177,50 +166,28 @@ class DatasetExporter(context: Context) {
         sidecarFor(file).delete()
     }
 
-    /** Called on upload success: writes full sidecar (kept as history) then deletes the ZIP. */
-    fun onUploadSuccess(zipFile: File, frameCount: Int, s3ObjectKey: String) {
-        val ts = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-            .format(Date())
-        sidecarFor(zipFile).writeText(
-            JSONObject()
-                .put("status", UploadStatus.UPLOADED.name)
-                .put("frame_count", frameCount)
-                .put("uploaded_at", ts)
-                .put("s3_object_key", s3ObjectKey)
-                .toString()
-        )
+    /** Deletes every export ZIP and sidecar on disk — used to discard in-flight uploads before restarting. */
+    fun deleteAllExports() {
+        exportsDir.listFiles()?.forEach { it.delete() }
+    }
+
+    /** Called on upload success: no local record is kept — both the ZIP and its sidecar are deleted. */
+    fun onUploadSuccess(zipFile: File) {
+        sidecarFor(zipFile).delete()
         zipFile.delete()
     }
 
-    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarData(sidecarFor(zipFile)).status
+    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarStatus(sidecarFor(zipFile))
 
     fun writeUploadStatus(zipFile: File, status: UploadStatus) {
-        val sidecar = sidecarFor(zipFile)
-        val existing = if (sidecar.exists()) runCatching { JSONObject(sidecar.readText()) }.getOrDefault(JSONObject()) else JSONObject()
-        sidecar.writeText(existing.put("status", status.name).toString())
+        sidecarFor(zipFile).writeText(JSONObject().put("status", status.name).toString())
     }
 
-    private data class SidecarData(
-        val status: UploadStatus,
-        val frameCount: Int,
-        val uploadedAt: Long?,
-        val s3ObjectKey: String?
-    )
-
-    private fun readSidecarData(sidecar: File): SidecarData {
-        if (!sidecar.exists()) return SidecarData(UploadStatus.NOT_QUEUED, 0, null, null)
+    private fun readSidecarStatus(sidecar: File): UploadStatus {
+        if (!sidecar.exists()) return UploadStatus.NOT_QUEUED
         return runCatching {
-            val json = JSONObject(sidecar.readText())
-            val status = UploadStatus.valueOf(json.getString("status"))
-            val uploadedAt = json.optString("uploaded_at").takeIf { it.isNotEmpty() }?.let { ts ->
-                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-                    .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                    .parse(ts)?.time
-            }
-            SidecarData(status, json.optInt("frame_count", 0), uploadedAt,
-                json.optString("s3_object_key").takeIf { it.isNotEmpty() })
-        }.getOrDefault(SidecarData(UploadStatus.NOT_QUEUED, 0, null, null))
+            UploadStatus.valueOf(JSONObject(sidecar.readText()).getString("status"))
+        }.getOrDefault(UploadStatus.NOT_QUEUED)
     }
 
     private fun sidecarFor(zipFile: File) = File(zipFile.parent, "${zipFile.nameWithoutExtension}.upload.json")

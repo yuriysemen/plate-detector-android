@@ -59,6 +59,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -84,6 +85,7 @@ fun ContributeScreen(
     deviceId: String,
     isSignedIn: Boolean,
     signedInEmail: String,
+    sessionExpired: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -102,6 +104,7 @@ fun ContributeScreen(
     }
 
     var isUploading by remember { mutableStateOf(false) }
+    var cooldownActive by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -138,6 +141,7 @@ fun ContributeScreen(
                 UploadDatasetWorker.KEY_FRAME_COUNT      to frameCount
             ))
             .addTag(zipFile.absolutePath)
+            .addTag(UploadDatasetWorker.TAG_DATASET_UPLOAD)
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
             .build()
@@ -149,10 +153,19 @@ fun ContributeScreen(
 
     fun doUpload() {
         scope.launch {
-            isUploading = true
+            cooldownActive = true
             errorMessage = null
+            // Restart semantics: cancel every outstanding upload job (manual or auto) and
+            // discard whatever ZIPs/sidecars they left behind before starting fresh.
+            WorkManager.getInstance(context).cancelAllWorkByTag(UploadDatasetWorker.TAG_DATASET_UPLOAD)
+            isUploading = true
             val config = DatasetExporter.SplitConfig()
-            val result = withContext(Dispatchers.IO) { runCatching { exporter.exportSync(config) } }
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    exporter.deleteAllExports()
+                    exporter.exportSync(config)
+                }
+            }
             isUploading = false
             result.fold(
                 onSuccess = { zipFile ->
@@ -161,6 +174,8 @@ fun ContributeScreen(
                 },
                 onFailure = { errorMessage = it.message ?: "Export failed" }
             )
+            delay(60_000)
+            cooldownActive = false
         }
     }
 
@@ -232,17 +247,14 @@ fun ContributeScreen(
 
     BackHandler { onBack() }
 
-    // Active upload jobs: list all ZIPs that have a non-idle status
+    // Active upload jobs: list all ZIPs that have a non-idle status. Successfully uploaded
+    // entries are deleted (ZIP + sidecar) as soon as they succeed, so this is effectively
+    // an "active uploads" list rather than a permanent history.
     var exportsRefreshTick by remember { mutableStateOf(0) }
     val allExports = remember(stats, exportsRefreshTick) { exporter.listExports() }
     val sessionJobs = allExports.filter { it.uploadStatus != UploadStatus.NOT_QUEUED }
-    val activeJobs   = sessionJobs.filter { it.uploadStatus != UploadStatus.UPLOADED }
-    val uploadedJobs = sessionJobs.filter { it.uploadStatus == UploadStatus.UPLOADED }
-    val slotsForUploaded = (10 - activeJobs.size).coerceAtLeast(0)
-    val visibleUploaded  = uploadedJobs.take(slotsForUploaded)
-    val hiddenCount      = uploadedJobs.size - visibleUploaded.size
-    val visibleJobs = (activeJobs + visibleUploaded)
-        .sortedByDescending { it.uploadedAt ?: it.createdAt }
+    val visibleJobs = sessionJobs.sortedByDescending { it.createdAt }.take(10)
+    val hiddenCount = (sessionJobs.size - visibleJobs.size).coerceAtLeast(0)
 
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         LazyColumn(
@@ -272,8 +284,18 @@ fun ContributeScreen(
                 }
             }
 
-            // Upload config warning
-            if (!uploadConfigured) {
+            // Session expired warning takes priority over the generic "not configured" one —
+            // it's the more specific, more actionable message.
+            if (sessionExpired) {
+                item {
+                    StorageBanner(
+                        text = "Your session expired — sign in again to resume uploads.",
+                        isError = true,
+                        actionLabel = "Sign in",
+                        onAction = onSignIn
+                    )
+                }
+            } else if (!uploadConfigured) {
                 item {
                     StorageBanner(
                         text = "Upload not configured — data will be collected but not sent.",
@@ -353,20 +375,35 @@ fun ContributeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                if (isSignedIn) {
-                                    Text("Signed in", style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        signedInEmail,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                } else {
-                                    Text("Not signed in", style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        "Sign in to enable upload",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                when {
+                                    isSignedIn -> {
+                                        Text("Signed in", style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            signedInEmail,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    sessionExpired -> {
+                                        Text(
+                                            "Session expired",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            if (signedInEmail.isNotBlank()) "Sign in again as $signedInEmail" else "Sign in again to resume uploads",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    else -> {
+                                        Text("Not signed in", style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            "Sign in to enable upload",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                             if (isSignedIn) {
@@ -419,7 +456,7 @@ fun ContributeScreen(
             item {
                 Button(
                     onClick = ::doUpload,
-                    enabled = !isUploading && stats.totalFrames > 0 && uploadConfigured,
+                    enabled = !cooldownActive && stats.totalFrames > 0 && uploadConfigured,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (isUploading) {
@@ -434,8 +471,9 @@ fun ContributeScreen(
                         Text(
                             when {
                                 stats.totalFrames == 0 -> "No data yet"
-                                !isSignedIn            -> "Sign in to upload"
-                                else                   -> "Upload collected data"
+                                sessionExpired          -> "Session expired — sign in"
+                                !isSignedIn             -> "Sign in to upload"
+                                else                    -> "Upload collected data"
                             }
                         )
                     }
@@ -462,28 +500,23 @@ fun ContributeScreen(
                 }
 
                 items(visibleJobs, key = { it.file.absolutePath }) { exportFile ->
-                    // History entries have no ZIP on disk; observe WorkManager only for active entries.
-                    val isHistory = !exportFile.file.exists()
                     val workInfos by WorkManager.getInstance(context)
                         .getWorkInfosByTagFlow(exportFile.file.absolutePath)
                         .collectAsState(initial = emptyList())
-                    val liveStatus = if (isHistory) exportFile.uploadStatus else {
-                        workInfos.firstOrNull()?.let { info ->
-                            when (info.state) {
-                                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> UploadStatus.PENDING
-                                WorkInfo.State.RUNNING                          -> UploadStatus.UPLOADING
-                                WorkInfo.State.SUCCEEDED                        -> UploadStatus.UPLOADED
-                                WorkInfo.State.FAILED                           -> UploadStatus.FAILED
-                                else                                            -> null
-                            }
-                        } ?: exportFile.uploadStatus
-                    }
+                    val liveStatus = workInfos.firstOrNull()?.let { info ->
+                        when (info.state) {
+                            WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED     -> UploadStatus.PENDING
+                            WorkInfo.State.RUNNING                             -> UploadStatus.UPLOADING
+                            WorkInfo.State.SUCCEEDED                           -> UploadStatus.UPLOADED
+                            WorkInfo.State.FAILED, WorkInfo.State.CANCELLED    -> UploadStatus.FAILED
+                            else                                               -> null
+                        }
+                    } ?: exportFile.uploadStatus
 
                     UploadJobCard(
                         item = exportFile,
                         uploadStatus = liveStatus,
-                        onRetry = { enqueueUpload(exportFile.file, exportFile.frameCount, forceAnyNetwork = true); refresh() },
-                        onSucceeded = if (isHistory) null else ({ exportsRefreshTick++ })
+                        onSucceeded = { exportsRefreshTick++ }
                     )
                 }
 
@@ -506,11 +539,10 @@ fun ContributeScreen(
 private fun UploadJobCard(
     item: DatasetExporter.ExportFile,
     uploadStatus: UploadStatus,
-    onRetry: () -> Unit,
-    onSucceeded: (() -> Unit)?
+    onSucceeded: () -> Unit
 ) {
     LaunchedEffect(uploadStatus) {
-        if (uploadStatus == UploadStatus.UPLOADED) onSucceeded?.invoke()
+        if (uploadStatus == UploadStatus.UPLOADED) onSucceeded()
     }
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -518,15 +550,9 @@ private fun UploadJobCard(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            val subtitle = when {
-                uploadStatus == UploadStatus.UPLOADED -> buildString {
-                    if (item.frameCount > 0) append("${item.frameCount} frames · ")
-                    append(formatDate(item.uploadedAt ?: item.createdAt))
-                }
-                item.sizeBytes > 0 ->
-                    "${formatBytes(item.sizeBytes)} · ${formatDate(item.createdAt)}"
-                else -> formatDate(item.createdAt)
-            }
+            val subtitle = if (item.sizeBytes > 0)
+                "${formatBytes(item.sizeBytes)} · ${formatDate(item.createdAt)}"
+            else formatDate(item.createdAt)
             Text(subtitle, style = MaterialTheme.typography.bodySmall)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -546,17 +572,11 @@ private fun UploadJobCard(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    UploadStatus.FAILED -> {
-                        Text(
-                            "Upload failed",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        TextButton(
-                            onClick = onRetry,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) { Text("Retry", style = MaterialTheme.typography.labelSmall) }
-                    }
+                    UploadStatus.FAILED -> Text(
+                        "Upload failed — tap \"Upload collected data\" to retry",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
                     UploadStatus.UPLOADED -> Text(
                         "✓ Uploaded",
                         style = MaterialTheme.typography.labelSmall,

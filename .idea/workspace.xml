@@ -6,7 +6,16 @@
   <component name="ChangeListManager">
     <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements/REQ-001-draft-overview.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-001-draft-overview.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/AutoUploadWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/AutoUploadWorker.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/CognitoAuthManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/CognitoAuthManager.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ContributeScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ContributeScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetExporter.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetExporter.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ModelCheckWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ModelCheckWorker.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/UploadDatasetWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/UploadDatasetWorker.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements/REQ-014-done-cloud-dataset-upload.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-014-done-cloud-dataset-upload.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements/REQ-016-done-model-distribution-and-auto-update.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-016-done-model-distribution-and-auto-update.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements/REQ-021-done-burst-frame-collection.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-021-done-burst-frame-collection.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -17,7 +26,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="21949" />
+    <option name="cachedIndexableFilesCount" value="21950" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -29,23 +38,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.6925547340554623" />
-      <entry key="MS500" value="1.9291606742509133" />
-      <entry key="S2" value="1.9817992705948826" />
-      <entry key="S5" value="1.9926795657513536" />
-      <entry key="S10" value="1.9963330596499111" />
-      <entry key="S30" value="1.9987761894486769" />
-      <entry key="S60" value="1.9993879073956604" />
-      <entry key="M2" value="1.9996939068513222" />
-      <entry key="M5" value="1.9998775514955311" />
-      <entry key="M10" value="1.9999387738734464" />
-      <entry key="M15" value="1.9999591821657718" />
-      <entry key="M30" value="1.9999797024585337" />
-      <entry key="H1" value="2.001095715118395" />
-      <entry key="H2" value="2.1102377822313385" />
-      <entry key="H4" value="3.1031661701234268" />
-      <entry key="D1" value="14.007743420418922" />
-      <entry key="W1" value="50.2298429208331" />
+      <entry key="MS100" value="1.336622260423306" />
+      <entry key="MS500" value="2.3966526904506926" />
+      <entry key="S2" value="2.8280567329034385" />
+      <entry key="S5" value="2.9293431145671605" />
+      <entry key="S10" value="2.9643505822720106" />
+      <entry key="S30" value="2.9880448033791973" />
+      <entry key="S60" value="2.994013348529183" />
+      <entry key="M2" value="2.997004407510711" />
+      <entry key="M5" value="2.9988012185393735" />
+      <entry key="M10" value="2.999400518488511" />
+      <entry key="M15" value="2.99960032548267" />
+      <entry key="M30" value="2.9998002642263826" />
+      <entry key="H1" value="3.0010059439243633" />
+      <entry key="H2" value="3.110190447991247" />
+      <entry key="H4" value="4.103131366738358" />
+      <entry key="D1" value="15.007717236453916" />
+      <entry key="W1" value="51.22982950766518" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -67,23 +76,23 @@
       <entry key="W1" value="0.0" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="1.3254330310406022" />
-      <entry key="MS500" value="1.8417261627943653" />
-      <entry key="S2" value="1.9591850370056878" />
-      <entry key="S5" value="1.9835717526683299" />
-      <entry key="S10" value="1.9917687365858827" />
-      <entry key="S30" value="1.997252427756956" />
-      <entry key="S60" value="1.9986257360972557" />
-      <entry key="M2" value="1.9993127485612991" />
-      <entry key="M5" value="1.9997250707421799" />
-      <entry key="M10" value="1.9998625305902518" />
-      <entry key="M15" value="1.999908352664394" />
-      <entry key="M30" value="1.9999542873845368" />
-      <entry key="H1" value="2.0010830057673847" />
-      <entry key="H2" value="2.110231341333166" />
-      <entry key="H4" value="3.103162555964428" />
-      <entry key="D1" value="14.007741642556052" />
-      <entry key="W1" value="50.22984178064153" />
+      <entry key="MS100" value="0.4624917041803958" />
+      <entry key="MS500" value="2.057321893279825" />
+      <entry key="S2" value="2.7296195992551535" />
+      <entry key="S5" value="2.8887402253544217" />
+      <entry key="S10" value="2.9438387704536044" />
+      <entry key="S30" value="2.9811602443900846" />
+      <entry key="S60" value="2.9905651239081084" />
+      <entry key="M2" value="2.9952788063504916" />
+      <entry key="M5" value="2.99811062042214" />
+      <entry key="M10" value="2.9990551597935804" />
+      <entry key="M15" value="2.999370073098168" />
+      <entry key="M30" value="2.999685131406004" />
+      <entry key="H1" value="3.00094837412394" />
+      <entry key="H2" value="3.1101615764761954" />
+      <entry key="H4" value="4.103116537176324" />
+      <entry key="D1" value="15.00771358934504" />
+      <entry key="W1" value="51.22982810043808" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -94,38 +103,38 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.yolo.executor": "Debug",
-    "Python.yolo_export_model.executor": "Run",
-    "Python.yolo_test_model.executor": "Run",
-    "Python.yolo_train_model.executor": "Run",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "junie.onboarding.icon.badge.shown": "true",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/uri/LinkedInProjects/plate-detector-android/datasets",
-    "node.js.detected.package.eslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "vcs.Git",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.yolo.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.yolo_export_model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.yolo_test_model.executor&quot;: &quot;Run&quot;,
+    &quot;Python.yolo_train_model.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/uri/LinkedInProjects/plate-detector-android/datasets&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;vcs.Git&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/datasets" />
@@ -169,6 +178,7 @@
       <workItem from="1783073595939" duration="593000" />
       <workItem from="1784901530269" duration="19000" />
       <workItem from="1785673872684" duration="126000" />
+      <workItem from="1785674014740" duration="4722000" />
     </task>
     <task id="LOCAL-00001" summary="partially implement zoom">
       <option name="closed" value="true" />
@@ -187,7 +197,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Implemented DatasetEditor with frame management of images in the list of frames." />
     <MESSAGE value="partially implement zoom" />
-    <option name="LAST_COMMIT_MESSAGE" value="partially implement zoom" />
+    <option name="LAST_COMMIT_MESSAGE" value="" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/plate_detector_android$yolo_test_model.coverage" NAME="yolo_test_model Coverage Results" MODIFIED="1768549762771" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/experiments/ultralytics" />

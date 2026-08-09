@@ -64,6 +64,7 @@ class AutoUploadWorker(
                 UploadDatasetWorker.KEY_IS_AUTO_UPLOAD   to true,
             ))
             .addTag(zipFile.absolutePath)
+            .addTag(UploadDatasetWorker.TAG_DATASET_UPLOAD)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
             .build()

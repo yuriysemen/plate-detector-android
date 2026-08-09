@@ -12,7 +12,7 @@ MainActivity
         ├── NoModelsScreen              (no .tflite assets found)
         ├── AuthScreen                  (sign-up / sign-in / verify email; Cognito SRP + email code)
         ├── SettingsScreen              (model picker + sliders + Contribute data row)
-        ├── ContributeScreen            (stats card; auth status row + sign-in/out; upload config — mobile data toggle, daily time, last upload; manual upload button; upload history — at most 10 entries: active/failed always shown, oldest UPLOADED trimmed first, "+ N more" footer when hidden)
+        ├── ContributeScreen            (stats card; auth status row + sign-in/out (or session-expired banner); upload config — mobile data toggle, daily time, last upload; single global "Upload collected data" button — always tappable except a 60 s post-tap cooldown, restarts by cancelling+discarding any in-flight upload; upload history — active/failed entries only, up to 10, "+ N more" footer when hidden; successful uploads are deleted immediately, not retained)
         │     └── DatasetEditorScreen   (frame grid; multi-select delete)
         │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
         └── LiveDetectionUi             (camera + detection + overlay)
@@ -118,13 +118,13 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
-| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` (toggle label: **"Use mobile data"** — covers uploads and model downloads), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email` |
-| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. |
+| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` (toggle label: **"Use mobile data"** — covers uploads and model downloads), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email`, `cognito_session_expired` (bool; set by `CognitoAuthManager.markSessionExpired()`) |
+| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. `isSignedIn()` returns `false` once `markSessionExpired()` has flagged the cached session as dead, even though the user id/email are still cached; `isSessionExpired()` exposes that distinct state so the UI can tell "never signed in" apart from "signed in, now expired". `markSessionExpired()` is deliberately lighter than `signOut()` — it doesn't clear the cached user id/email or delete the downloaded model. |
 | `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
 | `ModelUpdateLog` | `ModelUpdateLog.kt` | In-memory singleton `object`; `MutableStateFlow<List<Entry>>`; never persisted; resets on app restart. Each `Entry` has `timeMs`, `message`, and `level` (INFO / SUCCESS / ERROR). Appended by `ModelCheckWorker.performCheck()` and `applyModelUpdate()`. Collected as Compose state in `SettingsScreen` to drive the one-line status row and "Details" dialog. |
-| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; sidecar kept permanently after upload as the history record |
+| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; `UPLOADED` is never persisted — on success both the ZIP and sidecar are deleted immediately, so no local history is retained |
 | `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files; `saveFrameManual()` saves a frame with an empty label file (manual missed-plate capture, `total_frames` +1, `total_detections` unchanged) |
-| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns active entries (ZIP present) and history entries (sidecar-only, ZIP deleted after successful upload); `ExportFile` carries `frameCount`, `uploadedAt`, `s3ObjectKey`; `onUploadSuccess(zipFile, frameCount, s3ObjectKey)` writes sidecar with all four fields then deletes the ZIP; `writeUploadStatus()` / `readUploadStatus()` preserve other sidecar fields; `deleteExport()` removes ZIP + sidecar (for non-success cases); `exportSync()` for WorkManager callers |
+| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns only active entries (ZIP present, any status) and opportunistically deletes orphaned sidecars whose ZIP is gone; `onUploadSuccess(zipFile)` deletes both the ZIP and its sidecar (no record kept); `deleteAllExports()` wipes every ZIP + sidecar on disk, used to discard in-flight uploads when the user restarts from ContributeScreen; `writeUploadStatus()` / `readUploadStatus()` read/write just the `status` field; `exportSync()` for WorkManager callers |
 | `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
 | `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
 | `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
@@ -146,8 +146,8 @@ training_data/
 exports/
   plates_dataset_<timestamp>.zip             (one per export; frames randomly shuffled then split into
                                                train/, val/, test/ subdirs + data.yaml with device: metadata block)
-  plates_dataset_<timestamp>.upload.json     (sidecar: status, frame_count, uploaded_at, s3_object_key;
-                                               kept permanently after upload — ZIP is deleted, sidecar is the history record)
+  plates_dataset_<timestamp>.upload.json     (sidecar: status only; deleted along with the ZIP on
+                                               successful upload — no local history is retained)
 ```
 
 `TrainingDataSaver` is instantiated per `LiveDetectionUi` session (via `remember`). It reads `manifest.json` on first use to restore `next_seq`, then increments in memory and rewrites the manifest after every frame. Because `LiveDetectionUi` leaves composition when Settings opens, a fresh `TrainingDataSaver` is created on each return — reading the latest manifest, so any reset performed in `ContributeScreen` is picked up automatically.
@@ -162,19 +162,21 @@ Three `CoroutineWorker` classes handle background network work:
 
 ### `UploadDatasetWorker`
 
-One instance per export ZIP. Enqueued immediately after a ZIP is created (both manual and auto-upload paths). Unique work name = ZIP file path (prevents duplicate uploads).
+One instance per export ZIP. Enqueued immediately after a ZIP is created (manual, auto-upload, and burst-mode paths — see `LivePlateDetectionScreen.enqueueDatasetUpload`, REQ-021). Unique work name = ZIP file path (prevents duplicate uploads). Every request is also tagged `"dataset_upload"` (`UploadDatasetWorker.TAG_DATASET_UPLOAD`), in addition to its per-ZIP tag, so all outstanding jobs — regardless of which path enqueued them — can be cancelled together in one call.
 
 Flow:
-1. Obtain short-lived STS credentials via `CognitoAuthManager.getAwsCredentials()` (exchanges current ID token via the Identity Pool). Throws `SessionExpiredException` → immediate `Result.failure()` if refresh token expired.
+1. Obtain short-lived STS credentials via `CognitoAuthManager.getAwsCredentials()` (exchanges current ID token via the Identity Pool). On `SessionExpiredException` (refresh token expired): calls `CognitoAuthManager.markSessionExpired()`, writes `FAILED` to the sidecar, then immediate `Result.failure()` (no retry — retrying can't fix a dead refresh token).
 2. SigV4-sign a POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Signing uses `AWS4Signer` from `aws-android-sdk-core`.
 3. PUT the ZIP binary to the pre-signed URL.
-4. On S3 HTTP 200: call `exporter.onUploadSuccess(zipFile, frameCount, objectKey)` — writes sidecar with `status=UPLOADED`, `frame_count`, `uploaded_at` (ISO-8601 UTC), `s3_object_key`, then deletes the ZIP; sidecar is kept as the permanent history record. Posts a notification if `KEY_IS_AUTO_UPLOAD == true`.
+4. On S3 HTTP 200: call `exporter.onUploadSuccess(zipFile)` — deletes both the ZIP and its sidecar; no record is kept. Posts a notification if `KEY_IS_AUTO_UPLOAD == true`.
 4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
 5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
 
 Network constraint depends on the trigger:
-- **Manual upload / Retry**: always `CONNECTED` (any network, including mobile data) — the user explicitly requested the upload now.
+- **Manual upload, including a restart of a stuck/failed job**: always `CONNECTED` (any network, including mobile data) — the user explicitly requested the upload now.
 - **Auto-upload** (`AutoUploadWorker`): `UNMETERED` (Wi-Fi only) unless "Upload on mobile data" is on (`CONNECTED`).
+
+**Restart semantics (ContributeScreen).** There is no per-item retry button — recovery from any state (`PENDING`/`UPLOADING`/`FAILED`) is via the single "Upload collected data" button, which is always tappable except for a 60-second cooldown right after each tap. Tapping it while a previous upload hasn't reached `UPLOADED` calls `WorkManager.cancelAllWorkByTag("dataset_upload")`, then `DatasetExporter.deleteAllExports()` to wipe whatever ZIPs/sidecars those cancelled jobs left behind, before exporting fresh and enqueueing a new upload. This is a genuine restart, not a resume: since `exportSync()` already reset `training_data/` when the discarded ZIP was built, the frames in a cancelled upload are not recoverable.
 
 ### `AutoUploadWorker`
 
@@ -197,7 +199,7 @@ Scheduled as a `PeriodicWorkRequest` (1-hour repeat interval). Enqueued at sign-
 The check logic lives in `companion object suspend fun performCheck(context)` so it can be called both by the WorkManager `doWork()` wrapper and directly from the "Check now" button in Settings (inline, without WorkManager scheduling).
 
 `performCheck` flow:
-1. Call `GET /get-model-url?app_version=…` SigV4-signed. Log all outcomes to `ModelUpdateLog`.
+1. Call `GET /get-model-url?app_version=…` SigV4-signed. Log all outcomes to `ModelUpdateLog`. On `SessionExpiredException` from `getAwsCredentials()`: calls `CognitoAuthManager.markSessionExpired()` before re-throwing — since this check runs hourly (far more often than uploads), it's typically the first place a dead refresh token is discovered.
 2. Store `latest_model_version` and check time in `DownloadedModelPrefs`.
 3. Compare `compatible.s3_key` with `downloaded_model_s3_key` pref. If identical: log "up to date"; exit.
 4. Write pending update fields (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`) to `DownloadedModelPrefs`.

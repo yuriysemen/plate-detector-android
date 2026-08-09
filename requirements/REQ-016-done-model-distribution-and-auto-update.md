@@ -170,6 +170,11 @@ Steps:
 6. All events (check started, result, download started/completed/failed) appended to
    `ModelUpdateLog` (in-memory singleton, never persisted).
 
+Since this check runs hourly (far more often than uploads), it's usually the first place a dead
+Cognito refresh token is discovered. On `SessionExpiredException` from `getAwsCredentials()`,
+`performCheck()` calls `CognitoAuthManager.markSessionExpired()` before re-throwing — see REQ-014
+"Session expiry" for what that does and how it surfaces in ContributeScreen.
+
 ### Activity log (`ModelUpdateLog`)
 
 Singleton `object` holding a `MutableStateFlow<List<Entry>>`. Never written to disk; resets on

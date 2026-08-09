@@ -38,7 +38,13 @@ class CognitoAuthManager(private val context: Context) {
         UploadPrefs.getAppClientId(context).isNotEmpty() &&
         UploadPrefs.getIdentityPoolId(context).isNotEmpty()
 
-    fun isSignedIn(): Boolean = UploadPrefs.getCognitoUserId(context).isNotEmpty()
+    // False once the refresh token has expired (see markSessionExpired), even though a user
+    // id is still cached — that cached id/email is kept around only so the UI can tell the
+    // user *who* needs to sign in again (see isSessionExpired).
+    fun isSignedIn(): Boolean =
+        UploadPrefs.getCognitoUserId(context).isNotEmpty() && !UploadPrefs.getSessionExpired(context)
+
+    fun isSessionExpired(): Boolean = UploadPrefs.getSessionExpired(context)
 
     fun currentUserEmail(): String = UploadPrefs.getCognitoUserEmail(context)
 
@@ -137,6 +143,7 @@ class CognitoAuthManager(private val context: Context) {
         val sub = subFromIdToken(session.idToken.jwtToken)
         UploadPrefs.setCognitoUserId(context, sub)
         UploadPrefs.setCognitoUserEmail(context, email)
+        UploadPrefs.setSessionExpired(context, false)
         sub
     }
 
@@ -197,12 +204,23 @@ class CognitoAuthManager(private val context: Context) {
         provider.credentials
     }
 
+    // ── Session expiry ─────────────────────────────────────────────────────
+
+    // Called wherever a SessionExpiredException is caught (UploadDatasetWorker,
+    // ModelCheckWorker). Deliberately lighter than signOut(): it does not delete the
+    // cached user id/email (so the UI can say *who* needs to sign back in) or the
+    // downloaded model — only re-authentication is required, not a full local wipe.
+    fun markSessionExpired() {
+        UploadPrefs.setSessionExpired(context, true)
+    }
+
     // ── Sign out ───────────────────────────────────────────────────────────
 
     fun signOut() {
         runCatching { pool?.currentUser?.signOut() }
         UploadPrefs.clearCognitoUserId(context)
         UploadPrefs.clearCognitoUserEmail(context)
+        UploadPrefs.setSessionExpired(context, false)
         java.io.File(context.filesDir, "models/downloaded").deleteRecursively()
         DownloadedModelPrefs.clearActive(context)
         DownloadedModelPrefs.clearPending(context)

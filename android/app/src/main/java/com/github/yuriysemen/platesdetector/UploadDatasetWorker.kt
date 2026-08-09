@@ -34,6 +34,7 @@ class UploadDatasetWorker(
         const val KEY_FRAME_COUNT       = "frame_count"
         const val KEY_IS_AUTO_UPLOAD    = "is_auto_upload"
         const val MAX_ATTEMPTS          = 5
+        const val TAG_DATASET_UPLOAD    = "dataset_upload"
         private const val NOTIFICATION_ID = 1001
     }
 
@@ -56,6 +57,7 @@ class UploadDatasetWorker(
         val credentials = try {
             CognitoAuthManager(applicationContext).getAwsCredentials()
         } catch (e: SessionExpiredException) {
+            CognitoAuthManager(applicationContext).markSessionExpired()
             exporter.writeUploadStatus(zipFile, UploadStatus.FAILED)
             return@withContext Result.failure()
         } catch (e: Exception) {
@@ -67,21 +69,21 @@ class UploadDatasetWorker(
         val frameCount = inputData.getInt(KEY_FRAME_COUNT, 0)
 
         return@withContext try {
-            var (presignedUrl, objectKey) = requestPresignedUrl(
+            var presignedUrl = requestPresignedUrl(
                 uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
-            )
+            ).first
             var putSucceeded = putZip(presignedUrl, zipFile)
 
             if (!putSucceeded) {
                 // 403: presigned URL expired — re-request once and retry the PUT
-                requestPresignedUrl(
+                presignedUrl = requestPresignedUrl(
                     uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
-                ).also { presignedUrl = it.first; objectKey = it.second }
+                ).first
                 putSucceeded = putZip(presignedUrl, zipFile)
             }
 
             if (putSucceeded) {
-                exporter.onUploadSuccess(zipFile, frameCount, objectKey)
+                exporter.onUploadSuccess(zipFile)
                 if (inputData.getBoolean(KEY_IS_AUTO_UPLOAD, false)) {
                     showUploadNotification(frameCount)
                 }

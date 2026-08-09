@@ -81,7 +81,7 @@ After "Send to server" the upload proceeds in the background via `WorkManager`; 
 
 - `burstActive`, `burstTarget`, `burstCollected` are plain `remember` state (not `rememberSaveable`) — burst resets to off on Activity recreation, which is the correct behaviour (don't resume mid-burst after rotation).
 - `onBurstFrameSaved` callback is posted to `mainExecutor` from the analysis thread to keep state mutations on the main thread; the check `if (burstActive)` in the callback handles the case where multiple callbacks are queued before the first one sets `burstActive = false`.
-- `enqueueDatasetUpload()` — private top-level helper in `LivePlateDetectionScreen.kt` that mirrors the WorkManager enqueue logic in `ContributeScreen`.
+- `enqueueDatasetUpload()` — private top-level helper in `LivePlateDetectionScreen.kt` that mirrors the WorkManager enqueue logic in `ContributeScreen`, including the `"dataset_upload"` tag (REQ-014) — so restarting an upload from ContributeScreen's "Upload collected data" button also cancels a burst-triggered upload still in flight.
 - `isSignedIn` and `onUploadNow` are passed from `LivePlateDetectionScreen` to `LiveDetectionUi`; `onUploadNow` is `null` when upload is not configured, so the completion dialog shows the "Go to upload screen" fallback.
 
 ---

@@ -55,6 +55,7 @@ class ModelCheckWorker(
             val credentials = try {
                 CognitoAuthManager(ctx).getAwsCredentials()
             } catch (e: SessionExpiredException) {
+                CognitoAuthManager(ctx).markSessionExpired()
                 ModelUpdateLog.log("Model check: session expired — sign in again", ModelUpdateLog.Level.ERROR)
                 throw e
             } catch (e: Exception) {

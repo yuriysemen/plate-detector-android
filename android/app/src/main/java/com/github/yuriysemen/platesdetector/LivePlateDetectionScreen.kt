@@ -253,6 +253,7 @@ internal object UploadPrefs {
     private const val KEY_IDENTITY_POOL_ID = "cognito_identity_pool_id"
     private const val KEY_COGNITO_USER_ID  = "cognito_user_id"
     private const val KEY_COGNITO_USER_EMAIL = "cognito_user_email"
+    private const val KEY_SESSION_EXPIRED  = "cognito_session_expired"
 
     fun getUserPoolId(context: Context): String =
         prefs(context).getString(KEY_USER_POOL_ID, "") ?: ""
@@ -282,6 +283,11 @@ internal object UploadPrefs {
         prefs(context).edit { putString(KEY_COGNITO_USER_EMAIL, v) }
     fun clearCognitoUserEmail(context: Context) =
         prefs(context).edit { remove(KEY_COGNITO_USER_EMAIL) }
+
+    fun getSessionExpired(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SESSION_EXPIRED, false)
+    fun setSessionExpired(context: Context, v: Boolean) =
+        prefs(context).edit { putBoolean(KEY_SESSION_EXPIRED, v) }
 }
 
 private fun availableModels(context: Context): List<ModelSpec> {
@@ -554,6 +560,7 @@ private fun enqueueDatasetUpload(
             UploadDatasetWorker.KEY_FRAME_COUNT     to frameCount
         ))
         .addTag(zipFile.absolutePath)
+        .addTag(UploadDatasetWorker.TAG_DATASET_UPLOAD)
         .setConstraints(constraints)
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
         .build()
@@ -611,6 +618,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     val authManager = remember { CognitoAuthManager(context) }
     var isSignedIn by rememberSaveable { mutableStateOf(authManager.isSignedIn()) }
     var signedInEmail by rememberSaveable { mutableStateOf(authManager.currentUserEmail()) }
+    var sessionExpired by rememberSaveable { mutableStateOf(authManager.isSessionExpired()) }
     var pendingUpdate by remember { mutableStateOf<PendingModelUpdate?>(null) }
     val latestModelVersion    = remember(reloadKey) { DownloadedModelPrefs.getLatestVersion(context) }
     val compatibleModelVersion = remember(reloadKey) {
@@ -656,6 +664,18 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         if (valid != current) {
             selectedId = valid
             ModelPrefs.setSelectedId(context, valid)
+        }
+    }
+
+    // Background workers (UploadDatasetWorker, ModelCheckWorker) can discover that the
+    // session expired while this screen isn't observing them. Re-sync from the cached
+    // prefs whenever the Contribute screen is opened, so a stale "Signed in" state left
+    // over from before the app was backgrounded doesn't linger.
+    LaunchedEffect(showExport) {
+        if (showExport) {
+            isSignedIn = authManager.isSignedIn()
+            signedInEmail = authManager.currentUserEmail()
+            sessionExpired = authManager.isSessionExpired()
         }
     }
 
@@ -722,6 +742,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 onSignedIn = { userId ->
                     isSignedIn = true
                     signedInEmail = authManager.currentUserEmail()
+                    sessionExpired = false
                     showAuth = false
                     ModelUpdateLog.log("Signed in — checking for model updates")
                     ModelCheckWorker.schedule(context)
@@ -760,11 +781,13 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 deviceId = deviceId,
                 isSignedIn = isSignedIn,
                 signedInEmail = signedInEmail,
+                sessionExpired = sessionExpired,
                 onSignIn = { showAuth = true },
                 onSignOut = {
                     authManager.signOut()
                     isSignedIn = false
                     signedInEmail = ""
+                    sessionExpired = false
                     AutoUploadWorker.cancel(context)
                     ModelCheckWorker.cancel(context)
                     ModelUpdateLog.log("Signed out — downloaded model removed")
