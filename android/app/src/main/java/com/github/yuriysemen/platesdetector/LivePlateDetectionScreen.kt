@@ -646,9 +646,11 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         if (uploadServiceUrl.isBlank()) uploadServiceUrl = UploadPrefs.getUploadUrl(context)
         if (openContribute) showExport = true
         AutoUploadWorker.schedule(context)
-        withContext(Dispatchers.IO) {
-            AutoUploadWorker.runCatchUpIfNeeded(context)
-        }
+        // The heavier catch-up check (can trigger an immediate exportSync() + upload) is
+        // deliberately NOT run here at raw process start — it's deferred until the camera
+        // pipeline (LiveDetectionUi) has actually composed, so it doesn't compete with the
+        // camera's own startup allocation burst for memory. See REQ-015 "Startup memory
+        // robustness" and LiveDetectionUi's own LaunchedEffect(Unit).
     }
 
     LaunchedEffect(models) {
@@ -986,6 +988,16 @@ private fun LiveDetectionUi(
     val scope = rememberCoroutineScope()
     var latestFrame by remember { mutableStateOf<Bitmap?>(null) }
     var captureOnCooldown by remember { mutableStateOf(false) }
+
+    // Deferred here (rather than LivePlateDetectionScreen's app-start effect) so a same-launch
+    // auto-export/upload doesn't compete with this screen's own camera-bind allocation burst —
+    // see REQ-015 "Startup memory robustness". runCatchUpIfNeeded() is a cheap no-op once
+    // today's auto-upload has already run, so re-firing on every return to this screen is safe.
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            AutoUploadWorker.runCatchUpIfNeeded(context)
+        }
+    }
 
     var burstActive by remember { mutableStateOf(false) }
     var burstTarget by remember { mutableIntStateOf(100) }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -38,7 +39,8 @@ class DatasetExporter(context: Context) {
         val name: String,
         val sizeBytes: Long,
         val createdAt: Long,
-        val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED
+        val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED,
+        val statusUpdatedAt: Long = createdAt
     )
 
     data class SplitConfig(val trainRatio: Float = 0.70f, val valRatio: Float = 0.20f) {
@@ -79,8 +81,8 @@ class DatasetExporter(context: Context) {
             }
         return files.filter { it.extension.equals("zip", ignoreCase = true) }
             .map { f ->
-                val status = readUploadStatus(f)
-                ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(), status)
+                val (status, updatedAt) = readSidecarInfo(f)
+                ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(), status, updatedAt)
             }
             .sortedByDescending { it.createdAt }
     }
@@ -116,7 +118,7 @@ class DatasetExporter(context: Context) {
             )
             val exportTimestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT).format(Date())
 
-            ZipOutputStream(FileOutputStream(tmpFile)).use { zos ->
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(tmpFile))).use { zos ->
                 for ((splitName, images) in splits) {
                     for (img in images) {
                         zos.putNextEntry(ZipEntry("$splitName/images/${img.name}"))
@@ -177,22 +179,36 @@ class DatasetExporter(context: Context) {
         zipFile.delete()
     }
 
-    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarStatus(sidecarFor(zipFile))
+    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarInfo(zipFile).first
 
+    /** Stamps `updated_at` with the current time — this is the "last operation time" used to detect stuck sessions. */
     fun writeUploadStatus(zipFile: File, status: UploadStatus) {
-        sidecarFor(zipFile).writeText(JSONObject().put("status", status.name).toString())
+        sidecarFor(zipFile).writeText(
+            JSONObject()
+                .put("status", status.name)
+                .put("updated_at", System.currentTimeMillis())
+                .toString()
+        )
     }
 
-    private fun readSidecarStatus(sidecar: File): UploadStatus {
-        if (!sidecar.exists()) return UploadStatus.NOT_QUEUED
+    private fun readSidecarInfo(zipFile: File): Pair<UploadStatus, Long> {
+        val sidecar = sidecarFor(zipFile)
+        if (!sidecar.exists()) return UploadStatus.NOT_QUEUED to zipFile.lastModified()
         return runCatching {
-            UploadStatus.valueOf(JSONObject(sidecar.readText()).getString("status"))
-        }.getOrDefault(UploadStatus.NOT_QUEUED)
+            val json = JSONObject(sidecar.readText())
+            val status = UploadStatus.valueOf(json.getString("status"))
+            // Older sidecars have no "updated_at" — fall back to the sidecar file's own mtime.
+            val updatedAt = json.optLong("updated_at", sidecar.lastModified())
+            status to updatedAt
+        }.getOrDefault(UploadStatus.NOT_QUEUED to zipFile.lastModified())
     }
 
     private fun sidecarFor(zipFile: File) = File(zipFile.parent, "${zipFile.nameWithoutExtension}.upload.json")
 
     companion object {
+        /** A session with no status update in this long is considered stuck and eligible for restart. */
+        const val STALE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000L
+
         fun computeDeviceId(rawAndroidId: String): String {
             val hash = MessageDigest.getInstance("SHA-256")
                 .digest(rawAndroidId.toByteArray(Charsets.UTF_8))

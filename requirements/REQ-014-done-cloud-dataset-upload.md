@@ -58,15 +58,33 @@ There is no mode selection — cloud upload is the only export path.
 
 ### Upload button behavior
 
-A single global action button ("Upload collected data") drives the whole flow. There is no per-item "Retry" button — recovering a stuck or failed upload is always done by pressing this one button again.
+A global action button ("Upload collected data") drives the primary flow, and each Upload history entry additionally has its own **Restart** control for recovering that one stuck/failed session without discarding every other in-flight upload.
 
 - **Always tappable**, in every state (`NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`) as long as there are frames to upload and the user is signed in — including while a previous upload looks stuck or is still in progress. This gives the user a manual escape hatch instead of being stuck waiting on a job that may never resolve.
 - **1-minute cooldown, not a state-based disable.** Immediately after being tapped the button disables for 60 seconds (to absorb accidental double-taps), then re-enables automatically regardless of whether the triggered upload has finished. It is never disabled purely because a job is "still uploading."
-- **Restart semantics.** Tapping the button while a previous upload is `PENDING`, `UPLOADING`, or `FAILED`:
+- **Restart semantics (global button).** Tapping the button while a previous upload is `PENDING`, `UPLOADING`, or `FAILED`:
   1. Cancels every outstanding `UploadDatasetWorker` job — manual or auto-triggered (`WorkManager.cancelAllWorkByTag("dataset_upload")`).
   2. Deletes every export ZIP + sidecar still on disk that hasn't reached `UPLOADED` (their frames were already removed from `training_data/` at export time, so this is a genuine restart, not a resume — the in-flight data is discarded, which is an accepted trade-off for a simple always-available reset).
   3. Exports the currently-collected frames into a new ZIP and enqueues a fresh `UploadDatasetWorker`, as normal.
 - **`UPLOADED` needs no special case.** By the time an entry reaches `UPLOADED` its ZIP + sidecar are already deleted (see below), so it's never in the cancel/delete set — tapping the button then is just a normal new upload.
+
+### Per-item Restart control (Upload history)
+
+Each row in the Upload history section computes its own `canRestart` flag from that entry's live status and its sidecar's `updated_at` timestamp (see "Sidecar JSON schema" below):
+
+| Displayed status | `canRestart` | Reasoning |
+|---|---|---|
+| `FAILED` | Immediately `true` | All retries exhausted — there is nothing to wait for. |
+| `PENDING`, `UPLOADING` | `true` once `now - updated_at ≥ 30 minutes` | The worker's own status write is the only "last operation" signal we have; if it hasn't moved in 30 minutes the process most likely died (killed, OOM, force-stopped) without WorkManager ever reaching a terminal state — or, for `PENDING`, the job is `ENQUEUED` behind a network constraint that may never be satisfied (e.g. Wi-Fi-only while offline). |
+| `NOT_QUEUED`, `UPLOADED` | `false` | Not applicable. |
+
+A 15-second UI tick (`nowTick`, `ContributeScreen`) re-evaluates every row's `canRestart` live, so a stalled entry becomes restartable on screen without the user needing to leave and re-enter ContributeScreen.
+
+When `canRestart` is true, the row shows a **Restart** `TextButton`. Tapping it re-enqueues the same ZIP via `enqueueUpload(..., forceAnyNetwork = true, policy = ExistingWorkPolicy.REPLACE)`, which also stamps a fresh `updated_at` via `writeUploadStatus(..., PENDING)`. Only that entry's unique work name is affected — every other outstanding upload is untouched.
+
+`REPLACE` (not a separate `cancelUniqueWork()` followed by `enqueueUniqueWork(..., KEEP, ...)`) is deliberate: `cancelUniqueWork()` is asynchronous, so a subsequent `KEEP` enqueue can run before the cancellation has actually been processed, see the old job as still "pending", and silently drop the new request — leaving the stale job to eventually finish on its own (often with `FAILED`, since a cancelled-but-not-yet-torn-down worker's blocking network call can still throw once WorkManager's own cancellation propagates) with no replacement ever queued. `REPLACE` performs the cancel-and-insert as one atomic WorkManager transaction, closing that race.
+
+This is additive to, not a replacement for, the global "Upload collected data" button — that one remains the always-available reset for "start over entirely."
 
 ---
 
@@ -139,6 +157,8 @@ Content-Length: <file size in bytes>
 
 A 200 response from S3 means the upload succeeded.
 
+**Streaming, not buffering.** `putZip()` calls `conn.setFixedLengthStreamingMode(zipFile.length())` before writing (which also sets the `Content-Length` header — no separate manual `setRequestProperty` call is needed). Without this call, `HttpURLConnection` buffers the *entire* request body in memory before sending any of it — a well-known gotcha, and for a multi-MB ZIP a significant, avoidable allocation on top of everything else already competing for heap during an upload. It was also the root cause of an intermittent `SocketException: Broken pipe`: buffering delays the first byte hitting the socket, and if that delay is long enough the connection can go stale/close server-side before the (buffered) write finally happens. With fixed-length streaming mode, bytes are written directly to the socket as the ZIP is read, in the same 64 KB chunks used for progress reporting (below) — memory use during the PUT is bounded by that chunk size, not the ZIP's total size.
+
 ### Error handling
 
 | Failure point | Action |
@@ -148,7 +168,7 @@ A 200 response from S3 means the upload succeeded.
 | Step 2 403 (pre-signed URL expired) | Re-request URL from Step 1 and retry the PUT once |
 | Step 2 network error | `Result.retry()` |
 | `SessionExpiredException` (token refresh failed) | `Result.failure()` immediately — user must re-authenticate |
-| All retries exhausted | `Result.failure()` — status shown as FAILED in ContributeScreen; recover by tapping "Upload collected data" again (no per-item retry) |
+| All retries exhausted | `Result.failure()` — status shown as FAILED in ContributeScreen; recover by tapping that entry's **Restart** button, or "Upload collected data" to reset everything |
 
 ---
 
@@ -162,7 +182,13 @@ A 200 response from S3 means the upload succeeded.
 - **Input data:** `KEY_ZIP_PATH`, `KEY_DEVICE_ID`, `KEY_UPLOAD_URL`, `KEY_USER_ID`, `KEY_USER_POOL_ID`, `KEY_IDENTITY_POOL_ID`, `KEY_FRAME_COUNT`, `KEY_IS_AUTO_UPLOAD`.
 - The worker is idempotent: if it runs twice it re-requests a fresh pre-signed URL and re-uploads. S3 PutObject is also idempotent (overwrites with identical content).
 - **On success:** deletes the local ZIP and its sidecar — no `UPLOADED` record is persisted; the entry simply disappears from ContributeScreen's Upload history. If `KEY_IS_AUTO_UPLOAD == true` posts a notification (see REQ-015).
-- **On final failure:** writes `FAILED` status to the sidecar; item shown as "Upload failed" in ContributeScreen with no per-item action — recovery is via the global "Upload collected data" button.
+- **On final failure:** writes `FAILED` status to the sidecar; item shown as "Upload failed" in ContributeScreen with an immediate per-item **Restart** button (see "Per-item Restart control" above), in addition to the global "Upload collected data" button.
+
+### Upload progress reporting
+
+`putZip()` reads and writes the ZIP in a manual 64 KB chunked loop (rather than a single `copyTo()` call) so it can report progress via `CoroutineWorker.setProgress(Data)` as it goes — `KEY_PROGRESS_BYTES` (bytes written so far) and `KEY_PROGRESS_TOTAL` (ZIP size). Updates are throttled to at most once every 250 ms (the final chunk always reports, regardless of throttle) to avoid a WorkManager DB write per 64 KB chunk on large exports.
+
+`ContributeScreen` reads this back from the same `WorkInfo` it already collects per row via `getWorkInfosByTagFlow` — no separate observation mechanism. While a row is `UPLOADING` and not stuck, it shows a determinate `CircularProgressIndicator` plus `"Uploading… NN%"`; if no progress data has arrived yet (e.g. right at the start of an attempt, or for a resumed job with no reported progress), it falls back to the original indeterminate spinner + `"Uploading…"`.
 
 ---
 
@@ -175,20 +201,23 @@ Upload status is tracked via the `.upload.json` sidecar file and WorkManager sta
 | `NOT_QUEUED` | ZIP exists but no WorkManager job is active |
 | `PENDING` | Job enqueued, not yet started |
 | `UPLOADING` | Worker is actively uploading |
-| `FAILED` | All retries exhausted; ZIP + sidecar remain on disk until the user restarts an upload |
+| `FAILED` | All retries exhausted; ZIP + sidecar remain on disk until the user restarts an upload (globally or per-item) |
 | `UPLOADED` | Terminal only in memory for one frame — the ZIP and sidecar are deleted immediately, so this status is never observed as a persisted/rendered list entry |
 
 ### Sidecar JSON schema
 
 ```json
 {
-  "status": "FAILED"
+  "status": "FAILED",
+  "updated_at": 1755000000000
 }
 ```
 
-The sidecar only ever needs to carry the transient `status` field (`NOT_QUEUED`/`PENDING`/`UPLOADING`/`FAILED`) — it exists solely so ContributeScreen can render in-flight/failed state. `frame_count` for the completion notification (REQ-015) comes directly from `KEY_FRAME_COUNT` on the worker, not from the sidecar. There is no `uploaded_at` or `s3_object_key` bookkeeping on device; S3 object lifecycle is the server operator's responsibility.
+`updated_at` (epoch millis) is stamped by `DatasetExporter.writeUploadStatus()` on every write — enqueue, worker start, retry, and terminal failure — so it always reflects the last time *something* happened to this session. It is the sole input to the per-item stale-restart check (`STALE_UPLOAD_TIMEOUT_MS = 30 min`, see "Per-item Restart control" above). Sidecars written before this field existed are read with `updated_at` falling back to the sidecar file's own mtime.
 
-On success the sidecar is **deleted**, not updated to `UPLOADED` — the app keeps no permanent local record of what was sent, to minimize storage use (see "Upload button behavior" above for the restart path that also cleans up stale `FAILED`/`PENDING` entries).
+`frame_count` for the completion notification (REQ-015) comes directly from `KEY_FRAME_COUNT` on the worker, not from the sidecar. There is no `s3_object_key` bookkeeping on device; S3 object lifecycle is the server operator's responsibility.
+
+On success the sidecar is **deleted**, not updated to `UPLOADED` — the app keeps no permanent local record of what was sent, to minimize storage use (see "Upload button behavior" and "Per-item Restart control" above for the two restart paths that clean up stale `FAILED`/`PENDING`/stuck-`UPLOADING` entries).
 
 ### Active entries
 
@@ -240,6 +269,16 @@ Entries are surfaced in the "Upload history" section in ContributeScreen (effect
 - [x] The button is otherwise tappable in every upload state (`PENDING`, `UPLOADING`, `FAILED`) — it is never disabled just because a job is still running.
 - [x] Tapping while a previous job is `PENDING`, `UPLOADING`, or `FAILED` cancels all outstanding `UploadDatasetWorker` jobs tagged `"dataset_upload"` (manual and auto), deletes their ZIPs + sidecars, then exports the currently-collected frames into a fresh ZIP and enqueues a new upload.
 
+### Per-item restart
+- [x] Each Upload history row computes `canRestart` from its own live status and its sidecar's `updated_at`.
+- [x] `FAILED` rows are restartable immediately.
+- [x] `PENDING` and `UPLOADING` rows become restartable once `updated_at` is ≥ 30 minutes stale (`DatasetExporter.STALE_UPLOAD_TIMEOUT_MS`); `NOT_QUEUED`/`UPLOADED` rows are never restartable.
+- [x] A 15-second UI tick re-evaluates `canRestart` for every visible row without requiring the user to leave and re-enter ContributeScreen.
+- [x] A restartable row shows a **Restart** button; tapping it re-enqueues the same ZIP with `forceAnyNetwork = true` and `ExistingWorkPolicy.REPLACE` (atomic cancel-and-insert under that entry's unique work name), leaving every other in-flight upload untouched.
+- [x] Restart uses `REPLACE`, not a separate `cancelUniqueWork()` + `KEEP` pair — avoids a race where an async pending cancellation causes `KEEP` to silently drop the new enqueue.
+- [x] Re-enqueueing via Restart stamps a fresh `updated_at` on the sidecar (via the normal `PENDING` write in `enqueueUpload()`), resetting the stale timer.
+- [x] `writeUploadStatus()` stamps `updated_at` (epoch millis) on every write; older sidecars without the field fall back to the sidecar file's mtime.
+
 ### Upload flow
 - [x] Worker obtains STS credentials via `CognitoAuthManager.getAwsCredentials()` before each upload.
 - [x] Worker POSTs to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id`; request is SigV4-signed using STS credentials.
@@ -247,7 +286,7 @@ Entries are surfaced in the "Upload history" section in ContributeScreen (effect
 - [x] A 200 response from S3 calls `onUploadSuccess`: deletes the local ZIP and its sidecar (no `UPLOADED` record is kept); entry disappears from the "Upload history" section.
 - [x] If the pre-signed URL is expired (S3 returns 403), the worker re-requests a new URL and retries.
 - [x] `SessionExpiredException` causes immediate `Result.failure()` (no retry).
-- [x] Manual upload, including a restart of a stuck/failed job via "Upload collected data", always uses `CONNECTED` (any network, including mobile data).
+- [x] Manual upload, including a restart of a stuck/failed job via "Upload collected data" or a per-item Restart button, always uses `CONNECTED` (any network, including mobile data).
 - [x] Auto-upload respects the "Upload on mobile data" toggle (UNMETERED vs CONNECTED constraint).
 - [x] Retry policy: up to `MAX_ATTEMPTS = 5` with exponential backoff.
 
@@ -256,6 +295,14 @@ Entries are surfaced in the "Upload history" section in ContributeScreen (effect
 - [x] Section disappears once every entry has either succeeded (deleted) or been cleared by an upload restart — there is no persistent history to "clear" manually.
 - [x] Status updates in real time as WorkManager job progresses.
 - [x] When WorkManager reports SUCCEEDED: ZIP and sidecar both deleted; entry disappears from the list (no UPLOADED state is ever rendered).
-- [x] Failed items show "Upload failed" status text with no per-item action; recovery is only via the global "Upload collected data" button.
+- [x] Failed items show "Upload failed" status text plus an immediate per-item Restart button, in addition to the global "Upload collected data" button.
+- [x] Stuck `PENDING` items show "Stuck pending — no progress in 30+ min"; stuck `UPLOADING` items show "Stuck uploading — no progress in 30+ min"; both get a Restart button once stale. Non-stale `PENDING`/`UPLOADING` show the normal "Pending upload" text / spinner + "Uploading…".
 - [x] Section hidden only when there are no active entries.
 - [x] Section shows at most 10 entries; footer shows "+ N more uploads not shown" when exceeded (expected to rarely trigger, since restarting an upload clears stale entries).
+
+### Upload progress reporting
+- [x] `putZip()` uploads via a manual chunked read/write loop (64 KB chunks) instead of `copyTo()`, calling `setProgress()` with bytes-written/total as it goes.
+- [x] Progress updates are throttled to ≥ 250 ms apart; the final chunk always reports regardless of throttle.
+- [x] `ContributeScreen` reads progress from the same per-row `WorkInfo` flow it already observes (`WorkInfo.progress`), with no separate plumbing.
+- [x] While `UPLOADING` and not stuck, the row shows a determinate progress indicator and `"Uploading… NN%"`; falls back to the indeterminate spinner + `"Uploading…"` when no progress data is available yet.
+- [x] `conn.setFixedLengthStreamingMode(zipFile.length())` is set before writing, so the PUT streams directly to the socket (bounded by the 64 KB chunk size) instead of buffering the whole ZIP in memory; this also fixed an intermittent `SocketException: Broken pipe` caused by the buffering delay.

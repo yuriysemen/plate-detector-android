@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.amazonaws.DefaultRequest
 import com.amazonaws.auth.AWS4Signer
 import com.amazonaws.auth.AWSSessionCredentials
@@ -33,9 +34,12 @@ class UploadDatasetWorker(
         const val KEY_USER_POOL_ID      = "user_pool_id"
         const val KEY_FRAME_COUNT       = "frame_count"
         const val KEY_IS_AUTO_UPLOAD    = "is_auto_upload"
+        const val KEY_PROGRESS_BYTES    = "progress_bytes"
+        const val KEY_PROGRESS_TOTAL    = "progress_total"
         const val MAX_ATTEMPTS          = 5
         const val TAG_DATASET_UPLOAD    = "dataset_upload"
         private const val NOTIFICATION_ID = 1001
+        private const val PROGRESS_THROTTLE_MS = 250L
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -182,17 +186,43 @@ class UploadDatasetWorker(
             .find(url)?.groupValues?.get(1) ?: ""
 
     // Returns true on HTTP 200, false on 403 (expired URL), throws on other failures.
-    private fun putZip(presignedUrl: String, zipFile: File): Boolean {
+    private suspend fun putZip(presignedUrl: String, zipFile: File): Boolean {
         val conn = URL(presignedUrl).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "PUT"
             conn.setRequestProperty("Content-Type", "application/zip")
-            conn.setRequestProperty("Content-Length", zipFile.length().toString())
             conn.connectTimeout = 30_000
             conn.readTimeout = 120_000
             conn.doOutput = true
+            // Without this, HttpURLConnection buffers the entire body in memory before writing
+            // any of it to the socket — for a large ZIP that's a big, avoidable allocation, and
+            // the resulting delay before the first byte is sent can also let the connection go
+            // stale server-side (observed as "SocketException: Broken pipe"). Fixed-length mode
+            // streams directly to the socket in 64 KB chunks (our own read/write loop below)
+            // instead, and also sets the Content-Length header itself.
+            val total = zipFile.length()
+            conn.setFixedLengthStreamingMode(total)
+
+            // Manual chunked copy (rather than copyTo()) so we can report upload progress via
+            // WorkManager's setProgress() — read by ContributeScreen from the same WorkInfo flow
+            // it already observes. Updates are throttled to avoid a DB write per 64 KB chunk.
+            var written = 0L
+            var lastReportMs = 0L
+            val buffer = ByteArray(64 * 1024)
             zipFile.inputStream().use { input ->
-                conn.outputStream.use { output -> input.copyTo(output) }
+                conn.outputStream.use { output ->
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read == -1) break
+                        output.write(buffer, 0, read)
+                        written += read
+                        val now = System.currentTimeMillis()
+                        if (written == total || now - lastReportMs >= PROGRESS_THROTTLE_MS) {
+                            lastReportMs = now
+                            setProgress(workDataOf(KEY_PROGRESS_BYTES to written, KEY_PROGRESS_TOTAL to total))
+                        }
+                    }
+                }
             }
             return when (conn.responseCode) {
                 200  -> true

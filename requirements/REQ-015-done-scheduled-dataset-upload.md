@@ -57,7 +57,7 @@ If the network constraint is not satisfied at the scheduled time, WorkManager ho
 
 ## On-app-start catch-up check
 
-Every time the app starts, a background coroutine (`Dispatchers.IO`) runs `AutoUploadWorker.runCatchUpIfNeeded(context)` before the camera initialises.
+A background coroutine (`Dispatchers.IO`) runs `AutoUploadWorker.runCatchUpIfNeeded(context)` once **the camera pipeline (`LiveDetectionUi`) has actually composed** — not at raw process start.
 
 **Trigger condition** (all must be true):
 - Upload URL is configured.
@@ -69,11 +69,30 @@ Every time the app starts, a background coroutine (`Dispatchers.IO`) runs `AutoU
 
 This covers the case where the device was off or offline at the scheduled time.
 
+**Why gated on the camera, not process start (see "Startup memory robustness" below):** `LiveDetectionUi` — and the CameraX bind/detection pipeline it owns — is only composed once `LivePlateDetectionScreen` has moved past Settings/model-picker/Auth (`!(showSettings || selected == null || !isModelEnabled || showAuth)`, `LivePlateDetectionScreen.kt`). That dismissal is a user-timed, unbounded interaction. Firing the catch-up export+upload unconditionally at process start — as the previous implementation did — meant a heavy `exportSync()` + `UploadDatasetWorker` PUT could already be mid-flight, with no fixed relationship to when the user actually lands on the camera screen and its own allocation-heavy startup begins. Gating the trigger on the camera having *already* composed removes that race by construction: the two heavy allocators are ordered (camera first, catch-up upload after) instead of landing at an arbitrary, user-controlled offset from each other.
+
+---
+
+## Startup memory robustness
+
+**Observed failure:** on a device with a 256 MB Dalvik heap growth limit and no `largeHeap`, a cold app launch produced a `java.lang.OutOfMemoryError` on the main thread (Compose draw dispatch) within ~2 seconds, immediately preceded by a `WM-WorkerWrapper` OOM inside `UploadDatasetWorker.putZip` uploading a month-old leftover ZIP that WorkManager auto-resumed at process start. Contributing factors, all capable of running concurrently at cold start on the previous implementation:
+
+1. **WorkManager auto-resuming a previously-enqueued `UploadDatasetWorker` job** left over from an earlier session (e.g. the July run that never reached a terminal state) — this happens automatically as soon as the process starts and constraints are satisfied; the app does not control its timing.
+2. **The on-app-start catch-up check** (`AutoUploadWorker.runCatchUpIfNeeded`) previously fired unconditionally in `LivePlateDetectionScreen`'s top-level `LaunchedEffect(Unit)`, i.e. at raw process start, regardless of whether the user was still looking at the Settings/model-picker dialog.
+3. **The camera pipeline's own startup allocation burst** — `LiveDetectionUi` composing and CameraX binding, which is inherently allocation-heavy (YUV→NV21→JPEG→Bitmap conversion per frame).
+
+Fixes:
+
+- **`android:largeHeap="true"`** added to `<application>` in `AndroidManifest.xml` — raises the heap ceiling well above the default 256 MB on most devices, giving headroom for camera + background upload/export to coexist. Does not reduce allocation churn, only the ceiling.
+- **Buffered zip output stream.** `DatasetExporter.exportSync()` previously wrapped a raw `FileOutputStream` directly in the `ZipOutputStream` with no intermediate buffering, forcing an OS write syscall per ~8 KB chunk copied from each frame/label file. Wrapped in `BufferedOutputStream` — reduces I/O/GC churn and shortens how long the export loop runs, shrinking the window during which it competes with other allocators.
+- **Catch-up trigger moved off raw process start onto camera-active** (see "On-app-start catch-up check" above) — removes the ability for a same-launch auto-export/upload to land at an arbitrary point *before* the camera has even started, ordering the two heavy allocators instead of leaving their overlap to chance.
+- The WorkManager-auto-resumed leftover job (factor 1) is not directly controllable from app code — `largeHeap` is the primary mitigation for that piece specifically, since gating app-triggered work has no effect on WorkManager's own persisted-job resumption.
+
 ---
 
 ## Post-upload reset
 
-`exportSync()` (called by `AutoUploadWorker`) packages frames into a ZIP and resets collected frames atomically — the reset is not deferred until upload completion. The ZIP is deleted by `UploadDatasetWorker` on successful upload.
+`exportSync()` (called by `AutoUploadWorker`) packages frames into a ZIP — via a `BufferedOutputStream`-wrapped `ZipOutputStream` (see "Startup memory robustness" above) — and resets collected frames atomically — the reset is not deferred until upload completion. The ZIP is deleted by `UploadDatasetWorker` on successful upload.
 
 After `AutoUploadWorker.doWork()` completes:
 - `auto_upload_last_date` is set to today (`"YYYY-MM-DD"`).
@@ -145,9 +164,15 @@ There is no "Auto-upload daily" toggle. Auto-upload is always on when upload is 
 - [x] If no network at scheduled time, the job runs as soon as the network constraint is satisfied.
 
 ### On-start catch-up
-- [x] On every app start, a background catch-up check runs.
+- [x] A background catch-up check runs once per app session.
+- [x] The check is deferred until `LiveDetectionUi` (camera pipeline) has actually composed, not fired unconditionally at raw process start — avoids racing the camera's own startup allocation burst (see "Startup memory robustness").
 - [x] The check triggers an immediate upload if URL is configured, `auto_upload_last_date != today`, `total_frames > 0`, and network constraint is satisfied.
 - [x] The catch-up check does nothing if `total_frames == 0`, network is unavailable, or already uploaded today.
+
+### Startup memory robustness
+- [x] `android:largeHeap="true"` set in `AndroidManifest.xml`.
+- [x] `DatasetExporter.exportSync()` wraps its `FileOutputStream` in a `BufferedOutputStream` before handing it to `ZipOutputStream`.
+- [x] Catch-up trigger deferred until camera composed — see "On-start catch-up" above (same change, listed once).
 
 ### UI
 - [x] "Daily auto-upload time" row is visible in the Upload configuration card when URL is configured.

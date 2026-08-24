@@ -110,6 +110,18 @@ fun ContributeScreen(
     var showTimePicker by remember { mutableStateOf(false) }
     var showQuotaDialog by remember { mutableStateOf(false) }
     var quotaDialogText by remember(storageQuotaMb) { mutableStateOf(storageQuotaMb.toString()) }
+    var exportsRefreshTick by remember { mutableStateOf(0) }
+
+    // Ticks periodically so stuck-session restart eligibility (based on elapsed time since
+    // the last status update) becomes available live, without requiring the user to leave
+    // and re-enter the screen.
+    var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(15_000)
+            nowTick = System.currentTimeMillis()
+        }
+    }
 
     val timeHour   = remember(autoUploadTime) { autoUploadTime.split(":").getOrNull(0)?.toIntOrNull() ?: 2 }
     val timeMinute = remember(autoUploadTime) { autoUploadTime.split(":").getOrNull(1)?.toIntOrNull() ?: 0 }
@@ -127,7 +139,12 @@ fun ContributeScreen(
         stats = exporter.readStats()
     }
 
-    fun enqueueUpload(zipFile: java.io.File, frameCount: Int, forceAnyNetwork: Boolean = false) {
+    fun enqueueUpload(
+        zipFile: java.io.File,
+        frameCount: Int,
+        forceAnyNetwork: Boolean = false,
+        policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP
+    ) {
         val networkType = if (forceAnyNetwork || uploadOnMobileData) NetworkType.CONNECTED else NetworkType.UNMETERED
         val constraints = Constraints.Builder().setRequiredNetworkType(networkType).build()
         val request = OneTimeWorkRequestBuilder<UploadDatasetWorker>()
@@ -146,7 +163,7 @@ fun ContributeScreen(
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30L, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
-            zipFile.absolutePath, ExistingWorkPolicy.KEEP, request
+            zipFile.absolutePath, policy, request
         )
         exporter.writeUploadStatus(zipFile, UploadStatus.PENDING)
     }
@@ -176,6 +193,17 @@ fun ContributeScreen(
             )
             delay(60_000)
             cooldownActive = false
+        }
+    }
+
+    fun restartUpload(zipFile: java.io.File) {
+        scope.launch {
+            // REPLACE cancels-and-inserts atomically in one WorkManager transaction — unlike a
+            // separate cancelUniqueWork() + enqueueUniqueWork(..., KEEP) pair, there's no window
+            // where the pending cancellation is still in flight and KEEP silently drops the new
+            // enqueue because it still sees the old job as "pending".
+            enqueueUpload(zipFile, stats.totalFrames, forceAnyNetwork = true, policy = ExistingWorkPolicy.REPLACE)
+            exportsRefreshTick++
         }
     }
 
@@ -250,7 +278,6 @@ fun ContributeScreen(
     // Active upload jobs: list all ZIPs that have a non-idle status. Successfully uploaded
     // entries are deleted (ZIP + sidecar) as soon as they succeed, so this is effectively
     // an "active uploads" list rather than a permanent history.
-    var exportsRefreshTick by remember { mutableStateOf(0) }
     val allExports = remember(stats, exportsRefreshTick) { exporter.listExports() }
     val sessionJobs = allExports.filter { it.uploadStatus != UploadStatus.NOT_QUEUED }
     val visibleJobs = sessionJobs.sortedByDescending { it.createdAt }.take(10)
@@ -513,10 +540,31 @@ fun ContributeScreen(
                         }
                     } ?: exportFile.uploadStatus
 
+                    val progressData = workInfos.firstOrNull()?.progress
+                    val progressBytes = progressData?.getLong(UploadDatasetWorker.KEY_PROGRESS_BYTES, -1L) ?: -1L
+                    val progressTotal = progressData?.getLong(UploadDatasetWorker.KEY_PROGRESS_TOTAL, -1L) ?: -1L
+                    val uploadProgress = if (progressBytes >= 0 && progressTotal > 0)
+                        (progressBytes.toFloat() / progressTotal.toFloat()).coerceIn(0f, 1f)
+                    else null
+
+                    // A session is stuck — and thus restartable — if it failed outright, or if
+                    // it's "pending" or "uploading" with no status update in over 30 minutes
+                    // (the worker process died, was killed, is otherwise wedged, or is ENQUEUED
+                    // waiting on a network constraint that's never going to be satisfied).
+                    val canRestart = when (liveStatus) {
+                        UploadStatus.FAILED -> true
+                        UploadStatus.PENDING, UploadStatus.UPLOADING ->
+                            nowTick - exportFile.statusUpdatedAt >= DatasetExporter.STALE_UPLOAD_TIMEOUT_MS
+                        else -> false
+                    }
+
                     UploadJobCard(
                         item = exportFile,
                         uploadStatus = liveStatus,
-                        onSucceeded = { exportsRefreshTick++ }
+                        uploadProgress = uploadProgress,
+                        canRestart = canRestart,
+                        onSucceeded = { exportsRefreshTick++ },
+                        onRestart = { restartUpload(exportFile.file) }
                     )
                 }
 
@@ -539,7 +587,10 @@ fun ContributeScreen(
 private fun UploadJobCard(
     item: DatasetExporter.ExportFile,
     uploadStatus: UploadStatus,
-    onSucceeded: () -> Unit
+    uploadProgress: Float?,
+    canRestart: Boolean,
+    onSucceeded: () -> Unit,
+    onRestart: () -> Unit
 ) {
     LaunchedEffect(uploadStatus) {
         if (uploadStatus == UploadStatus.UPLOADED) onSucceeded()
@@ -555,34 +606,59 @@ private fun UploadJobCard(
             else formatDate(item.createdAt)
             Text(subtitle, style = MaterialTheme.typography.bodySmall)
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                when (uploadStatus) {
-                    UploadStatus.PENDING -> Text(
-                        "Pending upload",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    UploadStatus.UPLOADING -> {
-                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
-                        Text(
-                            "Uploading…",
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    when (uploadStatus) {
+                        UploadStatus.PENDING -> Text(
+                            if (canRestart) "Stuck pending — no progress in 30+ min" else "Pending upload",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (canRestart) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        UploadStatus.UPLOADING -> {
+                            if (!canRestart) {
+                                if (uploadProgress != null) {
+                                    CircularProgressIndicator(
+                                        progress = { uploadProgress },
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                                }
+                            }
+                            Text(
+                                when {
+                                    canRestart -> "Stuck uploading — no progress in 30+ min"
+                                    uploadProgress != null -> "Uploading… ${(uploadProgress * 100).toInt()}%"
+                                    else -> "Uploading…"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (canRestart) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        UploadStatus.FAILED -> Text(
+                            "Upload failed",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        UploadStatus.UPLOADED -> Text(
+                            "✓ Uploaded",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        else -> {}
                     }
-                    UploadStatus.FAILED -> Text(
-                        "Upload failed — tap \"Upload collected data\" to retry",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    UploadStatus.UPLOADED -> Text(
-                        "✓ Uploaded",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    else -> {}
+                }
+                if (canRestart) {
+                    TextButton(onClick = onRestart) { Text("Restart") }
                 }
             }
         }
