@@ -160,6 +160,11 @@ becomes a real need, design a proper claim + expiry model then (per-curator work
 conditional-write claim markers, conflict handling on a concurrent claim) rather than retrofitting
 it piecemeal.
 
+REQ-023 adds two lightweight, client-only pieces that partially cover this ground without the full
+model: **per-item attribution** (`decided_by` / `decided_at` on each manifest item) and
+**opportunistic stale cleanup** (a package with no manifest write for > 2 h is offered for
+Discard / Take over when a curator next opens the app). Neither is a concurrency guarantee.
+
 ---
 
 ## Infra changes required (`infra/aws/template.yaml`)

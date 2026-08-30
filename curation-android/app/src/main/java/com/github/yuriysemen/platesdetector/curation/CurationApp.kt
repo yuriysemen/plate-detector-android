@@ -21,6 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.launch
 
 private sealed interface CurationRoute {
@@ -82,14 +85,26 @@ fun CurationApp() {
                 }
             )
 
-            CurationRoute.Home -> HomeScreen(
-                auth = auth,
-                s3 = remember { S3Access(auth) },
-                onSignOut = {
-                    auth.signOut()
-                    route = CurationRoute.SignedOut
+            CurationRoute.Home -> {
+                val appContext = context.applicationContext
+                val vm: CurationViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer { CurationViewModel(CurationRepository(appContext, auth), auth) }
+                    }
+                )
+                // A refresh/session-token death anywhere in the workflow bubbles up here.
+                LaunchedEffect(vm.sessionExpired) {
+                    if (vm.sessionExpired) route = CurationRoute.SignedOut
                 }
-            )
+                CurationHomeScreen(
+                    vm = vm,
+                    curatorEmail = auth.currentUserEmail(),
+                    onSignOut = {
+                        auth.signOut()
+                        route = CurationRoute.SignedOut
+                    }
+                )
+            }
         }
     }
 }

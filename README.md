@@ -39,7 +39,7 @@ download is applied.
 
 ## Project structure (high level)
 - `android/` — Android application source.
-- `curation-android/` — standalone, internal-only Android app for a trusted curator to review uploaded YOLO packages in S3 and promote them into a training-ready `done/` dataset. Reuses the same Cognito backend as `android/` but talks to S3 directly via a scoped `CuratorRole` (no backend API). See `curation-android/CLAUDE.md`. Requirements: REQ-022 (done), REQ-023/REQ-024 (draft).
+- `curation-android/` — standalone, internal-only Android app for a trusted curator to review uploaded YOLO packages in S3 and promote them into a training-ready `done/` dataset. Reuses the same Cognito backend as `android/` but talks to S3 directly via a scoped `CuratorRole` (no backend API). See `curation-android/CLAUDE.md`. Requirements: REQ-022, REQ-023 (done); REQ-024 — box editor (draft).
 - `infra/aws/` — AWS SAM infrastructure (S3 bucket, Lambda, API Gateway, Cognito, `CuratorRole`) for cloud dataset upload and curation. See `infra/aws/README.md` for deploy instructions.
 - `training/` — Ready-to-run training pipelines implemented in Python.
 - `experiments/` — Exploratory training experiments. Some experiments may be promoted into `training/` after they prove useful; others remain here for history and comparison.
