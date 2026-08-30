@@ -156,13 +156,85 @@ Resources:
                   - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
                   - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/GET/get-model-url"
 
-  # ── Attach the authenticated role to the Identity Pool ────────────────────
+  # ── IAM role assumed by a curator (member of the `curators` group) ────────
+  # Direct, tightly-scoped S3 access from the curation-android device (REQ-022):
+  # list/read uploads + curation working files, write/read done + rejected, and
+  # delete only the per-package curation manifest. Never writes or deletes under
+  # uploads/, never deletes under done/ or rejected/.
+  CuratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref DeviceIdentityPool
+              ForAnyValue:StringLike:
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: CuratorS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListDatasetBucket
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${BucketName}"
+              - Sid: ReadDatasetPrefixes
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/curation/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/done/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/rejected/*"
+              - Sid: WriteCurationOutputs
+                Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}/curation/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/done/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/rejected/*"
+              - Sid: DeleteCurationManifestOnly
+                Effect: Allow
+                Action: s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/curation/*"
+
+  # ── Cognito group gating curator access ──────────────────────────────────
+  # Membership is provisioned manually (no self-service):
+  #   aws cognito-idp admin-add-user-to-group \
+  #     --user-pool-id <UserPoolId> --username <email> --group-name curators
+  # The group's RoleArn drives the Identity Pool's token-based role mapping below.
+  CuratorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: curators
+      UserPoolId: !Ref UserPool
+      Description: Trusted dataset curators — direct scoped S3 access via CuratorRole
+      Precedence: 1
+      RoleArn: !GetAtt CuratorRole.Arn
+
+  # ── Attach roles to the Identity Pool ────────────────────────────────────
+  # Default authenticated role is unchanged (DeviceAuthRole — the main android/
+  # app). RoleMappings adds token-based resolution: an ID token carrying the
+  # `curators` group resolves to CuratorRole via the group's RoleArn; a token
+  # with no group role claim falls back to the default authenticated role.
   DeviceIdentityPoolRoleAttachment:
     Type: AWS::Cognito::IdentityPoolRoleAttachment
     Properties:
       IdentityPoolId: !Ref DeviceIdentityPool
       Roles:
         authenticated: !GetAtt DeviceAuthRole.Arn
+      RoleMappings:
+        CognitoUserPool:
+          IdentityProvider: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}:${UserPoolClient}"
+          Type: Token
+          AmbiguousRoleResolution: AuthenticatedRole
 
   # ── S3 bucket ──────────────────────────────────────────────────────────────
   DatasetBucket:
@@ -318,3 +390,15 @@ Outputs:
       Cognito Identity Pool ID — paste into Android app
       Settings → Export → Identity Pool ID
     Value: !Ref DeviceIdentityPool
+
+  DatasetBucketName:
+    Description: >
+      S3 dataset bucket name — paste into curation-android local.properties
+      as DATASET_BUCKET_NAME
+    Value: !Ref BucketName
+
+  CuratorRoleArn:
+    Description: >
+      IAM role assumed by curation-android devices whose sign-in token carries
+      the `curators` group
+    Value: !GetAtt CuratorRole.Arn

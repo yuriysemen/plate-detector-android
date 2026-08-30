@@ -1,7 +1,8 @@
 # Plate Detector — AWS Upload Infrastructure
 
-AWS SAM stack that backs the cloud dataset upload feature (REQ-014).
-Creates an S3 bucket, a Lambda function, and an API Gateway HTTP API.
+AWS SAM stack that backs the cloud dataset upload feature (REQ-014, REQ-018) and the internal
+dataset-curation app (REQ-022). Creates an S3 bucket, two Lambda functions, an API Gateway HTTP
+API, a Cognito User Pool + Identity Pool, and the `CuratorRole` used for direct S3 curation access.
 
 ---
 
@@ -34,11 +35,36 @@ Optional parameters (defaults shown, override if needed):
 
 | Resource | Purpose |
 |---|---|
-| S3 bucket | Private, encrypted storage for uploaded dataset ZIPs |
+| S3 bucket | Private, encrypted storage for uploaded dataset ZIPs and curated output |
 | Lambda (`GetUploadUrlFunction`) | Generates pre-signed S3 PUT URLs on request |
-| API Gateway HTTP API | HTTPS endpoint for the Lambda; **IAM-authenticated** (SigV4 required) |
-| Cognito Identity Pool (`PlateDetectorDevices`) | Issues short-lived STS credentials to Android devices — no static AWS keys in the APK |
-| IAM role (`DeviceUnauthRole`) | Least-privilege role for Cognito guest identities: `execute-api:Invoke` on `POST /get-upload-url` only |
+| Lambda (`GetModelUrlFunction`) | Generates pre-signed S3 GET URLs for model artifacts (REQ-016) |
+| API Gateway HTTP API | HTTPS endpoint for the Lambdas; **IAM-authenticated** (SigV4 required) |
+| Cognito User Pool (`PlateDetectorUsers`) | Email + password accounts; SRP auth, self sign-up with email verification |
+| Cognito Identity Pool (`PlateDetectorDevices`) | Exchanges a User Pool ID token for short-lived STS credentials — no static AWS keys in the APK |
+| IAM role (`DeviceAuthRole`) | Default role for authenticated Cognito identities (the main `android/` app): `execute-api:Invoke` on `POST /get-upload-url` and `GET /get-model-url` only. No direct S3 access. |
+| Cognito group (`curators`) + IAM role (`CuratorRole`) | Gates the internal `curation-android` app (REQ-022). A signed-in `curators` member's ID token resolves — via the Identity Pool's token-based role mapping — to `CuratorRole`, which has **direct** scoped S3 access: list/read `uploads/`, `curation/`, `done/`, `rejected/`; write `curation/`, `done/`, `rejected/`; delete `curation/` only. Never touches `uploads/` destructively. Non-members fall back to `DeviceAuthRole` (unchanged). |
+
+---
+
+## Dataset curators (`curation-android` app)
+
+The `curators` Cognito group is **not** self-service. To authorize a curator, add their existing
+Cognito account to the group:
+
+```bash
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id "$(aws cloudformation describe-stacks --stack-name plate-detector-upload \
+      --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)" \
+  --username curator@example.com \
+  --group-name curators
+```
+
+The user must sign out and back in (or wait for token refresh) for the new group to appear in
+their ID token. To revoke, use `admin-remove-user-from-group` with the same arguments.
+
+The `curation-android` app also needs `DatasetBucketName` from the stack outputs — paste it into
+`curation-android/local.properties` as `DATASET_BUCKET_NAME` (the `COGNITO_*` values are the same
+as the main app).
 
 ---
 

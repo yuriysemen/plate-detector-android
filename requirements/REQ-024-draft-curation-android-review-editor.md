@@ -1,0 +1,116 @@
+---
+id: REQ-024
+title: Dataset Curation Android App — Review Editor (Accept, Edit, Reject)
+status: draft
+priority: high
+depends_on: REQ-022, REQ-023
+---
+
+## Summary
+
+Per-image review screen for a package that's In Progress: view the image with its YOLO boxes
+overlaid, correct boxes (move/resize/delete/add), and mark the image **Accepted** (boxes are
+correct) or **Rejected** (not a valid training example). This matches the editing fidelity of the
+main app's Dataset Editor / Frame Detail screen (REQ-011/REQ-012), reimplemented natively for this
+standalone project (REQ-022's "no shared module" decision). Everything here is local — no network
+call happens per box edit; only the per-item decision triggers a `manifest.json` write (REQ-023).
+
+---
+
+## Goals
+
+- Match the editing fidelity of the main app's proven editor (pinch/pan/zoom, drag/resize/
+  delete/add box) so the curator isn't working with a degraded tool.
+- Make the common case (boxes already correct) a single tap ("Accept") — most uploaded frames
+  should need no editing since the on-device model already drew the boxes.
+- Never silently lose a correction — every box edit is reflected in the label content saved to the
+  local label file (and, on Accept, into the manifest) when the item is marked Accepted.
+- Enforce the zero-box rule locally, same invariant as REQ-002's export-time rule: an item with
+  zero boxes cannot be Accepted, must be Rejected instead.
+
+## Non-goals
+
+- Multi-class editing — single class (`License_Plate`); no class picker.
+- Pixel-level image editing (crop/rotate/brightness/contrast).
+- OCR-assisted box suggestion or auto-correction.
+- Server-side re-validation of the zero-box rule — there is no backend in this design (REQ-022); the
+  local device is the sole authority, acceptable given the single-trusted-curator threat model.
+
+---
+
+## Loading items
+
+- Opening a package (REQ-023) loads the item list from the local unzip cache and the current
+  per-item status from `curation/<package_id>/manifest.json`, building the position indicator
+  ("14 / 247") and jump-to-item list.
+- Navigating to an item reads the image and label directly from the local unzip cache — no S3 call
+  per item, since the working copy already lives on-device (REQ-022).
+
+## Layout
+
+- Image canvas fills most of the screen; boxes parsed from the item's label content are overlaid as
+  draggable/resizable rectangles, converted from normalized `<x_center> <y_center> <width>
+  <height>` to pixel space using the image's actual dimensions.
+- Sidebar/footer: item position within package (e.g. "14 / 247"), subset badge (train/val/test),
+  Accept / Reject / Next / Previous controls.
+- Zoom and pan (pinch/scroll-wheel zoom, drag to pan) for verifying small or distant plates —
+  matching REQ-012.
+
+## Box editing operations
+
+- **Move** — drag an existing box.
+- **Resize** — drag a corner/edge handle.
+- **Delete** — remove a box that doesn't correspond to a real plate.
+- **Add** — draw a new rectangle for a plate the on-device model missed.
+- Edits are held in local UI state until the item is marked Accepted or Rejected; navigating away
+  without deciding discards edits for that item (no autosave of in-progress edits).
+
+## Accept
+
+- Enabled only when the image has at least one box (zero-box rule).
+- On tap: writes the current box list as YOLO `.txt` content into the local unzip cache's label
+  file for that item, updates that item's entry in `curation/<package_id>/manifest.json` to
+  `{status: "accepted", label_content: "<...>"}`, refreshes package progress counts, and advances to
+  the next `pending` item.
+- If the curator deletes every box, Accept is disabled and a hint is shown — the image must be
+  Rejected instead.
+
+## Reject
+
+- Available at any time, regardless of box count, with an optional free-text reason.
+- On tap: updates the item's entry in `manifest.json` to `{status: "rejected", reason: "<text>"}`
+  (current box edits, if any, are discarded — a rejected item never contributes to `done/`),
+  refreshes progress counts, and advances to the next `pending` item.
+
+## Navigation
+
+- **Next / Previous** step through items in the package's original order.
+- Already-decided items (`accepted`/`rejected`) are visible via a "jump to item" list but are
+  **read-only** in v1 — to change a decision, the whole package must be Released (REQ-023) and
+  restarted.
+
+## No heartbeat
+
+There is no heartbeat call — this design has no server-side claim-expiry concept (REQ-022/REQ-023
+have no claim/lock marker at all in the single-curator model), so there is nothing that needs to be
+kept alive by periodic pings.
+
+---
+
+## Acceptance criteria
+
+- [ ] Opening an in-progress package's editor loads the first `pending` item and renders its
+      existing boxes correctly converted from YOLO normalized coordinates.
+- [ ] Dragging a box updates its position; resizing updates its dimensions; both are reflected in
+      the label content saved on Accept.
+- [ ] Deleting a box removes it from the label content saved on Accept.
+- [ ] Adding a box produces a new correctly-normalized line in the label content saved on Accept.
+- [ ] "Accept" is disabled when zero boxes remain on the image.
+- [ ] "Reject" works regardless of box count and accepts an optional reason.
+- [ ] Marking Accept or Reject immediately updates `curation/<package_id>/manifest.json` and the
+      progress shown on the In Progress screen (REQ-023).
+- [ ] Zoom and pan work via both touch gestures.
+- [ ] Editing one item does not affect any other item's files or manifest entry.
+- [ ] Navigating away from an item without marking Accept/Reject discards its in-progress edits and
+      leaves its manifest status unchanged.
+- [ ] Already-decided items are viewable via the jump list but their boxes cannot be edited in v1.
