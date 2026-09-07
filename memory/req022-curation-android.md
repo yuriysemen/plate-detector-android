@@ -1,15 +1,15 @@
 ---
 name: req022-curation-android
-description: curation-android app — REQ-022 (auth + CuratorRole S3), REQ-023 (3-tab workflow + review screen), REQ-025 (vehicle-type class picker + S3 category list) all done. REQ-024 (precise box move/resize) draft.
+description: curation-android app — REQ-022 (auth + CuratorRole S3), REQ-023 (3-tab workflow + review screen), REQ-025 (vehicle-type class picker + S3 category list), REQ-024 (box move/resize + pinch-zoom/pan) all done.
 metadata:
   type: project
 ---
 
 The `curation-android/` app — a standalone, internal-only Android app for a single trusted curator
 to review uploaded YOLO packages in S3 and promote them into a training-ready `done/` dataset.
-**REQ-022** (foundation), **REQ-023** (workflow) and **REQ-025** (vehicle-type categories) done as
-of 2026-08-31; **REQ-024** (precise box move/resize + pinch-zoom) is draft — add/delete boxes and
-the class picker already exist via REQ-025.
+**REQ-022** (foundation, done 2026-08-31), **REQ-023** (workflow, done 2026-08-31), **REQ-025**
+(vehicle-type categories, done 2026-08-31) and **REQ-024** (precise box move/resize +
+pinch-zoom/pan, done 2026-09-07) — all four requirements are now done.
 
 **Why:** the dataset needs human review before training; the main `android/` app only uploads.
 This is a separate deliverable (not a feature of the main app), specced as REQ-022/023/024.
@@ -34,7 +34,14 @@ Key decisions / facts:
   heartbeat while reviewing) surfaced as Discard / Take over on the In Progress tab.
 - **Review screen** (`ReviewScreen`): image + YOLO overlay + a per-box **vehicle-type class
   dropdown** (REQ-025), top-bar **add-box** (drag a rectangle) + delete. Accept blocked until every
-  box is classified. Precise move/resize of existing boxes = REQ-024 (not built).
+  box is classified. **REQ-024:** drag-to-move + drag-a-handle-to-resize any box, plus pinch-zoom/
+  pan + double-tap reset — geometry math lives in `BoxGeometry` (pure, unit-tested normalized-space
+  hit-test/resize), wired via `CurationViewModel.moveBox` (same debounced-`working_label` pattern
+  as `setBoxClass`/`addBox`/`deleteBox`) and four always-attached `pointerInput` blocks on
+  `ReviewScreen`'s `Canvas` (mirrors `android/.../FrameDetailScreen.kt`'s chaining). In-progress box
+  edits (incl. move/resize) persist across navigation via `working_label` — REQ-024's doc originally
+  said navigating away discards edits; that was stale once REQ-025 added persistence, fixed in the
+  same change.
 - **REQ-025 vehicle classes:** YOLO class-id column carries the type. `config/vehicle-categories
   .json` in the bucket (`0` license_plate … `5` other), fetched on workflow entry, bundled fallback
   at `curation-android/app/src/main/assets/vehicle-categories.json`. `id` is the class id — pinned,
@@ -53,4 +60,7 @@ Key decisions / facts:
 - **Gotcha:** a curator added to the group *after* signing in keeps a token with no role claim →
   Identity Pool resolves the default role → S3 `AccessDenied`. Fix = fresh sign-in. The app
   clears stale cached STS creds on `newCredentialsProvider()` and hints at this in the S3 card.
-- **Still draft:** REQ-024 (precise box **move/resize** + pinch-zoom/pan on `ReviewScreen`).
+- **Nothing outstanding.** All of REQ-022/023/024/025 are implemented, unit-tested (where the logic
+  is Compose-free), and build/dex clean (`compileDebugKotlin`, `testDebugUnitTest`,
+  `assembleDebug`). No on-device run has been done for any of them yet — that's the remaining gap
+  before calling the app itself verified end-to-end.

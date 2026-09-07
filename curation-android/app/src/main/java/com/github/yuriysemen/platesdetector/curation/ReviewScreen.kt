@@ -4,7 +4,12 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,8 +66,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -111,6 +118,15 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var dragStart by remember { mutableStateOf<Offset?>(null) }
     var dragNow by remember { mutableStateOf<Offset?>(null) }
+
+    // ── REQ-024: move/resize the selected box + pinch-zoom/pan ─────────────
+    var dragHandle by remember(session.index) { mutableStateOf<DragHandle?>(null) }
+    var liveBox by remember(session.index) { mutableStateOf<YoloBox?>(null) }
+    var zoomScale by remember(session.index) { mutableStateOf(1f) }
+    var panOffsetX by remember(session.index) { mutableStateOf(0f) }
+    var panOffsetY by remember(session.index) { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val handleRadiusPx = with(density) { 14.dp.toPx() }
 
     val defaultNewClass = categories?.classes?.firstOrNull { it.key != "license_plate" }?.id
         ?: categories?.classes?.firstOrNull()?.id ?: 1
@@ -197,8 +213,12 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                 if (bmp == null) {
                     Text("Loading image…", color = Color.White)
                 } else {
-                    val canvasMod = if (addMode && !decided) {
-                        Modifier.fillMaxSize().pointerInput(session.index) {
+                    // Each block below is always attached and internally no-ops when its mode
+                    // isn't active, so add-box / move-resize / pinch-zoom-pan can coexist on one
+                    // Canvas — mirrors android/.../FrameDetailScreen.kt's chained pointerInputs.
+                    val canvasMod = Modifier.fillMaxSize()
+                        .pointerInput(session.index) {
+                            if (!addMode || decided) return@pointerInput
                             detectDragGestures(
                                 onDragStart = { dragStart = it; dragNow = it },
                                 onDrag = { change, _ -> dragNow = change.position },
@@ -216,30 +236,129 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                                 },
                             )
                         }
-                    } else Modifier.fillMaxSize()
+                        .pointerInput(session.index) {
+                            detectTapGestures(onDoubleTap = {
+                                zoomScale = 1f; panOffsetX = 0f; panOffsetY = 0f
+                            })
+                        }
+                        .pointerInput(session, addMode, decided) {
+                            if (addMode || decided) return@pointerInput
+                            detectDragGestures(
+                                onDragStart = { pos ->
+                                    val rect = fitRect(canvasSize, bmp.width, bmp.height)
+                                    val content = Offset((pos.x - panOffsetX) / zoomScale, (pos.y - panOffsetY) / zoomScale)
+                                    val norm = normalizedPoint(content, rect)
+                                    val radiusPx = handleRadiusPx / zoomScale
+                                    val rx = if (rect.width > 0f) radiusPx / rect.width else 0f
+                                    val ry = if (rect.height > 0f) radiusPx / rect.height else 0f
+                                    val hit = BoxGeometry.hitTest(norm, boxes, selected, rx, ry)
+                                    if (hit != null) {
+                                        selected = hit.first; dragHandle = hit.second; liveBox = boxes[hit.first]
+                                    } else {
+                                        dragHandle = null; liveBox = null
+                                    }
+                                },
+                                onDrag = { _, dragAmount ->
+                                    val handle = dragHandle ?: return@detectDragGestures
+                                    val idx = selected ?: return@detectDragGestures
+                                    val rect = fitRect(canvasSize, bmp.width, bmp.height)
+                                    if (rect.width <= 0f || rect.height <= 0f) return@detectDragGestures
+                                    val dx = (dragAmount.x / zoomScale) / rect.width
+                                    val dy = (dragAmount.y / zoomScale) / rect.height
+                                    liveBox = BoxGeometry.applyHandle(liveBox ?: boxes[idx], handle, dx, dy)
+                                },
+                                onDragEnd = {
+                                    val idx = selected; val box = liveBox
+                                    if (idx != null && box != null && dragHandle != null) vm.moveBox(idx, box)
+                                    dragHandle = null; liveBox = null
+                                },
+                                onDragCancel = { dragHandle = null; liveBox = null },
+                            )
+                        }
+                        .pointerInput(session.index) {
+                            awaitEachGesture {
+                                var event = awaitPointerEvent()
+                                while (event.changes.any { it.pressed } && event.changes.count { it.pressed } < 2) {
+                                    event = awaitPointerEvent()
+                                }
+                                if (event.changes.count { it.pressed } < 2) return@awaitEachGesture
+                                dragStart = null; dragNow = null
+                                dragHandle = null; liveBox = null
+                                event.changes.forEach { it.consume() }
+                                do {
+                                    event = awaitPointerEvent()
+                                    if (event.changes.count { it.pressed } < 2) break
+                                    val centroid = event.calculateCentroid(useCurrent = false)
+                                    val zoomFactor = event.calculateZoom()
+                                    val panDelta = event.calculatePan()
+                                    val newZoom = (zoomScale * zoomFactor).coerceIn(1f, 8f)
+                                    val actualFactor = newZoom / zoomScale
+                                    panOffsetX = centroid.x - (centroid.x - panOffsetX) * actualFactor + panDelta.x
+                                    panOffsetY = centroid.y - (centroid.y - panOffsetY) * actualFactor + panDelta.y
+                                    zoomScale = newZoom
+                                    val rect = fitRect(IntSize(size.width, size.height), bmp.width, bmp.height)
+                                    val w = size.width.toFloat(); val h = size.height.toFloat()
+                                    panOffsetX = panOffsetX.coerceIn(
+                                        w * 0.25f - (rect.left + rect.width) * zoomScale,
+                                        w * 0.75f - rect.left * zoomScale,
+                                    )
+                                    panOffsetY = panOffsetY.coerceIn(
+                                        h * 0.25f - (rect.top + rect.height) * zoomScale,
+                                        h * 0.75f - rect.top * zoomScale,
+                                    )
+                                    event.changes.forEach { it.consume() }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
 
                     Canvas(canvasMod) {
                         val rect = fitRect(IntSize(size.width.toInt(), size.height.toInt()), bmp.width, bmp.height)
-                        drawImage(
-                            image = bmp,
-                            dstOffset = IntOffset(rect.left.roundToInt(), rect.top.roundToInt()),
-                            dstSize = IntSize(rect.width.roundToInt(), rect.height.roundToInt()),
-                        )
-                        boxes.forEachIndexed { i, b ->
-                            val color = when {
-                                i == selected -> SELECTED
-                                classes.getOrNull(i) == null -> UNCLASSIFIED
-                                else -> CLASSIFIED
-                            }
-                            drawRect(
-                                color = color,
-                                topLeft = Offset(
-                                    rect.left + (b.xCenter - b.width / 2f) * rect.width,
-                                    rect.top + (b.yCenter - b.height / 2f) * rect.height,
-                                ),
-                                size = Size(b.width * rect.width, b.height * rect.height),
-                                style = Stroke(width = if (i == selected) 5f else 3f),
+                        withTransform({
+                            translate(panOffsetX, panOffsetY)
+                            scale(zoomScale, zoomScale, pivot = Offset.Zero)
+                        }) {
+                            drawImage(
+                                image = bmp,
+                                dstOffset = IntOffset(rect.left.roundToInt(), rect.top.roundToInt()),
+                                dstSize = IntSize(rect.width.roundToInt(), rect.height.roundToInt()),
                             )
+                            val shown = if (dragHandle != null && liveBox != null && selected != null) {
+                                boxes.mapIndexed { i, b -> if (i == selected) liveBox!! else b }
+                            } else boxes
+                            shown.forEachIndexed { i, b ->
+                                val color = when {
+                                    i == selected -> SELECTED
+                                    classes.getOrNull(i) == null -> UNCLASSIFIED
+                                    else -> CLASSIFIED
+                                }
+                                drawRect(
+                                    color = color,
+                                    topLeft = Offset(
+                                        rect.left + (b.xCenter - b.width / 2f) * rect.width,
+                                        rect.top + (b.yCenter - b.height / 2f) * rect.height,
+                                    ),
+                                    size = Size(b.width * rect.width, b.height * rect.height),
+                                    style = Stroke(width = if (i == selected) 5f else 3f),
+                                )
+                            }
+                            val sel = selected
+                            if (!decided && !addMode && sel != null && sel in shown.indices) {
+                                val b = shown[sel]
+                                val hl = rect.left + (b.xCenter - b.width / 2f) * rect.width
+                                val ht = rect.top + (b.yCenter - b.height / 2f) * rect.height
+                                val hr2 = rect.left + (b.xCenter + b.width / 2f) * rect.width
+                                val hb = rect.top + (b.yCenter + b.height / 2f) * rect.height
+                                val hcx = (hl + hr2) / 2f; val hcy = (ht + hb) / 2f
+                                val handlePts = listOf(
+                                    Offset(hl, ht), Offset(hr2, ht), Offset(hl, hb), Offset(hr2, hb),
+                                    Offset(hcx, ht), Offset(hcx, hb), Offset(hl, hcy), Offset(hr2, hcy),
+                                )
+                                val hr = handleRadiusPx / zoomScale
+                                handlePts.forEach { h ->
+                                    drawCircle(Color.White, radius = hr, center = h)
+                                    drawCircle(SELECTED, radius = (hr - 3f).coerceAtLeast(1f), center = h)
+                                }
+                            }
                         }
                         val s = dragStart; val e = dragNow
                         if (addMode && s != null && e != null) {
@@ -258,6 +377,14 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                         Modifier.align(Alignment.TopCenter).background(Color(0xCC000000)).padding(6.dp),
                         color = Color.White,
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (zoomScale > 1f) {
+                    Text(
+                        "%.1f×".format(zoomScale),
+                        Modifier.align(Alignment.BottomStart).background(Color(0x73000000)).padding(6.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }
@@ -415,13 +542,20 @@ private fun fitRect(canvas: IntSize, imgW: Int, imgH: Int): Rect {
     return Rect(ox, oy, ox + dw, oy + dh)
 }
 
+/** A canvas-pixel point → normalized `[0, 1]` image coordinates (REQ-024 hit-testing reuses this). */
+private fun normalizedPoint(p: Offset, rect: Rect): Offset {
+    if (rect.width <= 0f || rect.height <= 0f) return Offset(0f, 0f)
+    val x = ((p.x - rect.left) / rect.width).coerceIn(0f, 1f)
+    val y = ((p.y - rect.top) / rect.height).coerceIn(0f, 1f)
+    return Offset(x, y)
+}
+
 /** Two canvas-pixel corners → a normalized YOLO box, or null if too small. */
 private fun toNormalizedBox(a: Offset, b: Offset, rect: Rect): FloatArray? {
     if (rect.width <= 0f || rect.height <= 0f) return null
-    fun nx(x: Float) = ((x - rect.left) / rect.width).coerceIn(0f, 1f)
-    fun ny(y: Float) = ((y - rect.top) / rect.height).coerceIn(0f, 1f)
-    val x1 = nx(min(a.x, b.x)); val x2 = nx(max(a.x, b.x))
-    val y1 = ny(min(a.y, b.y)); val y2 = ny(max(a.y, b.y))
+    val p1 = normalizedPoint(a, rect); val p2 = normalizedPoint(b, rect)
+    val x1 = min(p1.x, p2.x); val x2 = max(p1.x, p2.x)
+    val y1 = min(p1.y, p2.y); val y2 = max(p1.y, p2.y)
     val w = x2 - x1; val h = y2 - y1
     if (w < 0.01f || h < 0.01f) return null
     return floatArrayOf((x1 + x2) / 2f, (y1 + y2) / 2f, w, h)

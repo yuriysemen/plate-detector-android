@@ -1,5 +1,6 @@
 package com.github.yuriysemen.platesdetector.curation
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -205,6 +206,101 @@ class CurationManifestTest {
             .withDecision(1, ItemStatus.ACCEPTED, labelContent = "2 0.3 0.3 0.1 0.1")
             .withDecision(2, ItemStatus.REJECTED)
         assertEquals(mapOf("license_plate" to 1, "police" to 2), m.classCounts(cats))
+    }
+}
+
+// ── REQ-024 ──────────────────────────────────────────────────────────────
+
+class BoxGeometryTest {
+
+    private val eps = 1e-5f
+    private fun box(cx: Float, cy: Float, w: Float, h: Float) = YoloBox(0, cx, cy, w, h)
+
+    @Test
+    fun cornerResizeMovesOnlyThatCorner() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.TL, dx = 0.05f, dy = 0.05f)
+        assertEquals(0.15f, out.width, eps)
+        assertEquals(0.15f, out.height, eps)
+        assertEquals(0.6f, out.xCenter + out.width / 2f, eps)   // right edge unchanged
+        assertEquals(0.6f, out.yCenter + out.height / 2f, eps)  // bottom edge unchanged
+    }
+
+    @Test
+    fun edgeHandleResizeIsSingleAxis() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.RM, dx = 0.1f, dy = 0f)
+        assertEquals(0.3f, out.width, eps)
+        assertEquals(0.2f, out.height, eps)  // untouched by a right-edge drag
+        assertEquals(0.5f, out.yCenter, eps)
+    }
+
+    @Test
+    fun moveTranslatesWithoutResizing() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.MOVE, dx = 0.1f, dy = -0.1f)
+        assertEquals(0.2f, out.width, eps)
+        assertEquals(0.2f, out.height, eps)
+        assertEquals(0.6f, out.xCenter, eps)
+        assertEquals(0.4f, out.yCenter, eps)
+    }
+
+    @Test
+    fun moveClampsAtImageBounds() {
+        val out = BoxGeometry.applyHandle(box(0.9f, 0.5f, 0.1f, 0.1f), DragHandle.MOVE, dx = 0.5f, dy = 0f)
+        assertEquals(0.1f, out.width, eps)  // size preserved, just pinned to the edge
+        assertEquals(1f, out.xCenter + out.width / 2f, eps)
+    }
+
+    @Test
+    fun resizeClampsAtImageBounds() {
+        val out = BoxGeometry.applyHandle(box(0.9f, 0.5f, 0.1f, 0.1f), DragHandle.TR, dx = 0.5f, dy = -0.5f)
+        assertEquals(1f, out.xCenter + out.width / 2f, eps)   // right edge pinned at 1
+        assertEquals(0f, out.yCenter - out.height / 2f, eps)  // top edge pinned at 0
+    }
+
+    @Test
+    fun resizeNeverShrinksBelowMinSize() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.1f, 0.1f), DragHandle.TL, dx = 0.5f, dy = 0.5f)
+        assertTrue(out.width >= BoxGeometry.MIN_SIZE - eps)
+        assertTrue(out.height >= BoxGeometry.MIN_SIZE - eps)
+    }
+
+    @Test
+    fun resizeOnAlreadyTinyBoxDoesNotThrow() {
+        // A box narrower than MIN_SIZE can exist from earlier real-world data; resizing it must
+        // recover rather than crash on an inverted coerceIn range.
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.005f, 0.005f), DragHandle.LM, dx = 0.1f, dy = 0f)
+        assertTrue(out.width >= BoxGeometry.MIN_SIZE - eps)
+    }
+
+    @Test
+    fun hitTestPrefersSelectedBoxHandleOverAnotherBoxBody() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)   // edges 0.4..0.6
+        val b = box(0.55f, 0.55f, 0.3f, 0.3f) // edges 0.4..0.7 — covers a's TL handle too
+        val hit = BoxGeometry.hitTest(
+            Offset(0.4f, 0.4f), listOf(a, b), selected = 0,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertEquals(0 to DragHandle.TL, hit)
+    }
+
+    @Test
+    fun hitTestFallsBackToTopmostBoxBody() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)
+        val b = box(0.55f, 0.55f, 0.3f, 0.3f)
+        val hit = BoxGeometry.hitTest(
+            Offset(0.55f, 0.55f), listOf(a, b), selected = null,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertEquals(1 to DragHandle.MOVE, hit)
+    }
+
+    @Test
+    fun hitTestReturnsNullOnEmptySpace() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)
+        val hit = BoxGeometry.hitTest(
+            Offset(0.05f, 0.05f), listOf(a), selected = null,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertNull(hit)
     }
 }
 

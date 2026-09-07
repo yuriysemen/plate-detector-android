@@ -207,6 +207,18 @@ class CurationViewModel(
         saveManifestDebounced(updated)
     }
 
+    /** Replace one box's geometry after a move/resize drag (REQ-024); class id is unaffected. */
+    fun moveBox(boxIndex: Int, updated: YoloBox) {
+        val s = session ?: return
+        if (s.currentItem.status != ItemStatus.PENDING) return
+        val rb = currentBoxes()
+        if (boxIndex !in rb.boxes.indices) return
+        val boxes = rb.boxes.toMutableList().also { it[boxIndex] = updated }
+        val newManifest = s.manifest.withItemBoxes(s.index, YoloLabel.format(boxes, rb.classes), rb.classes)
+        session = s.copy(manifest = newManifest)
+        saveManifestDebounced(newManifest)
+    }
+
     fun deleteBox(boxIndex: Int) {
         val s = session ?: return
         if (s.currentItem.status != ItemStatus.PENDING) return

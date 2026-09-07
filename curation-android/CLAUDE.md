@@ -10,9 +10,9 @@ dataset in S3 `done/`. It is a separate Gradle project from `android/` with **no
 dependency** on it — shared concepts (Cognito auth, YOLO label parsing, the box editor) are
 reimplemented here, not shared.
 
-Requirements: **REQ-022** (foundation — done), **REQ-023** (package workflow — done),
-**REQ-025** (vehicle-type categories + typed boxes — done), **REQ-024** (precise box geometry
-editing — draft), all in `../requirements/`.
+Requirements: **REQ-022** (foundation), **REQ-023** (package workflow), **REQ-025** (vehicle-type
+categories + typed boxes), **REQ-024** (precise box geometry editing + pinch-zoom/pan) — all done,
+all in `../requirements/`.
 
 Key design decisions (see REQ-022 / REQ-023):
 - **Direct S3 access from the device** via a scoped IAM role (`CuratorRole`), not a Lambda-mediated
@@ -85,8 +85,9 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 | `CurationHomeScreen` | Bottom-nav tabs + busy dialog + error snackbar; hosts `ReviewScreen` full-screen when a session is open |
 | `PackageTabs` | `NotProcessedTab` / `InProgressTab` (stale rows → Discard / Take over) / `DoneTab` |
 | `CurationRepository` (REQ-025) | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback); `completePackage` regenerates `data.yaml` header from the category list |
-| `CurationViewModel` (REQ-025) | `currentBoxes()` (boxes + chosen classes), `setBoxClass` / `addBox` / `deleteBox` (debounced manifest save), `canAcceptCurrent()`, `accept()`/`reject()` |
-| `ReviewScreen` | Image + YOLO overlay (amber=unclassified, cyan=classified, pink=selected), a per-box **class dropdown** list, top-bar **add-box** (drag a rectangle), Prev/Reject(+reason)/Accept/Next, jump-to-item sheet. Accept blocked until every box is classified. REQ-024 adds move/resize. |
+| `BoxGeometry` (REQ-024) | Pure, Compose-free geometry in normalized `[0,1]` box space, unit-tested: `hitTest` (selected box's 8 handles first, else topmost box body), `applyHandle` (move/resize one box, clamped to image bounds + a min size) |
+| `CurationViewModel` (REQ-025/024) | `currentBoxes()` (boxes + chosen classes), `setBoxClass` / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()` |
+| `ReviewScreen` | Image + YOLO overlay (amber=unclassified, cyan=classified, pink=selected), a per-box **class dropdown** list, top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject(+reason)/Accept/Next, jump-to-item sheet. Accept blocked until every box is classified. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
 | `Format` | `nowIso()` (top-level), date/size/subset formatting |
 
 **Auth → credentials flow:** sign-in caches sub + email → `getIdToken()` (SDK auto-refresh,
@@ -111,9 +112,8 @@ regenerated with `nc`/`names` from the list. Operator seeds the file with `aws s
 `DeviceIdentityPoolRoleAttachment.RoleMappings`. Deploy with `cd ../infra/aws && sam build &&
 sam deploy`. `DeviceAuthRole` (the main app) is untouched.
 
-## Not yet built (REQ-024)
+## Not yet built
 
-Precise geometry editing on `ReviewScreen` — **move / resize** any box, pinch-zoom/pan. Add /
-delete boxes and the class picker already exist (REQ-025). Changing an already-decided item stays
-out of scope (v1: Release the package to redo). `ReviewScreen`'s `Canvas` + the box list are the
-attach points.
+Nothing outstanding in REQ-022/023/024/025. Changing an already-decided item's boxes stays out of
+scope for v1 (Release the package to redo); a full on-device run (start → review, incl. move/
+resize/pinch-zoom → complete) against a real uploaded package hasn't been done yet.
