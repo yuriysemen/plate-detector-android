@@ -94,7 +94,7 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
     val item = session.currentItem
     val cached = session.current
     val decided = item.status != ItemStatus.PENDING
-    val categories = vm.categories
+    val categories = vm.sessionCategories
 
     // Recomputed on every session change (each box edit copies the session).
     val review = remember(session) { vm.currentBoxes() }

@@ -49,6 +49,16 @@ Key decisions / facts:
   `_manifest.json` gains `category_list_version` + `class_counts`. `CuratorRole` gained
   `s3:GetObject` on `config/*` (read-only). Operator seeds the list with `aws s3 cp`. This is the
   training-data source for REQ-009 (whose separate-classifier recommendation is now one option).
+- **Package category snapshot (bug fix, 2026-09-07):** originally, review/Complete called
+  `fetchCategories()` fresh each time — if the canonical list moved on (e.g. v1→v2) after a package
+  started, an offline or delayed Complete could silently fall back to the bundled list and
+  regenerate `data.yaml`/`class_counts` from the *wrong* version, producing labels outside their
+  own metadata's `nc`/`names` range. Fixed by embedding the full list (`VehicleCategories
+  .toJsonObject()`, not just the version) into the manifest at Start — `CurationManifest.categories`
+  / JSON key `category_list`. Review (`CurationViewModel.sessionCategories`) and Complete
+  (`manifest.categories ?: ensureCategories()`) always prefer that snapshot; `completePackage` also
+  `check()`s the version matches as a backstop, refusing rather than silently mismatching. Only a
+  pre-fix manifest (no snapshot) still risks this, same as before.
 - **Working copy on-device** (`filesDir/packages/<id>/`) — only `manifest.json` synced to S3; makes
   progress restartable across kill/reboot/reinstall.
 - **Infra** (`infra/aws/template.yaml`): `CuratorRole` (S3: list bucket; get `uploads|curation|

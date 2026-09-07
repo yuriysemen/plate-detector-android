@@ -105,7 +105,7 @@ class CurationRepository(
     suspend fun startPackage(
         upload: UploadRef,
         curatorEmail: String,
-        categoryListVersion: Int,
+        categories: VehicleCategories,
         onProgress: ProgressSink,
     ): CurationManifest = withContext(Dispatchers.IO) {
         val s3 = client()
@@ -127,7 +127,8 @@ class CurationRepository(
             startedAt = nowIso(),
             curatorEmail = curatorEmail,
             items = items,
-            categoryListVersion = categoryListVersion,
+            categoryListVersion = categories.version,
+            categories = categories,
         )
         putManifest(s3, manifest)
         onProgress(3, 3)
@@ -165,6 +166,18 @@ class CurationRepository(
         categories: VehicleCategories,
         onProgress: ProgressSink,
     ): DoneManifest = withContext(Dispatchers.IO) {
+        // The labels already accepted into this package's manifest were classified against
+        // `manifest.categoryListVersion`. Regenerating data.yaml/class_counts from a *different*
+        // version here would silently produce a package whose labels fall outside its own
+        // nc/names — reject rather than substitute. In normal operation `categories` is always
+        // the manifest's own embedded snapshot (see CurationViewModel.complete), so this only
+        // trips for a pre-fix manifest with no snapshot whose best-effort fallback disagrees.
+        check(categories.version == manifest.categoryListVersion) {
+            "Category list mismatch: package \"${manifest.filename}\" was reviewed against " +
+                "version ${manifest.categoryListVersion}, but version ${categories.version} is " +
+                "what's available now. Completing would produce labels outside data.yaml's " +
+                "nc/names range — refusing. Reconnect so the package's own list can be used."
+        }
         val s3 = client()
         val id = manifest.packageId
         val ops = mutableListOf<Pair<File, String>>()

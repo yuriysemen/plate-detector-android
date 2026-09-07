@@ -98,6 +98,15 @@ class VehicleCategoriesTest {
         assertEquals(listOf("license_plate", "civil", "police"),
             VehicleCategories.fromJson(json).orderedNames())
     }
+
+    @Test
+    fun toJsonObjectRoundTrips() {
+        // The manifest snapshot (REQ-025 offline-completion fix) embeds this — must survive a
+        // full serialize/deserialize, not just the version number.
+        val c = VehicleCategories.fromJson(json)
+        val back = VehicleCategories.fromJsonObject(c.toJsonObject())
+        assertEquals(c, back)
+    }
 }
 
 class CurationManifestTest {
@@ -206,6 +215,28 @@ class CurationManifestTest {
             .withDecision(1, ItemStatus.ACCEPTED, labelContent = "2 0.3 0.3 0.1 0.1")
             .withDecision(2, ItemStatus.REJECTED)
         assertEquals(mapOf("license_plate" to 1, "police" to 2), m.classCounts(cats))
+    }
+
+    @Test
+    fun categorySnapshotRoundTripsWithManifest() {
+        // Offline-completion fix: the package's own category-list snapshot must survive a
+        // manifest write/read, not just its version number.
+        val cats = VehicleCategories.fromJson(
+            """{"version":2,"classes":[
+                 {"id":0,"key":"license_plate","label":"L"},
+                 {"id":6,"key":"other","label":"Other"}]}"""
+        )
+        val m = sample().copy(categoryListVersion = cats.version, categories = cats)
+        val back = CurationManifest.fromJson(m.toJson())
+        assertEquals(cats, back.categories)
+        assertEquals(2, back.categoryListVersion)
+    }
+
+    @Test
+    fun categorySnapshotAbsentOnLegacyManifest() {
+        // A manifest written before this field existed has no "category_list" key at all.
+        val back = CurationManifest.fromJson(sample().toJson())
+        assertNull(back.categories)
     }
 }
 

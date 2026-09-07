@@ -38,6 +38,11 @@ data class CurationManifest(
     val curatorEmail: String,  // who *started* the package (per-item decidedBy is who reviewed each)
     val items: List<ManifestItem>,
     val categoryListVersion: Int = 1,  // REQ-025 vehicle-category list version in force
+    // Snapshot of the category list in force when the package was Started — review and Complete
+    // always classify/regenerate against THIS, never a freshly-fetched list, so an offline or
+    // delayed Complete can't silently mix a package's labels with a different list's nc/names.
+    // Null only for a manifest written before this field existed (pre-fix in-flight package).
+    val categories: VehicleCategories? = null,
 ) {
     val total: Int get() = items.size
     val accepted: Int get() = items.count { it.status == ItemStatus.ACCEPTED }
@@ -140,6 +145,7 @@ data class CurationManifest(
             put("started_at", startedAt)
             put("curator_email", curatorEmail)
             put("category_list_version", categoryListVersion)
+            if (categories != null) put("category_list", categories.toJsonObject())
             put("items", arr)
         }.toString(2)
     }
@@ -182,6 +188,7 @@ data class CurationManifest(
                 curatorEmail = o.optString("curator_email", ""),
                 items = items,
                 categoryListVersion = o.optInt("category_list_version", 1),
+                categories = o.optJSONObject("category_list")?.let { VehicleCategories.fromJsonObject(it) },
             )
         }
     }

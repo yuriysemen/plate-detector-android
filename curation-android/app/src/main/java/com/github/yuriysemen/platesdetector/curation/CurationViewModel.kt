@@ -95,13 +95,20 @@ class CurationViewModel(
     private suspend fun ensureCategories(): VehicleCategories =
         categories ?: repo.fetchCategories().also { categories = it }
 
+    /**
+     * The category list to classify/display against for the OPEN session: its own embedded
+     * snapshot (taken at Start, REQ-025 offline-completion fix) when present, else the app-level
+     * fetch/bundled fallback — only reached for a manifest written before the snapshot existed.
+     */
+    val sessionCategories: VehicleCategories? get() = session?.manifest?.categories ?: categories
+
     fun startReview(upload: UploadRef) {
         if (busy != null) return
         viewModelScope.launch {
             busy = BusyState("Downloading ${upload.filename}…", 0, 3)
             val ok = runCatchingSession {
-                val version = ensureCategories().version
-                val manifest = repo.startPackage(upload, auth.currentUserEmail(), version) { c, t ->
+                val cats = ensureCategories()
+                val manifest = repo.startPackage(upload, auth.currentUserEmail(), cats) { c, t ->
                     busy = BusyState("Preparing ${upload.filename}…", c, t)
                 }
                 val items = repo.ensureLocalCopy(manifest) { _, _ -> }
@@ -281,7 +288,11 @@ class CurationViewModel(
         viewModelScope.launch {
             busy = BusyState("Uploading ${manifest.filename}…", 0, 1)
             val ok = runCatchingSession {
-                val cats = ensureCategories()
+                // Always the package's own snapshot when it has one — never a freshly-fetched
+                // list, so an offline (or delayed) Complete can't mix a package's labels with a
+                // different category-list version's nc/names. ensureCategories() (network-or-
+                // bundled) is only a best-effort fallback for a pre-fix manifest with no snapshot.
+                val cats = manifest.categories ?: ensureCategories()
                 repo.completePackage(manifest, cats) { c, t ->
                     busy = BusyState("Uploading ${manifest.filename}…", c, t)
                 }

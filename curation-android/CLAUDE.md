@@ -77,16 +77,16 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 |---|---|
 | `PackageId` / `UploadRef` | `packageIdOf(sub, device, filename)`; parse `uploads/<sub>/<device>/<file>.zip` |
 | `YoloLabel` | YOLO `.txt` parse/format (comma-decimal + blank-line tolerant); `format(boxes, classOverrides)` for the curator's chosen classes |
-| `VehicleCategories` | REQ-025 class list — `fromJson` + `bundledDefault(context)` (`assets/vehicle-categories.json`). `id` = YOLO class id, pinned |
-| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and `done/<id>/_manifest.json`; `withDecision`, `withItemBoxes` (working geometry + `box_classes`), `reviewers()`, `classCounts()`, count helpers |
+| `VehicleCategories` | REQ-025 class list — `fromJson`/`fromJsonObject` + `bundledDefault(context)` (`assets/vehicle-categories.json`). `id` = YOLO class id, pinned. `toJsonObject()` embeds the full list, not just its version — what a package snapshots at Start |
+| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and `done/<id>/_manifest.json`; `withDecision`, `withItemBoxes` (working geometry + `box_classes`), `reviewers()`, `classCounts()`, count helpers. `CurationManifest.categories` is the package's own category-list snapshot (`category_list` JSON key) |
 | `PackageCache` | `filesDir/packages/<id>/` — zip-slip-guarded unzip, item listing, label read/write, delete |
 | `CurationRepository` | All S3 (paginated `ListObjectsV2`, get/put/delete): `listNotProcessed` / `listInProgress` (→ `InProgressItem` with last-activity ms) / `listDone`, `startPackage`, `putManifest`, `ensureLocalCopy`, `completePackage`, `releasePackage`. Also `checkAccess()` (REQ-022). |
 | `CurationViewModel` | Tab states, blocking `busy` progress, review `session`, `decide()` (stamps `decided_by`/`decided_at`, rewrites manifest, auto-advances), `complete`/`release`, ~3 min manifest heartbeat |
 | `CurationHomeScreen` | Bottom-nav tabs + busy dialog + error snackbar; hosts `ReviewScreen` full-screen when a session is open |
 | `PackageTabs` | `NotProcessedTab` / `InProgressTab` (stale rows → Discard / Take over) / `DoneTab` |
-| `CurationRepository` (REQ-025) | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback); `completePackage` regenerates `data.yaml` header from the category list |
+| `CurationRepository` (REQ-025) | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback, used only to embed a snapshot at `startPackage` / as a legacy-manifest fallback); `completePackage` regenerates `data.yaml` header from its `categories` param and `check()`s its version matches the manifest's |
 | `BoxGeometry` (REQ-024) | Pure, Compose-free geometry in normalized `[0,1]` box space, unit-tested: `hitTest` (selected box's 8 handles first, else topmost box body), `applyHandle` (move/resize one box, clamped to image bounds + a min size) |
-| `CurationViewModel` (REQ-025/024) | `currentBoxes()` (boxes + chosen classes), `setBoxClass` / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()` |
+| `CurationViewModel` (REQ-025/024) | `currentBoxes()` (boxes + chosen classes), `setBoxClass` / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()`, `sessionCategories` (the open session's own snapshot, else the app-level fallback) |
 | `ReviewScreen` | Image + YOLO overlay (amber=unclassified, cyan=classified, pink=selected), a per-box **class dropdown** list, top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject(+reason)/Accept/Next, jump-to-item sheet. Accept blocked until every box is classified. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
 | `Format` | `nowIso()` (top-level), date/size/subset formatting |
 
@@ -105,6 +105,17 @@ from `config/vehicle-categories.json` in the bucket (`0` license_plate, `1` civi
 `3` fire, `4` medical, `5` other), fetched on workflow entry, bundled fallback in assets. Every
 box must be classified before Accept; `done/` label files carry the ids and `data.yaml` is
 regenerated with `nc`/`names` from the list. Operator seeds the file with `aws s3 cp`.
+
+**Package category snapshot.** A package embeds the *full* category list (not just its version) in
+its own manifest at Start (`CurationManifest.categories`, JSON key `category_list`) — review and
+Complete always use that snapshot (`CurationViewModel.sessionCategories` / `manifest.categories`),
+never a freshly-fetched one. This is what makes Complete safe fully offline and immune to the
+canonical list moving on mid-package (e.g. `config/vehicle-categories.json` bumped to a version
+with a new class while this package is still reviewing an older version) — without it, a stale or
+mismatched fetch at Complete time could regenerate `data.yaml`'s `nc`/`names` from a different list
+than the one the labels were actually classified against. `CurationRepository.completePackage`
+additionally `check()`s the version matches as a backstop. A manifest from before this existed has
+no snapshot and falls back to a fresh fetch/bundled list, same risk as before.
 
 ## Infra
 

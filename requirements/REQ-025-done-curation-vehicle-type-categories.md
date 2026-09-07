@@ -90,6 +90,7 @@ meaningful. The class picker works on **any box**:
 
 ```json
 { "category_list_version": 1,
+  "category_list": { "version": 1, "classes": [ { "id": 0, "key": "license_plate", "label": "License plate" }, "..." ] },
   "items": [ {
     "...": "...",
     "working_label": "0 0.51 0.33 0.22 0.07\n2 0.40 0.55 0.30 0.40",  // geometry incl. added boxes
@@ -98,6 +99,17 @@ meaningful. The class picker works on **any box**:
 ```
 
 `box_classes` and `working_label` are optional — absent on older / not-yet-touched items.
+
+**`category_list` is a full snapshot of the category list at Start time, not just its version.**
+Review (the class dropdown, `allBoxesClassified`) and Complete (`data.yaml` regeneration,
+`class_counts`) always use *this* snapshot, never a freshly-fetched one — so if the canonical list
+is extended after a package starts (e.g. `config/vehicle-categories.json` moves to version 2 while
+this package is still version 1), the package stays internally consistent through review and
+Complete regardless of what's currently in S3 or on-device, including a fully offline Complete.
+`CurationRepository.completePackage` additionally rejects (`check`) if it's ever handed a category
+list whose version doesn't match `category_list_version` — a safety backstop, not the normal path.
+`category_list` is absent only on a manifest written before this existed; such a package falls back
+to a freshly-fetched/bundled list for review and Complete, same risk as before this fix.
 
 ---
 
@@ -144,3 +156,7 @@ meaningful. The class picker works on **any box**:
       category-list `nc` / `names` (id order) and the original `device:` block; `_manifest.json`
       has `category_list_version` and a `class_counts` map that sums to the accepted-box total.
 - [ ] `CuratorRole` can read `config/*` but cannot write it, and still cannot write `uploads/*`.
+- [ ] If the canonical list is extended (e.g. version 2 adds a class) after a package starts, that
+      package's review and Complete still use its own version-1 snapshot (`category_list` in its
+      manifest) — including a Complete performed fully offline — and `data.yaml`/`class_counts`
+      stay internally consistent with the labels actually written, never mixing versions.
