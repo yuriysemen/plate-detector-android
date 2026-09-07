@@ -3,8 +3,9 @@ package com.github.yuriysemen.platesdetector.curation
 import java.util.Locale
 
 /**
- * A single YOLO bounding box in normalized coordinates. Single-class dataset (`License_Plate`),
- * so `classId` is effectively always 0. Mirrors `android/.../DatasetEditor.kt` — reimplemented
+ * A single YOLO bounding box in normalized coordinates. `classId` is `0` (plate) as collected by
+ * the main app; the curation app's class picker (REQ-025) reassigns it to a vehicle-type class
+ * from `config/vehicle-categories.json`. Mirrors `android/.../DatasetEditor.kt` — reimplemented
  * per REQ-022's "no shared module" decision.
  */
 data class YoloBox(

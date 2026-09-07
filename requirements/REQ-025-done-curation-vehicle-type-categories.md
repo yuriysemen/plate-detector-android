@@ -1,10 +1,16 @@
 ---
 id: REQ-025
 title: Dataset Curation — Vehicle-Type Categories and Typed Boxes
-status: draft
+status: done
 priority: high
 depends_on: REQ-022, REQ-023
 ---
+
+> **Status — done (2026-09-07).** Category list (`VehicleCategories`, S3 `config/` with bundled
+> fallback), per-box class dropdown, add-box, and Accept's all-classified gate are implemented on
+> `ReviewScreen`. `done/` output carries class ids, a regenerated `data.yaml`, and `class_counts`.
+> `CuratorRole` reads `config/*`. Unit-tested (`CurationWorkflowTest`, `VehicleCategoriesTest`).
+> Acceptance criteria below are behavioural and await a full on-device run, same as REQ-023.
 
 ## Summary
 
