@@ -38,10 +38,17 @@ object YoloLabel {
             .toList()
     }
 
-    fun format(boxes: List<YoloBox>): String =
-        boxes.joinToString("\n") { b ->
+    fun format(boxes: List<YoloBox>): String = format(boxes, emptyList())
+
+    /**
+     * Like [format] but overrides the class-id column from [classOverrides] where a non-null entry
+     * is present (REQ-025 — the curator's chosen vehicle type). Index-aligned with [boxes].
+     */
+    fun format(boxes: List<YoloBox>, classOverrides: List<Int?>): String =
+        boxes.mapIndexed { i, b ->
+            val classId = classOverrides.getOrNull(i) ?: b.classId
             "%d %.6f %.6f %.6f %.6f".format(
-                Locale.US, b.classId, b.xCenter, b.yCenter, b.width, b.height,
+                Locale.US, classId, b.xCenter, b.yCenter, b.width, b.height,
             )
-        }
+        }.joinToString("\n")
 }

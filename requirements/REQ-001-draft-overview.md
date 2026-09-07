@@ -46,6 +46,7 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-022 | Curation Android app — overview, Cognito auth, and direct S3 access        | done                             |
 | REQ-023 | Curation Android app — package workflow (not processed/in progress/done)   | done                             |
 | REQ-024 | Curation Android app — review editor (accept, edit, reject)                | draft                            |
+| REQ-025 | Curation — vehicle-type categories (S3 list) and typed YOLO boxes          | draft                            |
 
 ## Dependencies
 

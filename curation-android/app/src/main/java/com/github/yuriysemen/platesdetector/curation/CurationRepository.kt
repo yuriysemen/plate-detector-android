@@ -35,9 +35,10 @@ class CurationRepository(
     context: Context,
     private val auth: CuratorAuthManager,
 ) {
+    private val appContext = context.applicationContext
     private val bucket = CurationConfig.datasetBucket
     private val cache = PackageCache(context)
-    private val tmpDir = File(context.applicationContext.cacheDir, "downloads").apply { mkdirs() }
+    private val tmpDir = File(appContext.cacheDir, "downloads").apply { mkdirs() }
 
     private suspend fun client(): AmazonS3Client = withContext(Dispatchers.IO) {
         AmazonS3Client(
@@ -54,6 +55,16 @@ class CurationRepository(
                 .withBucketName(bucket).withPrefix("uploads/").withMaxKeys(1)
             client().listObjectsV2(req).keyCount
         }
+    }
+
+    // ── REQ-025 vehicle categories ─────────────────────────────────────────
+
+    /** The category list from `config/vehicle-categories.json`, falling back to the bundled
+     *  asset on any failure (offline, not seeded yet, no `config/` read grant). */
+    suspend fun fetchCategories(): VehicleCategories = withContext(Dispatchers.IO) {
+        runCatching {
+            VehicleCategories.fromJson(getText(client(), "config/vehicle-categories.json"))
+        }.getOrElse { VehicleCategories.bundledDefault(appContext) }
     }
 
     // ── Listing the three screens ──────────────────────────────────────────
@@ -94,6 +105,7 @@ class CurationRepository(
     suspend fun startPackage(
         upload: UploadRef,
         curatorEmail: String,
+        categoryListVersion: Int,
         onProgress: ProgressSink,
     ): CurationManifest = withContext(Dispatchers.IO) {
         val s3 = client()
@@ -115,6 +127,7 @@ class CurationRepository(
             startedAt = nowIso(),
             curatorEmail = curatorEmail,
             items = items,
+            categoryListVersion = categoryListVersion,
         )
         putManifest(s3, manifest)
         onProgress(3, 3)
@@ -149,6 +162,7 @@ class CurationRepository(
 
     suspend fun completePackage(
         manifest: CurationManifest,
+        categories: VehicleCategories,
         onProgress: ProgressSink,
     ): DoneManifest = withContext(Dispatchers.IO) {
         val s3 = client()
@@ -176,8 +190,7 @@ class CurationRepository(
             onProgress(i + 1, total)
         }
 
-        val dataYaml = cache.readDataYaml(id) ?: synthesizeDataYaml()
-        putText(s3, "done/$id/data.yaml", dataYaml)
+        putText(s3, "done/$id/data.yaml", rewriteDataYamlHeader(cache.readDataYaml(id), categories))
         onProgress(total - 1, total)
 
         val done = DoneManifest(
@@ -192,6 +205,8 @@ class CurationRepository(
             rejected = manifest.rejected,
             perSubsetAccepted = manifest.perSubsetAccepted(),
             reviewers = manifest.reviewers(),
+            categoryListVersion = manifest.categoryListVersion,
+            classCounts = manifest.classCounts(categories),
         )
         putText(s3, "done/$id/_manifest.json", done.toJson())
         onProgress(total, total)
@@ -244,12 +259,24 @@ class CurationRepository(
         s3.putObject(PutObjectRequest(bucket, key, file))
     }
 
-    private fun synthesizeDataYaml(): String = buildString {
-        appendLine("train: train/images")
-        appendLine("val: val/images")
-        appendLine("test: test/images")
-        appendLine("nc: 1")
-        appendLine("names: ['License_Plate']")
+    /**
+     * Regenerates the YOLO header (`train`/`val`/`test`/`nc`/`names`) from the vehicle-category
+     * list (REQ-025), preserving the `device:` provenance block from the source `data.yaml`.
+     */
+    private fun rewriteDataYamlHeader(source: String?, categories: VehicleCategories): String {
+        val names = categories.orderedNames()
+        val header = buildString {
+            appendLine("train: train/images")
+            appendLine("val: val/images")
+            appendLine("test: test/images")
+            appendLine("nc: ${names.size}")
+            appendLine("names: [${names.joinToString(", ") { "'$it'" }}]")
+        }
+        val tail = source?.lineSequence()
+            ?.dropWhile { !it.trimStart().startsWith("device:") }
+            ?.joinToString("\n")
+            ?.takeIf { it.isNotBlank() }
+        return if (tail != null) "$header\n$tail\n" else header
     }
 
     companion object {

@@ -1,6 +1,7 @@
 package com.github.yuriysemen.platesdetector.curation
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,6 +59,43 @@ class YoloLabelTest {
         val reparsed = YoloLabel.parse(YoloLabel.format(src))
         assertEquals(1, reparsed.size)
         assertEquals(0.123456f, reparsed[0].width, 1e-6f)
+    }
+
+    @Test
+    fun formatAppliesClassOverrides() {
+        val src = listOf(
+            YoloBox(0, 0.1f, 0.1f, 0.1f, 0.1f),
+            YoloBox(0, 0.2f, 0.2f, 0.1f, 0.1f),
+        )
+        val out = YoloLabel.format(src, listOf(2, null))  // null keeps the box's own class
+        assertEquals(listOf("2", "0"), out.lines().map { it.substringBefore(' ') })
+    }
+}
+
+class VehicleCategoriesTest {
+
+    private val json = """
+        {"version":3,"classes":[
+          {"id":0,"key":"license_plate","label":"License plate"},
+          {"id":2,"key":"police","label":"Police car"},
+          {"id":1,"key":"civil","label":"Civil car"}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun parsesAndSortsById() {
+        val c = VehicleCategories.fromJson(json)
+        assertEquals(3, c.version)
+        assertEquals(listOf(0, 1, 2), c.classes.map { it.id })
+        assertEquals("Police car", c.labelFor(2))
+        assertTrue(c.contains(1))
+        assertFalse(c.contains(9))
+    }
+
+    @Test
+    fun orderedNamesFillsById() {
+        assertEquals(listOf("license_plate", "civil", "police"),
+            VehicleCategories.fromJson(json).orderedNames())
     }
 }
 
@@ -133,6 +171,41 @@ class CurationManifestTest {
             .withDecision(2, ItemStatus.ACCEPTED, labelContent = "x")
         assertEquals(mapOf("train" to 2, "val" to 1), m.perSubsetAccepted())
     }
+
+    // ── REQ-025 ───────────────────────────────────────────────────────────
+
+    @Test
+    fun boxClassesRoundTripWithNulls() {
+        val m = sample().withItemBoxes(0, "0 0.5 0.5 0.1 0.1\n1 0.2 0.2 0.1 0.1", listOf(2, null))
+        val back = CurationManifest.fromJson(m.toJson())
+        assertEquals(listOf<Int?>(2, null), back.items[0].boxClasses)
+        assertEquals("0 0.5 0.5 0.1 0.1\n1 0.2 0.2 0.1 0.1", back.items[0].workingLabel)
+        assertEquals(1, back.categoryListVersion)
+    }
+
+    @Test
+    fun allBoxesClassifiedGate() {
+        val m = sample().withItemBoxes(0, "l", listOf(3, null))
+        assertFalse(m.allBoxesClassified(0, boxCount = 2))
+        val m2 = m.withItemBoxes(0, "l", listOf(3, 1))
+        assertTrue(m2.allBoxesClassified(0, boxCount = 2))
+        assertFalse(m2.allBoxesClassified(0, boxCount = 0))  // zero-box never acceptable
+    }
+
+    @Test
+    fun classCountsOverAcceptedItems() {
+        val cats = VehicleCategories.fromJson(
+            """{"version":1,"classes":[
+                 {"id":0,"key":"license_plate","label":"L"},
+                 {"id":2,"key":"police","label":"P"}]}"""
+        )
+        val m = sample()
+            .withDecision(0, ItemStatus.ACCEPTED,
+                labelContent = "0 0.1 0.1 0.1 0.1\n2 0.2 0.2 0.1 0.1")
+            .withDecision(1, ItemStatus.ACCEPTED, labelContent = "2 0.3 0.3 0.1 0.1")
+            .withDecision(2, ItemStatus.REJECTED)
+        assertEquals(mapOf("license_plate" to 1, "police" to 2), m.classCounts(cats))
+    }
 }
 
 class DoneManifestTest {
@@ -149,6 +222,8 @@ class DoneManifestTest {
                 "c@example.com" to ReviewerCount(4, 1),
                 "d@example.com" to ReviewerCount(3, 2),
             ),
+            categoryListVersion = 2,
+            classCounts = mapOf("license_plate" to 12, "police" to 3, "civil" to 40),
         )
         assertEquals(d, DoneManifest.fromJson(d.toJson()))
     }

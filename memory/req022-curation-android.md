@@ -1,14 +1,15 @@
 ---
 name: req022-curation-android
-description: curation-android app — REQ-022 (auth + CuratorRole S3) and REQ-023 (3-tab workflow + read-only review screen) both done. REQ-024 (box editor) draft.
+description: curation-android app — REQ-022 (auth + CuratorRole S3), REQ-023 (3-tab workflow + review screen), REQ-025 (vehicle-type class picker + S3 category list) all done. REQ-024 (precise box move/resize) draft.
 metadata:
   type: project
 ---
 
 The `curation-android/` app — a standalone, internal-only Android app for a single trusted curator
 to review uploaded YOLO packages in S3 and promote them into a training-ready `done/` dataset.
-**REQ-022** (foundation) and **REQ-023** (workflow) are done as of 2026-08-30; **REQ-024** (box
-editing on the review screen) is draft.
+**REQ-022** (foundation), **REQ-023** (workflow) and **REQ-025** (vehicle-type categories) done as
+of 2026-08-31; **REQ-024** (precise box move/resize + pinch-zoom) is draft — add/delete boxes and
+the class picker already exist via REQ-025.
 
 **Why:** the dataset needs human review before training; the main `android/` app only uploads.
 This is a separate deliverable (not a feature of the main app), specced as REQ-022/023/024.
@@ -31,8 +32,16 @@ Key decisions / facts:
 - **Single curator, one session** — no claim/lock. REQ-023 added client-only partials:
   per-item `decided_by`/`decided_at`; stale cleanup at 2 h (manifest S3 `LastModified` + ~3 min
   heartbeat while reviewing) surfaced as Discard / Take over on the In Progress tab.
-- **Review screen** (`ReviewScreen`) shows the image + YOLO boxes **read-only** — box editing is
-  REQ-024, attaches to that Canvas.
+- **Review screen** (`ReviewScreen`): image + YOLO overlay + a per-box **vehicle-type class
+  dropdown** (REQ-025), top-bar **add-box** (drag a rectangle) + delete. Accept blocked until every
+  box is classified. Precise move/resize of existing boxes = REQ-024 (not built).
+- **REQ-025 vehicle classes:** YOLO class-id column carries the type. `config/vehicle-categories
+  .json` in the bucket (`0` license_plate … `5` other), fetched on workflow entry, bundled fallback
+  at `curation-android/app/src/main/assets/vehicle-categories.json`. `id` is the class id — pinned,
+  append-only. `done/` label files carry the ids; `data.yaml` header regenerated (`nc`/`names`);
+  `_manifest.json` gains `category_list_version` + `class_counts`. `CuratorRole` gained
+  `s3:GetObject` on `config/*` (read-only). Operator seeds the list with `aws s3 cp`. This is the
+  training-data source for REQ-009 (whose separate-classifier recommendation is now one option).
 - **Working copy on-device** (`filesDir/packages/<id>/`) — only `manifest.json` synced to S3; makes
   progress restartable across kill/reboot/reinstall.
 - **Infra** (`infra/aws/template.yaml`): `CuratorRole` (S3: list bucket; get `uploads|curation|
@@ -44,5 +53,4 @@ Key decisions / facts:
 - **Gotcha:** a curator added to the group *after* signing in keeps a token with no role claim →
   Identity Pool resolves the default role → S3 `AccessDenied`. Fix = fresh sign-in. The app
   clears stale cached STS creds on `newCredentialsProvider()` and hints at this in the S3 card.
-- **Still draft:** REQ-024 (box drag/resize/add/delete + pinch-zoom on `ReviewScreen`; save edited
-  YOLO as `label_content` on Accept).
+- **Still draft:** REQ-024 (precise box **move/resize** + pinch-zoom/pan on `ReviewScreen`).

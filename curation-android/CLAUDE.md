@@ -11,7 +11,8 @@ dependency** on it — shared concepts (Cognito auth, YOLO label parsing, the bo
 reimplemented here, not shared.
 
 Requirements: **REQ-022** (foundation — done), **REQ-023** (package workflow — done),
-**REQ-024** (box editor — draft), all in `../requirements/`.
+**REQ-025** (vehicle-type categories + typed boxes — done), **REQ-024** (precise box geometry
+editing — draft), all in `../requirements/`.
 
 Key design decisions (see REQ-022 / REQ-023):
 - **Direct S3 access from the device** via a scoped IAM role (`CuratorRole`), not a Lambda-mediated
@@ -75,15 +76,18 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 | File | Responsibility |
 |---|---|
 | `PackageId` / `UploadRef` | `packageIdOf(sub, device, filename)`; parse `uploads/<sub>/<device>/<file>.zip` |
-| `YoloLabel` | YOLO `.txt` parse/format (comma-decimal + blank-line tolerant) |
-| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and `done/<id>/_manifest.json`; `withDecision`, `reviewers()`, count helpers |
+| `YoloLabel` | YOLO `.txt` parse/format (comma-decimal + blank-line tolerant); `format(boxes, classOverrides)` for the curator's chosen classes |
+| `VehicleCategories` | REQ-025 class list — `fromJson` + `bundledDefault(context)` (`assets/vehicle-categories.json`). `id` = YOLO class id, pinned |
+| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and `done/<id>/_manifest.json`; `withDecision`, `withItemBoxes` (working geometry + `box_classes`), `reviewers()`, `classCounts()`, count helpers |
 | `PackageCache` | `filesDir/packages/<id>/` — zip-slip-guarded unzip, item listing, label read/write, delete |
 | `CurationRepository` | All S3 (paginated `ListObjectsV2`, get/put/delete): `listNotProcessed` / `listInProgress` (→ `InProgressItem` with last-activity ms) / `listDone`, `startPackage`, `putManifest`, `ensureLocalCopy`, `completePackage`, `releasePackage`. Also `checkAccess()` (REQ-022). |
 | `CurationViewModel` | Tab states, blocking `busy` progress, review `session`, `decide()` (stamps `decided_by`/`decided_at`, rewrites manifest, auto-advances), `complete`/`release`, ~3 min manifest heartbeat |
 | `CurationHomeScreen` | Bottom-nav tabs + busy dialog + error snackbar; hosts `ReviewScreen` full-screen when a session is open |
 | `PackageTabs` | `NotProcessedTab` / `InProgressTab` (stale rows → Discard / Take over) / `DoneTab` |
-| `ReviewScreen` | Image + **read-only** YOLO overlay, Prev/Reject(+reason)/Accept/Next, jump-to-item sheet, zero-box ⇒ Reject-only. REQ-024 attaches box editing here. |
-| `Format` | `nowIso()`, date/size/subset formatting |
+| `CurationRepository` (REQ-025) | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback); `completePackage` regenerates `data.yaml` header from the category list |
+| `CurationViewModel` (REQ-025) | `currentBoxes()` (boxes + chosen classes), `setBoxClass` / `addBox` / `deleteBox` (debounced manifest save), `canAcceptCurrent()`, `accept()`/`reject()` |
+| `ReviewScreen` | Image + YOLO overlay (amber=unclassified, cyan=classified, pink=selected), a per-box **class dropdown** list, top-bar **add-box** (drag a rectangle), Prev/Reject(+reason)/Accept/Next, jump-to-item sheet. Accept blocked until every box is classified. REQ-024 adds move/resize. |
+| `Format` | `nowIso()` (top-level), date/size/subset formatting |
 
 **Auth → credentials flow:** sign-in caches sub + email → `getIdToken()` (SDK auto-refresh,
 throws `SessionExpiredException` when the refresh token is dead) → `newCredentialsProvider()` sets
@@ -95,6 +99,12 @@ pool's **token-based role mapping** returns `CuratorRole` credentials.
 In Progress = the curation manifest exists; Done = the done manifest exists. Transitions are
 PUT/DELETE of those files.
 
+**Vehicle classes (REQ-025).** The YOLO class-id column carries the vehicle type. Scheme comes
+from `config/vehicle-categories.json` in the bucket (`0` license_plate, `1` civil, `2` police,
+`3` fire, `4` medical, `5` other), fetched on workflow entry, bundled fallback in assets. Every
+box must be classified before Accept; `done/` label files carry the ids and `data.yaml` is
+regenerated with `nc`/`names` from the list. Operator seeds the file with `aws s3 cp`.
+
 ## Infra
 
 `../infra/aws/template.yaml` — `CuratorRole`, `CuratorGroup`, and a `Type: Token` entry in
@@ -103,6 +113,7 @@ sam deploy`. `DeviceAuthRole` (the main app) is untouched.
 
 ## Not yet built (REQ-024)
 
-Box editing on `ReviewScreen` — drag / resize / add / delete boxes, pinch-zoom/pan — and saving
-the edited YOLO content as `label_content` on Accept. Changing an already-decided item stays
-out of scope (v1: Release the package to redo). `ReviewScreen`'s `Canvas` is the attach point.
+Precise geometry editing on `ReviewScreen` — **move / resize** any box, pinch-zoom/pan. Add /
+delete boxes and the class picker already exist (REQ-025). Changing an already-decided item stays
+out of scope (v1: Release the package to redo). `ReviewScreen`'s `Canvas` + the box list are the
+attach points.

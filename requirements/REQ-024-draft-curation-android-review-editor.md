@@ -30,7 +30,9 @@ call happens per box edit; only the per-item decision triggers a `manifest.json`
 
 ## Non-goals
 
-- Multi-class editing — single class (`License_Plate`); no class picker.
+- The vehicle-type **class picker** and **add-box** — these live in **REQ-025** (already
+  implemented on `ReviewScreen`). This requirement is precise geometry editing (move / resize /
+  delete of any box, pinch-zoom/pan) layered on top.
 - Pixel-level image editing (crop/rotate/brightness/contrast).
 - OCR-assisted box suggestion or auto-correction.
 - Server-side re-validation of the zero-box rule — there is no backend in this design (REQ-022); the
@@ -60,18 +62,19 @@ call happens per box edit; only the per-item decision triggers a `manifest.json`
 
 - **Move** — drag an existing box.
 - **Resize** — drag a corner/edge handle.
-- **Delete** — remove a box that doesn't correspond to a real plate.
-- **Add** — draw a new rectangle for a plate the on-device model missed.
-- Edits are held in local UI state until the item is marked Accepted or Rejected; navigating away
-  without deciding discards edits for that item (no autosave of in-progress edits).
+- **Delete** / **Add** already exist (REQ-025); this requirement adds precise geometry editing of
+  any box (plate or car).
+- Edits update `working_label` in `curation/<package_id>/manifest.json` (REQ-025 already persists
+  box add/delete this way, on a debounce) — an item's geometry survives an app kill mid-review.
 
 ## Accept
 
-- Enabled only when the image has at least one box (zero-box rule).
-- On tap: writes the current box list as YOLO `.txt` content into the local unzip cache's label
-  file for that item, updates that item's entry in `curation/<package_id>/manifest.json` to
-  `{status: "accepted", label_content: "<...>"}`, refreshes package progress counts, and advances to
-  the next `pending` item.
+- Enabled only when the image has at least one box (zero-box rule) **and every box has a vehicle
+  class** (REQ-025).
+- On tap: writes the current box list — geometry + chosen class ids — as YOLO `.txt` content into
+  the local unzip cache's label file, updates the item's manifest entry to `{status: "accepted",
+  label_content: "<...>"}`, refreshes package progress counts, and advances to the next `pending`
+  item.
 - If the curator deletes every box, Accept is disabled and a hint is shown — the image must be
   Rejected instead.
 

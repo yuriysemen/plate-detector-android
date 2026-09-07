@@ -6,16 +6,9 @@
   <component name="ChangeListManager">
     <list default="true" id="f4997a06-9201-4789-8073-f530f7093fb6" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/AutoUploadWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/AutoUploadWorker.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/CognitoAuthManager.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/CognitoAuthManager.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ContributeScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ContributeScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetExporter.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/DatasetExporter.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/LivePlateDetectionScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ModelCheckWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/ModelCheckWorker.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/UploadDatasetWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/android/app/src/main/java/com/github/yuriysemen/platesdetector/UploadDatasetWorker.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements/REQ-014-done-cloud-dataset-upload.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-014-done-cloud-dataset-upload.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements/REQ-016-done-model-distribution-and-auto-update.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-016-done-model-distribution-and-auto-update.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements/REQ-021-done-burst-frame-collection.md" beforeDir="false" afterPath="$PROJECT_DIR$/requirements/REQ-021-done-burst-frame-collection.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/curation-android/app/src/main/java/com/github/yuriysemen/platesdetector/curation/CurationApp.kt" beforeDir="false" afterPath="$PROJECT_DIR$/curation-android/app/src/main/java/com/github/yuriysemen/platesdetector/curation/CurationApp.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/curation-android/app/src/main/java/com/github/yuriysemen/platesdetector/curation/HomeScreen.kt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/curation-android/app/src/main/java/com/github/yuriysemen/platesdetector/curation/S3Access.kt" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,7 +19,7 @@
     <option name="formatViaClangd" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="21950" />
+    <option name="cachedIndexableFilesCount" value="22028" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -38,23 +31,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.336622260423306" />
-      <entry key="MS500" value="2.3966526904506926" />
-      <entry key="S2" value="2.8280567329034385" />
-      <entry key="S5" value="2.9293431145671605" />
-      <entry key="S10" value="2.9643505822720106" />
-      <entry key="S30" value="2.9880448033791973" />
-      <entry key="S60" value="2.994013348529183" />
-      <entry key="M2" value="2.997004407510711" />
-      <entry key="M5" value="2.9988012185393735" />
-      <entry key="M10" value="2.999400518488511" />
-      <entry key="M15" value="2.99960032548267" />
-      <entry key="M30" value="2.9998002642263826" />
-      <entry key="H1" value="3.0010059439243633" />
-      <entry key="H2" value="3.110190447991247" />
-      <entry key="H4" value="4.103131366738358" />
-      <entry key="D1" value="15.007717236453916" />
-      <entry key="W1" value="51.22982950766518" />
+      <entry key="MS100" value="1.2381301867301542" />
+      <entry key="MS500" value="3.565880130918976" />
+      <entry key="S2" value="11.224045180125652" />
+      <entry key="S5" value="17.80735972432015" />
+      <entry key="S10" value="21.364165522034043" />
+      <entry key="S30" value="25.473584937345336" />
+      <entry key="S60" value="30.156542465774823" />
+      <entry key="M2" value="36.05370081626482" />
+      <entry key="M5" value="42.17669350227865" />
+      <entry key="M10" value="44.87777450983415" />
+      <entry key="M15" value="45.86856451092171" />
+      <entry key="M30" value="46.90846627310363" />
+      <entry key="H1" value="47.44763293345705" />
+      <entry key="H2" value="47.74296072323949" />
+      <entry key="H4" value="48.62732105483489" />
+      <entry key="D1" value="70.8034496865897" />
+      <entry key="W1" value="130.537021938237" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -76,23 +69,23 @@
       <entry key="W1" value="0.0" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.4624917041803958" />
-      <entry key="MS500" value="2.057321893279825" />
-      <entry key="S2" value="2.7296195992551535" />
-      <entry key="S5" value="2.8887402253544217" />
-      <entry key="S10" value="2.9438387704536044" />
-      <entry key="S30" value="2.9811602443900846" />
-      <entry key="S60" value="2.9905651239081084" />
-      <entry key="M2" value="2.9952788063504916" />
-      <entry key="M5" value="2.99811062042214" />
-      <entry key="M10" value="2.9990551597935804" />
-      <entry key="M15" value="2.999370073098168" />
-      <entry key="M30" value="2.999685131406004" />
-      <entry key="H1" value="3.00094837412394" />
-      <entry key="H2" value="3.1101615764761954" />
-      <entry key="H4" value="4.103116537176324" />
-      <entry key="D1" value="15.00771358934504" />
-      <entry key="W1" value="51.22982810043808" />
+      <entry key="MS100" value="1.1864892276525725" />
+      <entry key="MS500" value="3.5384408897521205" />
+      <entry key="S2" value="11.204107702877964" />
+      <entry key="S5" value="17.794853955222777" />
+      <entry key="S10" value="21.35668559424976" />
+      <entry key="S30" value="25.47060665314661" />
+      <entry key="S60" value="30.154760540685505" />
+      <entry key="M2" value="36.052622442846186" />
+      <entry key="M5" value="42.17618377616688" />
+      <entry key="M10" value="44.87750230664776" />
+      <entry key="M15" value="45.86837879753574" />
+      <entry key="M30" value="46.90837118781192" />
+      <entry key="H1" value="47.447584812865514" />
+      <entry key="H2" value="47.74293650836103" />
+      <entry key="H4" value="48.62730873246727" />
+      <entry key="D1" value="70.80344289295769" />
+      <entry key="W1" value="130.53701935285704" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -178,7 +171,8 @@
       <workItem from="1783073595939" duration="593000" />
       <workItem from="1784901530269" duration="19000" />
       <workItem from="1785673872684" duration="126000" />
-      <workItem from="1785674014740" duration="4722000" />
+      <workItem from="1785674014740" duration="30871000" />
+      <workItem from="1788021918466" duration="8077000" />
     </task>
     <task id="LOCAL-00001" summary="partially implement zoom">
       <option name="closed" value="true" />
