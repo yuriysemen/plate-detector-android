@@ -147,40 +147,23 @@ Using `context.filesDir` (app-private internal storage) requires **no additional
 
 ---
 
-## 5. Auto Backup exclusion
+## 5. Auto Backup exclusion — **DONE (2026-09-08)**
 
-Android Auto Backup may attempt to back up `training_data/` to Google Drive, which would effectively upload license plate images without explicit user consent for cloud storage.
+Android Auto Backup was silently copying `training_data/` (license-plate images) + `exports/*.zip`
++ the Cognito token SharedPreferences to the user's Google Drive.
 
-**Action required:** Add backup exclusion rules.
+**Implemented:** `android:allowBackup="false"` in `AndroidManifest.xml` — disables cloud Auto
+Backup *and* `adb backup` entirely. `res/xml/backup_rules.xml` deleted (moot). `fullBackupContent`
+attribute removed.
 
-`res/xml/backup_rules.xml`:
-```xml
-<full-backup-content>
-    <exclude domain="file" path="training_data"/>
-</full-backup-content>
-```
+`res/xml/data_extraction_rules.xml` kept as belt-and-suspenders for Android 12+ device-to-device
+transfer (a separate mechanism `allowBackup="false"` doesn't fully gate) — both `<cloud-backup>`
+and `<device-transfer>` `<exclude>` `training_data`, `exports`, `models`, `upload_log.json`, and
+`com.amazonaws.android.auth` / `CognitoIdentityProviderCache` / `AWS.Cognito.ContextData`.
 
-For Android 12+ (API 31), also add to `AndroidManifest.xml`:
-```xml
-<application
-    android:dataExtractionRules="@xml/data_extraction_rules"
-    ...>
-```
-
-`res/xml/data_extraction_rules.xml`:
-```xml
-<data-extraction-rules>
-    <cloud-backup>
-        <exclude domain="file" path="training_data"/>
-    </cloud-backup>
-    <device-transfer>
-        <!-- Allow device-to-device transfer if desired; plates stay local -->
-        <include domain="file" path="training_data"/>
-    </device-transfer>
-</data-extraction-rules>
-```
-
-Without this exclusion, Auto Backup can upload files silently — a privacy and policy violation.
+Net: nothing this app stores leaves the device via any OS backup/transfer path. The trade-off —
+a new phone starts fresh (re-sign-in, re-download model, settings default) — is acceptable for
+this app (transient data, cheap re-fetch).
 
 ---
 
@@ -205,7 +188,7 @@ Without this exclusion, Auto Backup can upload files silently — a privacy and 
 - [ ] Data Safety section updated in Play Console before the new version is submitted, declaring both local collection and optional cloud sharing.
 - [ ] `privacy-policy.md` updated and re-deployed to the URL referenced in Play Store listing.
 - [ ] First-time consent dialog appears before any local frame is written.
-- [ ] Auto Backup exclusion rules are present in the build and verified via `adb shell bmgr run`.
+- [x] Auto Backup disabled — `android:allowBackup="false"`; `data_extraction_rules.xml` also excludes the sensitive dirs from D2D transfer (2026-09-08). Verify on device with `adb shell bmgr backupnow <pkg>` → expects "Package ... not eligible for backup".
 - [ ] Disabling the collection toggle stops all writes immediately.
 - [ ] "Clear collected data" deletes all files under `training_data/` and cannot be undone.
 

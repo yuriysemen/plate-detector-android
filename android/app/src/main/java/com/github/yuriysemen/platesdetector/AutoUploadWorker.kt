@@ -29,12 +29,22 @@ class AutoUploadWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        AppConfig.seedPrefsIfNeeded(applicationContext)
+
         val uploadUrl     = UploadPrefs.getUploadUrl(applicationContext)
         val userId        = UploadPrefs.getCognitoUserId(applicationContext)
         val userPoolId    = UploadPrefs.getUserPoolId(applicationContext)
         val identityPoolId = UploadPrefs.getIdentityPoolId(applicationContext)
 
-        if (uploadUrl.isBlank() || userId.isBlank() || userPoolId.isBlank() || identityPoolId.isBlank()) {
+        // isSignedIn() is false once the session is expired — bail BEFORE exportSync(), which
+        // would otherwise package the ZIP and wipe the local frame buffer for an upload that
+        // can only fail auth.
+        if (!CognitoAuthManager(applicationContext).isSignedIn()) {
+            UploadLog.log(applicationContext, "Daily auto-upload skipped — signed out or session expired")
+            return@withContext Result.failure()
+        }
+        if (uploadUrl.isBlank() || userPoolId.isBlank() || identityPoolId.isBlank()) {
+            UploadLog.log(applicationContext, "Daily auto-upload skipped — upload not configured")
             return@withContext Result.failure()
         }
 
@@ -44,7 +54,13 @@ class AutoUploadWorker(
 
         // exportSync packages the ZIP and resets collected frames on success
         val zipFile = runCatching { exporter.exportSync() }
-            .getOrElse { return@withContext Result.retry() }
+            .getOrElse {
+                UploadLog.log(
+                    applicationContext,
+                    "Daily auto-upload: packaging failed (${it.message ?: it.javaClass.simpleName}) — will retry"
+                )
+                return@withContext Result.retry()
+            }
 
         val deviceId = DatasetExporter.computeDeviceId(
             Settings.Secure.getString(applicationContext.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
@@ -71,6 +87,8 @@ class AutoUploadWorker(
 
         WorkManager.getInstance(applicationContext)
             .enqueueUniqueWork(zipFile.absolutePath, ExistingWorkPolicy.KEEP, uploadRequest)
+
+        UploadLog.log(applicationContext, "Daily auto-upload queued — $frameCount frames")
 
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
         UploadPrefs.setAutoUploadLastDate(applicationContext, today)
@@ -120,6 +138,8 @@ class AutoUploadWorker(
          */
         fun runCatchUpIfNeeded(context: Context) {
             if (UploadPrefs.getUploadUrl(context).isBlank()) return
+            // Same guard as doWork(): never package/upload while the session is dead.
+            if (!CognitoAuthManager(context).isSignedIn()) return
 
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
             val lastDate = UploadPrefs.getAutoUploadLastDate(context)

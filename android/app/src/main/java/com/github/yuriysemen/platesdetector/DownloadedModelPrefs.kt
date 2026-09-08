@@ -8,6 +8,7 @@ internal object DownloadedModelPrefs {
 
     private const val KEY_VERSION   = "downloaded_model_version"
     private const val KEY_S3_KEY    = "downloaded_model_s3_key"
+    private const val KEY_OWNER_SUB = "downloaded_model_owner_sub"
 
     private const val KEY_PENDING_VERSION      = "pending_model_version"
     private const val KEY_PENDING_S3_KEY       = "pending_model_s3_key"
@@ -22,12 +23,20 @@ internal object DownloadedModelPrefs {
     fun getVersion(ctx: Context): String  = prefs(ctx).getString(KEY_VERSION, "") ?: ""
     fun getS3Key(ctx: Context): String    = prefs(ctx).getString(KEY_S3_KEY, "") ?: ""
 
-    fun setActive(ctx: Context, version: String, s3Key: String) {
-        prefs(ctx).edit { putString(KEY_VERSION, version); putString(KEY_S3_KEY, s3Key) }
+    /** Cognito sub of the user who downloaded the active model (REQ-016 / auth review). Empty for
+     *  models from before this was tracked. */
+    fun getOwnerSub(ctx: Context): String = prefs(ctx).getString(KEY_OWNER_SUB, "") ?: ""
+
+    fun setActive(ctx: Context, version: String, s3Key: String, ownerSub: String = "") {
+        prefs(ctx).edit {
+            putString(KEY_VERSION, version)
+            putString(KEY_S3_KEY, s3Key)
+            if (ownerSub.isNotEmpty()) putString(KEY_OWNER_SUB, ownerSub)
+        }
     }
 
     fun clearActive(ctx: Context) {
-        prefs(ctx).edit { remove(KEY_VERSION); remove(KEY_S3_KEY) }
+        prefs(ctx).edit { remove(KEY_VERSION); remove(KEY_S3_KEY); remove(KEY_OWNER_SUB) }
     }
 
     fun getPendingVersion(ctx: Context): String     = prefs(ctx).getString(KEY_PENDING_VERSION, "") ?: ""

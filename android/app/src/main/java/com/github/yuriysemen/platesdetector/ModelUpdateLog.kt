@@ -15,12 +15,14 @@ object ModelUpdateLog {
         val level: Level = Level.INFO
     )
 
+    private const val MAX_ENTRIES = 100
+
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
 
     val latest: Entry? get() = _entries.value.lastOrNull()
 
     fun log(message: String, level: Level = Level.INFO) {
-        _entries.update { it + Entry(message = message, level = level) }
+        _entries.update { (it + Entry(message = message, level = level)).takeLast(MAX_ENTRIES) }
     }
 }

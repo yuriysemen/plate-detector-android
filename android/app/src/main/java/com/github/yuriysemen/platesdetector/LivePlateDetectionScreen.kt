@@ -525,7 +525,10 @@ private suspend fun applyModelUpdate(
             runCatching { File(dir, "$base.txt").writeText(update.description) }
         }
 
-        DownloadedModelPrefs.setActive(context, update.version, update.s3Key)
+        DownloadedModelPrefs.setActive(
+            context, update.version, update.s3Key,
+            ownerSub = UploadPrefs.getCognitoUserId(context)
+        )
         DownloadedModelPrefs.clearPending(context)
         ModelUpdateLog.log("Model v${update.version} installed", ModelUpdateLog.Level.SUCCESS)
 
@@ -637,12 +640,18 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     // If first launch and nothing selected, open settings.
     var showSettings by rememberSaveable { mutableStateOf(selectedId == null) }
     var showExport by rememberSaveable { mutableStateOf(false) }
-    var showEditor by rememberSaveable { mutableStateOf(false) }
     var isModelEnabled by rememberSaveable { mutableStateOf(selectedId != null) }
     var stopDetectionRequested by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        AppConfig.seedPrefsIfNeeded(context)
+        // Re-seeds Cognito/API config if the app was rebuilt for a different backend; returns
+        // true when the identity config changed, in which case the cached session is worthless.
+        if (AppConfig.seedPrefsIfNeeded(context)) {
+            isSignedIn = false
+            signedInEmail = ""
+            sessionExpired = false
+            reloadKey++
+        }
         if (uploadServiceUrl.isBlank()) uploadServiceUrl = UploadPrefs.getUploadUrl(context)
         if (openContribute) showExport = true
         AutoUploadWorker.schedule(context)
@@ -696,6 +705,58 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
 
     val scope = rememberCoroutineScope()
 
+    // Shared by every entry point that can start/end a session (AuthScreen, ContributeScreen,
+    // NoModelsScreen) so the state transition is identical wherever it's triggered from.
+    val handleSignedIn: (String) -> Unit = { _ ->
+        isSignedIn = true
+        signedInEmail = authManager.currentUserEmail()
+        sessionExpired = false
+        showAuth = false
+        ModelUpdateLog.log("Signed in — checking for model updates")
+        ModelCheckWorker.schedule(context)
+        ModelCheckWorker.runOnce(context)
+        // Restore the daily schedule in case a prior sign-out / config change cancelled it.
+        AutoUploadWorker.schedule(context)
+    }
+    val handleSignOut: () -> Unit = {
+        authManager.signOut()
+        isSignedIn = false
+        signedInEmail = ""
+        sessionExpired = false
+        AutoUploadWorker.cancel(context)
+        ModelCheckWorker.cancel(context)
+        ModelUpdateLog.log("Signed out — model updates paused (current model kept)")
+        reloadKey++
+    }
+
+    // A background worker (ModelCheckWorker, UploadDatasetWorker) can mark the session expired
+    // while this screen is backgrounded. Re-read the cached auth state every time the app comes
+    // back to the foreground so a stale "Signed in" never lingers on the camera screen.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                isSignedIn = authManager.isSignedIn()
+                signedInEmail = authManager.currentUserEmail()
+                sessionExpired = authManager.isSessionExpired()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // ON_START only fires on resume; also poll so a session a worker expires while the app stays
+    // foregrounded on one screen (camera, Contribute) is picked up within ~30 s. Three cheap
+    // SharedPreferences reads.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            authManager.isSessionExpired().let { if (it != sessionExpired) sessionExpired = it }
+            authManager.isSignedIn().let { if (it != isSignedIn) isSignedIn = it }
+            authManager.currentUserEmail().let { if (it != signedInEmail) signedInEmail = it }
+        }
+    }
+
     pendingUpdate?.let { update ->
         AlertDialog(
             onDismissRequest = {
@@ -729,9 +790,26 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         )
     }
 
-    // If no models: show error and DO NOT init any detector.
+    // If no models: show error and DO NOT init any detector. Sign-in must still be reachable
+    // here — a fresh install with no bundled model, a different-user sign-in, or a backend
+    // reconfigure can all land here, and the only escape is to (re-)authenticate and download.
     if (models.isEmpty()) {
-        NoModelsScreen(onRetry = { reloadKey++ })
+        if (showAuth) {
+            AuthScreen(
+                authManager = authManager,
+                onSignedIn = handleSignedIn,
+                onCancel = { showAuth = false }
+            )
+        } else {
+            NoModelsScreen(
+                onRetry = { reloadKey++ },
+                isSignedIn = isSignedIn,
+                sessionExpired = sessionExpired,
+                signedInEmail = signedInEmail,
+                onSignIn = { showAuth = true },
+                onSignOut = handleSignOut
+            )
+        }
         return
     }
 
@@ -741,21 +819,12 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         when {
             showAuth -> AuthScreen(
                 authManager = authManager,
-                onSignedIn = { userId ->
-                    isSignedIn = true
-                    signedInEmail = authManager.currentUserEmail()
-                    sessionExpired = false
-                    showAuth = false
-                    ModelUpdateLog.log("Signed in — checking for model updates")
-                    ModelCheckWorker.schedule(context)
-                    ModelCheckWorker.runOnce(context)
-                },
+                onSignedIn = handleSignedIn,
                 onCancel = { showAuth = false }
             )
-            showEditor -> DatasetEditorScreen(onBack = { showEditor = false })
             showExport -> ContributeScreen(
                 onBack = { showExport = false },
-                onEditDataset = { showEditor = true },
+                collectTrainingData = collectTrainingData,
                 storageQuotaMb = storageQuotaMb,
                 onStorageQuotaMbChange = { mb ->
                     ModelPrefs.setStorageQuotaMb(context, mb)
@@ -785,16 +854,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 signedInEmail = signedInEmail,
                 sessionExpired = sessionExpired,
                 onSignIn = { showAuth = true },
-                onSignOut = {
-                    authManager.signOut()
-                    isSignedIn = false
-                    signedInEmail = ""
-                    sessionExpired = false
-                    AutoUploadWorker.cancel(context)
-                    ModelCheckWorker.cancel(context)
-                    ModelUpdateLog.log("Signed out — downloaded model removed")
-                    reloadKey++
-                }
+                onSignOut = handleSignOut
             )
             else -> SettingsScreen(
                 models = models,
@@ -810,7 +870,6 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     isModelEnabled = true
                     showSettings = false
                     showExport = false
-                    showEditor = false
                     stopDetectionRequested = false
                 },
                 onDelete = { spec ->
@@ -836,10 +895,17 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     scanIntervalMs = ms
                 },
                 collectTrainingData = collectTrainingData,
+                isSignedIn = isSignedIn,
                 onCollectTrainingDataChange = { enable ->
                     ModelPrefs.setCollectTrainingData(context, enable)
                     collectTrainingData = enable
-                    if (!enable) AutoUploadWorker.cancel(context)
+                    if (enable) {
+                        // Capture only runs while signed in — send the user to sign in now so
+                        // enabling the toggle actually starts saving frames.
+                        if (!isSignedIn) showAuth = true
+                    } else {
+                        AutoUploadWorker.cancel(context)
+                    }
                 },
                 collectFirstTimeShown = collectFirstTimeShown,
                 onCollectFirstTimeShownAck = {
@@ -847,12 +913,23 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     collectFirstTimeShown = true
                 },
                 onNavigateToContribute = { showExport = true },
+                onSignIn = { showAuth = true },
+                sessionExpired = sessionExpired,
                 latestModelVersion = latestModelVersion,
                 compatibleModelVersion = compatibleModelVersion,
                 lastModelCheckTime = lastModelCheckTime,
                 onCheckNow = if (isSignedIn) ({
-                    ModelCheckWorker.performCheck(context)
-                    reloadKey++
+                    // finally: performCheck may throw (session expired / not authorized) — the
+                    // UI state must still be re-synced so the "expired" card and hidden button
+                    // appear without needing a manual navigation away and back.
+                    try {
+                        ModelCheckWorker.performCheck(context)
+                    } finally {
+                        isSignedIn = authManager.isSignedIn()
+                        sessionExpired = authManager.isSessionExpired()
+                        signedInEmail = authManager.currentUserEmail()
+                        reloadKey++
+                    }
                 }) else null
             )
         }
@@ -899,22 +976,13 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 isModelEnabled = false
                 showSettings = true
                 showExport = true
-                showEditor = false
                 stopDetectionRequested = false
             },
             onRequestOpenSettings = { stopDetectionRequested = true },
-            onOpenEditor = {
-                isModelEnabled = false
-                showSettings = true
-                showExport = true
-                showEditor = true
-                stopDetectionRequested = false
-            },
             onDetectionStopped = {
                 isModelEnabled = false
                 showSettings = true
                 showExport = false
-                showEditor = false
                 stopDetectionRequested = false
             }
         )
@@ -926,7 +994,14 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
 // ------------------------
 
 @Composable
-private fun NoModelsScreen(onRetry: () -> Unit) {
+private fun NoModelsScreen(
+    onRetry: () -> Unit,
+    isSignedIn: Boolean,
+    sessionExpired: Boolean,
+    signedInEmail: String,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit
+) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = Color.Black,
@@ -941,16 +1016,44 @@ private fun NoModelsScreen(onRetry: () -> Unit) {
         ) {
             Text("No detection model found", style = MaterialTheme.typography.titleLarge)
             Text(
-                "No model was bundled with this build.\n\n" +
+                when {
+                    sessionExpired ->
+                        "Your sign-in has expired, so no model could be downloaded. " +
+                        "Sign in again to restore the detection model."
+                    isSignedIn ->
+                        "No model is available yet. Tap Retry to check again, " +
+                        "or rebuild the app with a valid MODEL_DOWNLOAD_TOKEN."
+                    else ->
+                        "No model was bundled with this build.\n\n" +
                         "Sign in to download a model automatically, " +
-                        "or rebuild the app with a valid MODEL_DOWNLOAD_TOKEN.",
+                        "or rebuild the app with a valid MODEL_DOWNLOAD_TOKEN."
+                },
                 style = MaterialTheme.typography.bodyMedium
             )
 
             Spacer(Modifier.height(8.dp))
 
-            OutlinedButton(onClick = onRetry) {
-                Text("Retry")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRetry) {
+                    Text("Retry")
+                }
+                if (isSignedIn && !sessionExpired) {
+                    OutlinedButton(onClick = onSignOut) {
+                        Text("Sign out")
+                    }
+                } else {
+                    Button(onClick = onSignIn) {
+                        Text(if (sessionExpired) "Sign in again" else "Sign in")
+                    }
+                }
+            }
+
+            if (isSignedIn && signedInEmail.isNotBlank()) {
+                Text(
+                    "Signed in as $signedInEmail",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.6f)
+                )
             }
         }
     }
@@ -971,7 +1074,6 @@ private fun LiveDetectionUi(
     onUploadNow: (() -> Unit)?,
     onOpenContribute: () -> Unit,
     onRequestOpenSettings: () -> Unit,
-    onOpenEditor: () -> Unit,
     onDetectionStopped: () -> Unit
 ) {
     val context = LocalContext.current
@@ -979,7 +1081,11 @@ private fun LiveDetectionUi(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val trainingSaver = remember { TrainingDataSaver(context) }
-    val datasetEditor = remember { DatasetEditor(context) }
+    val exporter = remember { DatasetExporter(context) }
+
+    // Frames are captured only while the user is signed in AND image saving is on.
+    // `collectTrainingData` alone keeps driving the UI (banners, hidden buttons).
+    val captureActive = collectTrainingData && isSignedIn
     @Suppress("DEPRECATION")
     val appVersion = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "" }.getOrDefault("")
@@ -1011,10 +1117,10 @@ private fun LiveDetectionUi(
     val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
     val quotaReached = storageUsageBytes >= quotaBytes
 
-    LaunchedEffect(collectTrainingData, storageQuotaMb) {
+    LaunchedEffect(captureActive, storageQuotaMb) {
         while (true) {
-            storageUsageBytes = withContext(Dispatchers.IO) { datasetEditor.trainingUsageBytes() }
-            if (!collectTrainingData) break
+            storageUsageBytes = withContext(Dispatchers.IO) { exporter.trainingUsageBytes() }
+            if (!captureActive) break
             delay(5_000)
         }
     }
@@ -1254,7 +1360,7 @@ private fun LiveDetectionUi(
                     CameraPreviewWithAnalysis(
                         detector = detector,
                         plateOCR = plateOCR,
-                        collectTrainingData = collectTrainingData && !quotaReached && !burstActive,
+                        collectTrainingData = captureActive && !quotaReached && !burstActive,
                         burstModeActive = burstActive,
                         onBurstFrameSaved = {
                             if (burstActive) {
@@ -1294,7 +1400,7 @@ private fun LiveDetectionUi(
                             lastFrameH = h
                             lastMs = ms
                         },
-                        onLatestFrame = if (collectTrainingData) { bmp ->
+                        onLatestFrame = if (captureActive) { bmp ->
                             val old = latestFrame
                             latestFrame = bmp
                             old?.recycle()
@@ -1567,7 +1673,7 @@ private fun LiveDetectionUi(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (collectTrainingData) {
+                        if (captureActive) {
                             val captureEnabled = !captureOnCooldown && latestFrame != null && !burstActive
                             IconButton(
                                 onClick = {
@@ -1626,17 +1732,17 @@ private fun LiveDetectionUi(
                     }
                 }
 
-                // Storage banners (below top bar, only while collecting)
-                if (collectTrainingData && quotaReached) {
+                // Storage banners (below top bar, only while capture is active)
+                if (captureActive && quotaReached) {
                     StorageBanner(
-                        text = "Storage limit reached ($storageQuotaMb MB). Export or edit your dataset to continue collecting.",
+                        text = "Storage limit reached ($storageQuotaMb MB). Upload your buffered frames to keep collecting.",
                         isError = true,
-                        actionLabel = "Edit",
-                        onAction = onOpenEditor
+                        actionLabel = "Upload",
+                        onAction = onOpenContribute
                     )
-                } else if (collectTrainingData && usagePct >= 80) {
+                } else if (captureActive && usagePct >= 80) {
                     StorageBanner(
-                        text = "Training storage at $usagePct% — consider exporting or editing your dataset.",
+                        text = "Training storage at $usagePct% — upload your buffered frames soon.",
                         isError = false,
                         actionLabel = null,
                         onAction = null

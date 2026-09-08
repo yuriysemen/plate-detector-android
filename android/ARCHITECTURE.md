@@ -9,19 +9,25 @@ Single-Activity, fully Jetpack Compose app. No navigation library — navigation
 ```
 MainActivity
   └── LivePlateDetectionScreen          (top-level coordinator)
-        ├── NoModelsScreen              (no .tflite assets found)
+        ├── NoModelsScreen              (no .tflite bundled/downloaded; also carries Sign in / Sign out
+        │                                so a fresh install / different-user / reconfigure isn't a dead end)
         ├── AuthScreen                  (sign-up / sign-in / verify email; Cognito SRP + email code)
-        ├── SettingsScreen              (model picker + sliders + Contribute data row)
-        ├── ContributeScreen            (stats card; auth status row + sign-in/out (or session-expired banner); upload config — mobile data toggle, daily time, last upload; global "Upload collected data" button — always tappable except a 60 s post-tap cooldown, restarts by cancelling+discarding every in-flight upload; upload history — active/failed entries only, up to 10, "+ N more" footer when hidden, each row additionally gets its own per-item Restart button once it's `FAILED` or has been stuck `PENDING`/`UPLOADING` for 30+ minutes; successful uploads are deleted immediately, not retained)
-        │     └── DatasetEditorScreen   (frame grid; multi-select delete)
-        │           └── FrameDetailScreen  (full-res image; box draw/move/resize/delete)
+        ├── SettingsScreen              (model picker + sliders; "Contribute data" row ONLY when signed in,
+        │                                otherwise a "Sign in" row; a "session expired" card when applicable)
+        ├── ContributeScreen            (status card — "Frames waiting to upload", capture-status line,
+        │                                Reset; auth row with Sign in / Sign in again / Sign out; upload
+        │                                config; "Upload collected data"; "Upload activity" line + Details
+        │                                dialog over the persistent UploadLog; upload history — active/failed
+        │                                only, up to 10, per-row Restart, failure reason shown)
         └── LiveDetectionUi             (camera + detection + overlay)
               └── CameraPreviewWithAnalysis   (CameraX binding)
 ```
 
-`LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `showAuth`, `isModelEnabled`, `selectedId`). `showAuth` takes priority in the `when` block — it renders `AuthScreen` from anywhere in the flow. When no model is selected on first launch it opens Settings automatically. `ContributeScreen` is shown when `showExport` is true.
+`LivePlateDetectionScreen` owns the routing state (`showSettings`, `showExport`, `showAuth`, `isModelEnabled`, `selectedId`). `showAuth` takes priority in the `when` block — it renders `AuthScreen` from anywhere in the flow, **including over `NoModelsScreen`**. When no model is selected on first launch it opens Settings automatically. `ContributeScreen` is shown when `showExport` is true.
 
-`ContributeScreen` owns the sub-navigation to `DatasetEditorScreen` via a local state flag. `DatasetEditorScreen` owns the sub-navigation to `FrameDetailScreen` via a `openFrame: FrameEntry?` state — when non-null the detail screen renders in place of the grid.
+On-device dataset review/editing was **removed** (REQ-026) — the generic app only captures and uploads; all box editing now lives in the separate `curation-android` app. `DatasetEditorScreen`, `FrameDetailScreen`, and `DatasetEditor` are gone.
+
+Auth state (`isSignedIn` / `signedInEmail` / `sessionExpired`) is re-synced from `CognitoAuthManager` on `ON_START`, on a 30 s poll, when `ContributeScreen` opens, and after "Check now" — so a session a background worker expires is picked up without a manual navigation.
 
 ## Detection pipeline (per frame)
 
@@ -42,11 +48,12 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │     ├─ crop+pad bitmap to detection bounds
   │     └─ ML Kit TextRecognizer → clean alphanumeric text
   │
-  ├─ burst mode active? (mutually exclusive with regular auto-save)
-  │   ├── YES → saveFrame() if dets present, else saveFrameManual()   (every frame; no quota check)
-  │   │         mainExecutor.execute { onBurstFrameSaved() }
-  │   │             └─ increments burstCollected on main thread; triggers completion dialog at target
-  │   └── NO + collectTrainingData && detections not empty
+  ├─ captureActive? (= collect_training_data pref AND signed in — nothing is written to
+  │                   disk unless BOTH hold; REQ-026)
+  │   ├── burst mode active (mutually exclusive with regular auto-save)
+  │   │     └─ saveFrame() if dets present, else saveFrameManual()   (every frame; no quota check)
+  │   │        mainExecutor.execute { onBurstFrameSaved() }  → completion dialog at target
+  │   └── regular auto-save + detections not empty
   │         └── TrainingDataSaver.saveFrame()
   │               ├─ compute YOLO lines; skip degenerate boxes (bw≤0 or bh≤0); coerceIn [0,1]
   │               ├─ if no valid lines → return (no files written)
@@ -55,7 +62,7 @@ CameraX ImageAnalysis (background thread, ~8 fps throttle)
   │               │     (one line per valid detection: classId x_center y_center width height, normalized [0,1])
   │               └─ overwrite manifest.json (next_seq, total_frames, total_detections, multi_detection_frames, date range)
   │
-  └─ frame copy → onLatestFrame callback  (only when collectTrainingData; posted to main thread)
+  └─ frame copy → onLatestFrame callback  (only when captureActive; posted to main thread)
         └─ stored as latestFrame state in LiveDetectionUi for the manual capture button
 
 Results posted to main thread → recompose overlay Canvas
@@ -68,9 +75,8 @@ Three model origins (tracked in `ModelOrigin` enum):
 | Origin | Storage | Deletable |
 |---|---|---|
 | `DEFAULT` | `assets/models/*.tflite` (bundled at build time, downloaded by Gradle from latest `model_v*` GitHub Release) | No |
-| `DOWNLOADED` | `context.filesDir/models/downloaded/` (fetched at runtime via `GET /get-model-url`; one file at a time; deleted on sign-out) | Yes (on sign-out or when superseded by a newer download) |
-| `CUSTOM` | `context.filesDir/models/custom/` (imported by user) | Yes |
-| `LEGACY_EXTERNAL` | Content URI (old approach, kept for migration) | Yes (removes from prefs) |
+| `DOWNLOADED` | `context.filesDir/models/downloaded/` (fetched at runtime via `GET /get-model-url`; one file at a time) | Superseded by a newer download; removed when a **different** account signs in (owner-sub tracked in `DownloadedModelPrefs`, REQ-029) or on a backend reconfigure — **not** on a plain sign-out |
+| `CUSTOM` / `LEGACY_EXTERNAL` | legacy only — import from device storage was removed in REQ-016 | Yes |
 
 Model selection priority at runtime: `DOWNLOADED` (if file exists) → `DEFAULT` (bundled asset) → "No models" error screen.
 
@@ -78,7 +84,7 @@ Model selection priority at runtime: `DOWNLOADED` (if file exists) → `DEFAULT`
 
 `ModelPrefs` (SharedPreferences) persists: selected model ID, per-model confidence threshold, show-labels flag, collect-training-data flag, scan interval ms, analysis resolution, storage quota.
 
-`DownloadedModelPrefs` (SharedPreferences) persists: active model (`downloaded_model_version`, `downloaded_model_s3_key`); pending update (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`); server info (`latest_model_version`, `model_last_check_time`).
+`DownloadedModelPrefs` (SharedPreferences) persists: active model (`downloaded_model_version`, `downloaded_model_s3_key`, `downloaded_model_owner_sub`); pending update (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`); server info (`latest_model_version`, `model_last_check_time`).
 
 A `.txt` sidecar file with the same base name as a `.tflite` is shown as the model description in Settings. For downloaded models the sidecar is written from the `description` field in the Lambda response.
 
@@ -94,13 +100,13 @@ The overlay `Canvas` (sibling of the camera view in a `Box`) handles:
 The top bar in `LiveDetectionUi` exposes:
 - **Settings button** (hamburger) — opens `SettingsScreen`
 - **Stats text** — zoom ratio, detection count, inference latency; model label shows burst progress `"Burst: N / M"` in yellow when burst is active
-- **Manual capture button** (`CameraAlt` icon) — visible only when `collect_training_data` is on; saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); disabled (dimmed, non-interactive) while burst collection is active (REQ-020)
-- **Burst collection button** (`BurstMode` icon) — visible only when `collect_training_data` is on; tapping while inactive opens a setup dialog (count field, default 100); tapping while active stops burst immediately; yellow tint while active; on completion shows a dialog with "Send to server" (enqueues `UploadDatasetWorker`, resets counter, starts next round) or "Stop collecting"; `onUploadNow` lambda provided by `LivePlateDetectionScreen` when signed in and URL is configured; burst state is plain `remember` (not `rememberSaveable`) so it resets on rotation (REQ-021)
+- **Manual capture button** (`CameraAlt` icon) — visible only when `captureActive` (`collect_training_data` on **and** signed in); saves the latest analyzed frame with an empty label file via `TrainingDataSaver.saveFrameManual()`; toast "Frame saved" on success; toast "Storage quota full" when at 100% quota (no save); 1-second cooldown after each capture (button dims to 35% alpha); disabled while burst collection is active (REQ-020)
+- **Burst collection button** (`BurstMode` icon) — visible only when `captureActive`; tapping while inactive opens a setup dialog (count field, default 100); tapping while active stops burst immediately; yellow tint while active; on completion shows a dialog with "Send to server" (enqueues `UploadDatasetWorker`, resets counter, starts next round) or "Stop collecting"; burst state is plain `remember` (not `rememberSaveable`) so it resets on rotation (REQ-021)
 - **Torch button** — toggles `camera.cameraControl.enableTorch()`; only shown when `camera.cameraInfo.hasFlashUnit()` is true; automatically disabled when the app goes to background
 
 `SettingsScreen` model section: below the model list card, a one-line **model activity row** shows the latest `ModelUpdateLog` entry (grey/green/red by level) and a "Details" button (opens `AlertDialog` with the full log, newest first). When signed in, a "Check now" `TextButton` is also shown in that row; tapping it runs `ModelCheckWorker.performCheck()` in a `rememberCoroutineScope()`, shows a `CircularProgressIndicator` during the request, then increments `reloadKey` to pick up any newly-stored pending update. Below that row: last check time + next scheduled check; and an incompatibility banner when `latest_model_version > compatible_model_version`.
 
-`SettingsScreen` bottom section: **"Contribute data"** row — Switch on the right (default off; first enable shows a one-time consent dialog; `collect_training_data` + `collect_first_time_shown` prefs); tapping the row navigates to `ContributeScreen`.
+`SettingsScreen` bottom section: when **signed in**, a **"Contribute data"** row — Switch on the right (default off; first enable shows a one-time consent dialog; `collect_training_data` + `collect_first_time_shown` prefs); tapping the row navigates to `ContributeScreen`. When **signed out** (incl. session-expired) the row is hidden and replaced by a plain **"Sign in"** row → `AuthScreen`, so authentication stays reachable from Settings (REQ-029).
 - **Zoom shortcut buttons** — 1×/2×/3× pill buttons at bottom center; filtered to `camera.cameraInfo.zoomState.maxZoomRatio`; tapping calls `setZoomRatio()`; active level highlighted in white
 - **EV slider** — horizontal slider above zoom buttons; range and step read from `camera.cameraInfo.exposureState`; calls `setExposureCompensationIndex()`; displays computed EV value (`index × step`); hidden when `isExposureCompensationSupported` is false; resets to 0 on model change
 - **Analysis resolution** — `AnalysisResolution` enum (`DEFAULT`/`LOW`/`HD`) persisted in `ModelPrefs`; wired into `ImageAnalysis.Builder` via `ResolutionSelector` + `ResolutionStrategy`; camera is fully rebound when changed (via `key(spec.id, analysisResolution)`); picker shown in `SettingsScreen`
@@ -118,18 +124,27 @@ Processing is suppressed when the app is not in the foreground (`ON_STOP` lifecy
 | `CoordFormat` | `ModelTypes.kt` | `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS` — how model output columns map |
 | `OCRResult` | `PlateOCR.kt` | Cleaned plate text + confidence estimate |
 | `ModelPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper; keys: selected model, per-model conf, show-labels, `collect_training_data`, `collect_first_time_shown`, analysis resolution, `scan_interval_ms` (default 1000), storage quota |
-| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` (toggle label: **"Use mobile data"** — covers uploads and model downloads), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date` (ISO date), `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email`, `cognito_session_expired` (bool; set by `CognitoAuthManager.markSessionExpired()`) |
-| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine` (cancellable so late callbacks after navigation are silently dropped): `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials` (STS via Identity Pool), `signOut`. Throws `SessionExpiredException` when the refresh token has expired. `isSignedIn()` returns `false` once `markSessionExpired()` has flagged the cached session as dead, even though the user id/email are still cached; `isSessionExpired()` exposes that distinct state so the UI can tell "never signed in" apart from "signed in, now expired". `markSessionExpired()` is deliberately lighter than `signOut()` — it doesn't clear the cached user id/email or delete the downloaded model. |
-| `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` fields baked in at compile time from `local.properties` (`COGNITO_USER_POOL_ID`, `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`). `seedPrefsIfNeeded()` seeds `UploadPrefs` on first app launch. |
-| `ModelUpdateLog` | `ModelUpdateLog.kt` | In-memory singleton `object`; `MutableStateFlow<List<Entry>>`; never persisted; resets on app restart. Each `Entry` has `timeMs`, `message`, and `level` (INFO / SUCCESS / ERROR). Appended by `ModelCheckWorker.performCheck()` and `applyModelUpdate()`. Collected as Compose state in `SettingsScreen` to drive the one-line status row and "Details" dialog. |
-| `UploadStatus` | `DatasetExporter.kt` | Enum: `NOT_QUEUED`, `PENDING`, `UPLOADING`, `FAILED`, `UPLOADED` — written to per-ZIP `.upload.json` sidecar; `UPLOADED` is never persisted — on success both the ZIP and sidecar are deleted immediately, so no local history is retained |
-| `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels; maintains `manifest.json`; `reset()` clears collected files; `saveFrameManual()` saves a frame with an empty label file (manual missed-plate capture, `total_frames` +1, `total_detections` unchanged) |
-| `DatasetExporter` | `DatasetExporter.kt` | Builds export ZIP (via a `BufferedOutputStream`-backed `ZipOutputStream`) with train/val/test split (`SplitConfig`); generates `data.yaml` with `device:` metadata block; reads stats; `listExports()` returns only active entries (ZIP present, any status) and opportunistically deletes orphaned sidecars whose ZIP is gone; `onUploadSuccess(zipFile)` deletes both the ZIP and its sidecar (no record kept); `deleteAllExports()` wipes every ZIP + sidecar on disk, used to discard in-flight uploads when the user restarts from ContributeScreen; `writeUploadStatus()` / `readUploadStatus()` read/write `status` + `updated_at` (stale-restart timer); `exportSync()` for WorkManager callers |
-| `DatasetEditor` | `DatasetEditor.kt` | Loads `FrameEntry` list from disk; saves edited `YoloBox` lists back to `.txt`; deletes frame pairs; recalculates and rewrites `manifest.json` |
-| `FrameEntry` | `DatasetEditor.kt` | Frame metadata: name, imageFile, labelFile, `List<YoloBox>` |
-| `YoloBox` | `DatasetEditor.kt` | Single bounding box in YOLO normalized space: classId, xCenter, yCenter, width, height |
+| `UploadPrefs` | `LivePlateDetectionScreen.kt` | SharedPreferences wrapper for upload settings: `upload_service_url`, `upload_on_mobile_data` ("Use mobile data"), `auto_upload_time` (HH:mm, default 02:00), `auto_upload_last_date`, `cognito_user_pool_id`, `cognito_app_client_id`, `cognito_identity_pool_id`, `cognito_user_id` (sub), `cognito_user_email`, `cognito_session_expired` (set by `markSessionExpired()`) |
+| `CognitoAuthManager` | `CognitoAuthManager.kt` | Wraps AWS Android SDK v2 Cognito callbacks into `suspend` functions via `suspendCancellableCoroutine`: `signUp`, `resendConfirmationCode`, `confirmSignUp`, `signIn`, `getIdToken`, `getAwsCredentials(forceRefresh)` (STS via Identity Pool — **serialized process-wide by a companion `Mutex`** so the concurrent worker paths don't race the shared credential cache), `signOut`, `signOutAndWipeModel`. Terminal Cognito errors (`NotAuthorized` / `UserNotFound` / `ResourceNotFound` / …) and refresh-time challenges/MFA are mapped to `SessionExpiredException` (were generic → infinite retry). `signIn()` throws on an empty `sub`; deletes the previous owner's downloaded model on a **different-user** sign-in. `signOut()` builds the pool if needed and `clear()`s the SDK's own auth SharedPreferences (`CognitoIdentityProviderCache`, `com.amazonaws.android.auth`) — but keeps the downloaded model. `markSessionExpired()` (from a real `SessionExpiredException` only) keeps the cached email + model. |
+| `ApiUnauthorizedException` / `RetryableHttpException` / `AuthChallengeException` | `CognitoAuthManager.kt` | `ApiUnauthorizedException(httpCode, …)` — an authed API call got 401/403 while the session is valid (authorization/config problem, e.g. curator role without `execute-api`); the workers fail the job with a message and **do not** sign the user out. `RetryableHttpException` — 429/5xx, worth `Result.retry()`. `AuthChallengeException` — a sign-in challenge the app can't complete (MFA, `NEW_PASSWORD_REQUIRED`). |
+| `AppConfig` | `AppConfig.kt` | Reads `BuildConfig` Cognito/API fields (from `local.properties`). `seedPrefsIfNeeded(context): Boolean` — seeds `UploadPrefs`, and **re-seeds** when the APK was rebuilt for a different backend (overwrites stored values, never with an empty build value); if the identity config changed it `signOutAndWipeModel()`s and returns `true`. Called at app start and at the top of all three workers. |
+| `ModelUpdateLog` | `ModelUpdateLog.kt` | In-memory singleton; `MutableStateFlow<List<Entry>>` capped at 100; never persisted. `Entry` = `timeMs`, `message`, `level`. Drives the Settings model-activity row + "Details" dialog. |
+| `UploadLog` | `UploadLog.kt` | **Persistent** counterpart (`filesDir/upload_log.json`, capped 100) — the upload workers run headless, so an in-memory log would be empty when the user looks. In-memory `StateFlow` seeded from disk. Records every upload lifecycle event (start / retry / fail-with-reason / complete) + `AutoUploadWorker` queued/skipped. Drives the ContributeScreen "Upload activity" line + Details dialog. |
+| `UploadStatus` | `DatasetExporter.kt` | Enum `NOT_QUEUED` / `PENDING` / `UPLOADING` / `FAILED` / `UPLOADED` — in the per-ZIP `.upload.json` sidecar (`status` + `updated_at` + `detail`). `UPLOADED` is never persisted (ZIP + sidecar deleted on success). |
+| `TrainingDataSaver` | `TrainingDataSaver.kt` | Saves JPEG frames + YOLO labels (the model's predicted boxes); maintains `manifest.json`; `saveFrameManual()` = frame + empty label (missed-plate); `reset()` clears. |
+| `DatasetExporter` | `DatasetExporter.kt` | `exportSync()` builds the upload ZIP (train/val/test split + `data.yaml` device block) and resets `training_data/`; `trainingUsageBytes()` (buffer size, was in `DatasetEditor`); `listExports()` (active entries; sweeps orphan sidecars + `.upload.json.tmp`); `writeUploadStatus(status, detail?)` — **atomic** temp-file-then-rename, `detail=null` preserves the prior reason; `onUploadSuccess` / `deleteAllExports`. |
 
 ## Training data collection
+
+Capture is gated on **`collect_training_data` AND signed in** (REQ-026). The generic app only
+captures and uploads — no on-device review. `training_data/` is a short-lived upload buffer:
+`AutoUploadWorker` / manual upload package it into a ZIP (which resets the buffer) and send it;
+the ZIP is deleted on success. `curation-android` reviews the uploaded packages.
+
+**Nothing leaves the device via OS backup** — `android:allowBackup="false"` (disables cloud Auto
+Backup + `adb backup`); `res/xml/data_extraction_rules.xml` also excludes `training_data/`,
+`exports/`, `models/`, `upload_log.json` and the Cognito token prefs from Android 12+ D2D transfer
+(REQ-007 §5).
 
 Collected frames and downloaded models are stored under `context.filesDir`:
 
@@ -165,12 +180,12 @@ Three `CoroutineWorker` classes handle background network work:
 One instance per export ZIP. Enqueued immediately after a ZIP is created (manual, auto-upload, and burst-mode paths — see `LivePlateDetectionScreen.enqueueDatasetUpload`, REQ-021). Unique work name = ZIP file path (prevents duplicate uploads). Every request is also tagged `"dataset_upload"` (`UploadDatasetWorker.TAG_DATASET_UPLOAD`), in addition to its per-ZIP tag, so all outstanding jobs — regardless of which path enqueued them — can be cancelled together in one call.
 
 Flow:
-1. Obtain short-lived STS credentials via `CognitoAuthManager.getAwsCredentials()` (exchanges current ID token via the Identity Pool). On `SessionExpiredException` (refresh token expired): calls `CognitoAuthManager.markSessionExpired()`, writes `FAILED` to the sidecar, then immediate `Result.failure()` (no retry — retrying can't fix a dead refresh token).
-2. SigV4-sign a POST to `<upload_service_url>/get-upload-url` with `filename`, `device_id`, and `user_id` (Cognito sub) → receives S3 pre-signed URL. Signing uses `AWS4Signer` from `aws-android-sdk-core`.
-3. PUT the ZIP binary to the pre-signed URL — streamed via `conn.setFixedLengthStreamingMode(zipFile.length())` in a manual 64 KB chunked read/write loop (not `copyTo()`), which also reports progress via `setProgress(KEY_PROGRESS_BYTES, KEY_PROGRESS_TOTAL)`, throttled to ≥ 250 ms apart. Without fixed-length streaming mode, `HttpURLConnection` buffers the entire body in memory before writing any of it to the socket — besides the wasted memory, the resulting delay before the first byte is sent could let the connection go stale server-side, observed as `SocketException: Broken pipe`.
-4. On S3 HTTP 200: call `exporter.onUploadSuccess(zipFile)` — deletes both the ZIP and its sidecar; no record is kept. Posts a notification if `KEY_IS_AUTO_UPLOAD == true`.
-4. On S3 HTTP 403 (expired URL): re-request a fresh URL and retry the PUT once.
-5. On failure: `Result.retry()` up to `MAX_ATTEMPTS = 5` with exponential backoff, then `Result.failure()` (sidecar set to `FAILED`).
+0. `AppConfig.seedPrefsIfNeeded()`.
+1. STS credentials via `CognitoAuthManager.getAwsCredentials()`. `SessionExpiredException` → `markSessionExpired()` + `FAILED` + `Result.failure()` (no retry).
+2. SigV4-sign a POST to `<upload_service_url>/get-upload-url` (`filename`, `device_id`, `user_id`) → S3 pre-signed URL. A **401/403** here → `ApiUnauthorizedException`: mint fresh credentials (`getAwsCredentials(forceRefresh = true)`) and retry once; if still 401/403 it's an **authorization/config** problem (not expiry — e.g. a curator whose token resolves to `CuratorRole` without `execute-api`), so `FAILED` with an actionable reason and `Result.failure()`, **session kept**. Non-2xx bodies are logged (`errorStream`, first 300 chars).
+3. PUT the ZIP to the pre-signed URL — `setFixedLengthStreamingMode` + a manual 64 KB chunked loop that also `setProgress()`s (throttled ≥ 250 ms). Fixed-length mode avoids buffering the whole body in memory and a stale-connection `Broken pipe`.
+4. S3 HTTP 200 → `onUploadSuccess()` (ZIP + sidecar deleted, `UploadLog` SUCCESS), notification if `KEY_IS_AUTO_UPLOAD`. S3 HTTP 403 (expired URL) → re-request once.
+5. Other failure → `Result.retry()` up to `MAX_ATTEMPTS = 5`, then `FAILED`. Every outcome + reason goes to the persistent `UploadLog`.
 
 `ContributeScreen` reads the reported progress from the same per-row `WorkInfo` flow it already collects (`getWorkInfosByTagFlow` → `WorkInfo.progress`) and shows a determinate progress indicator + `"Uploading… NN%"` while `UPLOADING`, falling back to an indeterminate spinner when no progress has been reported yet.
 
@@ -187,12 +202,12 @@ Network constraint depends on the trigger:
 Scheduled as a `PeriodicWorkRequest` (24 h period, ±30 min flex). Registered by `AutoUploadWorker.schedule(context)` whenever upload settings change or the app starts. Cancelled when the upload URL is cleared or contribution is disabled.
 
 Flow:
-1. Skip if URL is blank, `user_id` is empty, or `total_frames == 0`.
-2. Call `exportSync()` — packages frames into a ZIP and resets collected frames atomically.
-3. Enqueue `UploadDatasetWorker` with `KEY_IS_AUTO_UPLOAD = true` and the three auth keys (`KEY_USER_ID`, `KEY_USER_POOL_ID`, `KEY_IDENTITY_POOL_ID`).
-4. Write today's date to `auto_upload_last_date`.
+1. `AppConfig.seedPrefsIfNeeded()`. Skip if **`!CognitoAuthManager.isSignedIn()`** (false once the session is expired — bail *before* `exportSync()`, which would otherwise wipe the frame buffer for a doomed upload), URL/pool blank, or `total_frames == 0`.
+2. `exportSync()` — packages frames into a ZIP and resets `training_data/` atomically.
+3. Enqueue `UploadDatasetWorker` with `KEY_IS_AUTO_UPLOAD = true`.
+4. Write today's date to `auto_upload_last_date`; `UploadLog` "queued".
 
-`runCatchUpIfNeeded()` is called once `LiveDetectionUi` (camera pipeline) has composed — not at raw process start, to avoid a same-launch export+upload landing at an arbitrary point relative to the camera's own startup allocation burst (see "Startup memory robustness" note below and REQ-015). It enqueues a one-shot `AutoUploadWorker` if the URL is configured, frames exist, today's date is not in `auto_upload_last_date`, and the network constraint is currently satisfied — covering the case where the device was offline at the scheduled time.
+`runCatchUpIfNeeded()` is called once `LiveDetectionUi` (camera pipeline) has composed — not at raw process start, to avoid a same-launch export+upload landing at an arbitrary point relative to the camera's own startup allocation burst (REQ-015). It enqueues a one-shot `AutoUploadWorker` if the URL is configured, **`isSignedIn()`**, frames exist, today's date is not in `auto_upload_last_date`, and the network constraint is satisfied.
 
 **Startup memory robustness.** `LiveDetectionUi` is only composed once `LivePlateDetectionScreen` has moved past Settings/model-picker/Auth — an unbounded, user-timed gate. A previously-enqueued `UploadDatasetWorker` job can also be auto-resumed by WorkManager at raw process start, outside app control. To keep these from compounding into an OOM alongside the camera's own allocation burst: `android:largeHeap="true"` is set in the manifest, and `DatasetExporter.exportSync()`'s `ZipOutputStream` is backed by a `BufferedOutputStream` (previously a raw, unbuffered `FileOutputStream`) to shorten how long export holds elevated memory.
 
@@ -205,7 +220,8 @@ Scheduled as a `PeriodicWorkRequest` (1-hour repeat interval). Enqueued at sign-
 The check logic lives in `companion object suspend fun performCheck(context)` so it can be called both by the WorkManager `doWork()` wrapper and directly from the "Check now" button in Settings (inline, without WorkManager scheduling).
 
 `performCheck` flow:
-1. Call `GET /get-model-url?app_version=…` SigV4-signed. Log all outcomes to `ModelUpdateLog`. On `SessionExpiredException` from `getAwsCredentials()`: calls `CognitoAuthManager.markSessionExpired()` before re-throwing — since this check runs hourly (far more often than uploads), it's typically the first place a dead refresh token is discovered.
+0. `AppConfig.seedPrefsIfNeeded()`. Early-return if `isSessionExpired()` (don't hammer the endpoint/log hourly while the user hasn't re-authed).
+1. `GET /get-model-url?app_version=…` SigV4-signed, all outcomes → `ModelUpdateLog`. `SessionExpiredException` from `getAwsCredentials()` → `markSessionExpired()` + rethrow → `Result.failure()`. **401/403** → `ApiUnauthorizedException`: forced-credential-refresh retry once; still 401/403 → log an actionable "not authorized / config" message and return (session **kept**, not expired). **429/5xx** → `RetryableHttpException` → `Result.retry()` with backoff (not swallowed for an hour).
 2. Store `latest_model_version` and check time in `DownloadedModelPrefs`.
 3. Compare `compatible.s3_key` with `downloaded_model_s3_key` pref. If identical: log "up to date"; exit.
 4. Write pending update fields (`pending_model_version`, `pending_model_s3_key`, `pending_model_download_url`, `pending_model_description`) to `DownloadedModelPrefs`.
@@ -216,26 +232,20 @@ If `latest.model_version > compatible.model_version` (newer model requires a hig
 
 **Notification**: on auto-upload success `UploadDatasetWorker` posts to the `"Dataset"` `NotificationChannel` (created in `MainActivity.onCreate`). `POST_NOTIFICATIONS` runtime permission is requested on Android 13+ at first app launch.
 
-## Dataset editor
+## On-device dataset editing — removed (REQ-026)
 
-`DatasetEditorScreen` is a 2-column lazy grid of all collected frames. Each cell asynchronously decodes the JPEG thumbnail and overlays its bounding boxes via a `Canvas`, using the same four-colour cycle (`0xFF00E676` / `0xFF40C4FF` / `0xFFFF6E40` / `0xFFEA80FC`) as the detail editor. Long-press enters multi-select mode; tapping a cell in normal mode opens `FrameDetailScreen`. `LazyGridState` is hoisted before the early `return` that renders `FrameDetailScreen`, so the grid scroll position is preserved in memory across the navigation and restored when the user navigates back.
+The generic app no longer reviews or edits collected frames. `DatasetEditorScreen`,
+`FrameDetailScreen`, `DatasetEditor`, `FrameEntry`, and `YoloBox` were deleted. All box
+review/editing (accept/reject, move/resize/add/delete, vehicle-type classification) lives in the
+standalone `curation-android` app, which consumes the uploaded YOLO packages from S3.
 
-`FrameDetailScreen` has two explicit modes controlled by `isEditMode: Boolean` state (default `false`):
+## Auth-state consistency (REQ-027 / REQ-029)
 
-- **View mode** — read-only; top bar shows Back + ✏ Edit; no handles drawn; tap/drag interactions disabled; Back navigates to the grid without a dialog.
-- **Edit mode** — entered via ✏; top bar shows Cancel + frame name + × (delete selected box) + ✓ Save + ⋮ (delete frame); `+` FAB always visible while not drawing; Cancel / Back show a discard dialog if `hasUnsavedChanges`, then return to view mode (not the grid). `savedBoxes` captures the box state when edit mode is entered so discard can restore it without re-reading disk.
+`LivePlateDetectionScreen` holds `isSignedIn` / `signedInEmail` / `sessionExpired` as `rememberSaveable`
+state, re-synced from `CognitoAuthManager` on: `ON_START`, a 30 s `LaunchedEffect` poll, `showExport`
+becoming true, and after "Check now". A background worker that calls `markSessionExpired()` is
+therefore reflected in the UI within ~30 s without a manual navigation. `markSessionExpired()` is
+reached **only** from a genuine `SessionExpiredException` — a persistent API 401/403 (authorization
+/ config, e.g. a curator role missing `execute-api`) fails the job with a message and leaves the
+session intact.
 
-The screen displays the full-resolution frame inside a `BoxWithConstraints` (black letterbox, fit-center scaling). Bounding boxes are stored in **canvas-pixel space** (offset + scaled to the composable's display area) while the screen is open. The coordinate lifecycle is:
-
-```
-YoloBox (normalized 0–1)
-  → yoloToCanvas()     on first layout (LaunchedEffect, runs once per frame open)
-  → DisplayBox         in-memory during editing (drag / resize / add / delete)
-  → canvasToYolo()     on Save (converts back before writing .txt)
-```
-
-When the canvas geometry changes (e.g. a box is selected and the FAB row collapses), a `SideEffect` detects the change and re-projects all `DisplayBox` values to the new geometry before the next draw, keeping boxes aligned with the image.
-
-**Zoom and pan (REQ-012):** `FrameDetailScreen` maintains `zoomScale` (1×–8×), `panOffsetX`, and `panOffsetY` as `remember` state. All Canvas drawing is wrapped in `withTransform { translate(pan); scale(zoom) }` so zoom/pan is a pure transform with no bitmap re-decode. The Canvas carries `Modifier.clipToBounds()` to prevent zoomed content from overflowing into adjacent UI. A fourth `pointerInput(Unit)` block runs an `awaitEachGesture` loop that waits within each touch sequence until ≥ 2 fingers are detected, then reads `PointerEvent.calculateZoom/Pan/Centroid` for pinch-to-zoom. All single-finger gesture coordinates (tap, drag start, drag delta) are inverse-transformed from screen space to canvas space before use. Handle circles are drawn at `handleRadius / zoomScale` so they remain 14 dp on screen at any zoom level. Zoom state resets when a new frame is opened (`LaunchedEffect(frame.name)`) and implicitly on device rotation (Activity recreation resets all `remember` state). A semi-transparent zoom label (e.g. `"2.5×"`) fades in on zoom change and auto-hides after 1.5 s via `animateFloatAsState`.
-
-`DatasetEditor` is instantiated once per `DatasetEditorScreen` session (via `remember`) and shared with each `FrameDetailScreen` child. Mutations (`saveBoxes`, `deleteFrames`) are always dispatched on `Dispatchers.IO`; after completion the grid calls `refresh()` to reload `frames` state from disk.

@@ -1,7 +1,8 @@
 ---
 id: REQ-012
 title: Zoom and Pan in Frame Detail Editor
-status: done
+status: superseded
+superseded_by: REQ-026
 priority: high
 ---
 

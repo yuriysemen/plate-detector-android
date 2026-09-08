@@ -1,19 +1,30 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   android:allowBackup="false" already disables cloud Auto Backup and `adb backup` for this app.
+   These rules are the belt-and-suspenders for Android 12+ *device-to-device* transfer, which is a
+   separate mechanism: nothing this app stores should leave the device.
+     - training_data/ + exports/ : camera frames captured for the research dataset
+     - upload_log.json           : upload activity history
+     - the AWS SDK's SharedPreferences : Cognito tokens + STS credentials (device-bound anyway)
+   The downloaded model and settings are excluded too — they're re-fetched / re-defaulted cheaply.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="file" path="training_data" />
+        <exclude domain="file" path="exports" />
+        <exclude domain="file" path="models" />
+        <exclude domain="file" path="upload_log.json" />
+        <exclude domain="sharedpref" path="com.amazonaws.android.auth.xml" />
+        <exclude domain="sharedpref" path="CognitoIdentityProviderCache.xml" />
+        <exclude domain="sharedpref" path="AWS.Cognito.ContextData.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="file" path="training_data" />
+        <exclude domain="file" path="exports" />
+        <exclude domain="file" path="models" />
+        <exclude domain="file" path="upload_log.json" />
+        <exclude domain="sharedpref" path="com.amazonaws.android.auth.xml" />
+        <exclude domain="sharedpref" path="CognitoIdentityProviderCache.xml" />
+        <exclude domain="sharedpref" path="AWS.Cognito.ContextData.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>

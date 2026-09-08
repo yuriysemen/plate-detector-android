@@ -19,7 +19,7 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 ## Non-goals
 
 - ~~Automatic upload to any server~~ — now in scope as REQ-014 (cloud upload) and REQ-015 (scheduled upload).
-- ~~In-app annotation correction (user cannot move/resize boxes in this scope).~~ — **implemented in REQ-011.**
+- In-app annotation correction — briefly implemented in REQ-011, **removed again in REQ-026**. The generic app only captures and uploads; all box editing lives in `curation-android` (REQ-024/REQ-025).
 - Video recording.
 - Collecting frames with zero detections (background-only samples) — out of scope for now.
 
@@ -34,8 +34,8 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-006 | Storage quota, LRU eviction, and export                                    | done (LRU superseded by REQ-011) |
 | REQ-007 | Google Play compliance and privacy policy changes                          | draft                            |
 | REQ-008 | Local-only vs. cloud upload analysis                                       | superseded by REQ-014 + REQ-018  |
-| REQ-011 | Dataset Editor, Frame Detail editing, and configurable storage quota       | done                             |
-| REQ-012 | Zoom and pan in Frame Detail Editor                                        | done                             |
+| REQ-011 | Dataset Editor, Frame Detail editing, and configurable storage quota       | done (editor removed by REQ-026; quota retained) |
+| REQ-012 | Zoom and pan in Frame Detail Editor                                        | superseded by REQ-026            |
 | REQ-013 | Dataset file naming (`<date>_<time>_<seq6>`) and data.yaml device metadata | done                             |
 | REQ-014 | Cloud dataset upload — authenticated upload via WorkManager and pre-signed S3 URLs | done                         |
 | REQ-015 | Scheduled automatic daily dataset upload                                   | done                             |
@@ -47,6 +47,10 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 | REQ-023 | Curation Android app — package workflow (not processed/in progress/done)   | done                             |
 | REQ-024 | Curation Android app — review editor (accept, edit, reject)                | done                              |
 | REQ-025 | Curation — vehicle-type categories (S3 list) and typed YOLO boxes          | done                              |
+| REQ-026 | Generic app — remove on-device review/editing; capture-and-upload only     | done                              |
+| REQ-027 | Auth-failure detection (API 401/403) and always-available re-sign-in       | done                              |
+| REQ-028 | Upload diagnostics — failure reasons + persistent upload activity log      | done                              |
+| REQ-029 | Auth robustness — curator API access + login/logout failure-path hardening | done (infra needs `sam deploy`)   |
 
 ## Dependencies
 

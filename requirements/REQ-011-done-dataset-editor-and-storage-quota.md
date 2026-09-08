@@ -3,6 +3,7 @@ id: REQ-011
 title: Dataset Editor and Configurable Storage Quota
 status: done
 priority: high
+note: Dataset Editor + Frame Detail sections removed by REQ-026 (all editing moved to curation-android). The configurable storage-quota section remains in force.
 ---
 
 ## Summary
