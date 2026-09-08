@@ -3,8 +3,9 @@ package com.github.yuriysemen.platesdetector.curation
 import java.util.Locale
 
 /**
- * A single YOLO bounding box in normalized coordinates. Single-class dataset (`License_Plate`),
- * so `classId` is effectively always 0. Mirrors `android/.../DatasetEditor.kt` — reimplemented
+ * A single YOLO bounding box in normalized coordinates. `classId` is `0` (plate) as collected by
+ * the main app; the curation app's class picker (REQ-025) reassigns it to a vehicle-type class
+ * from `config/vehicle-categories.json`. Mirrors `android/.../DatasetEditor.kt` — reimplemented
  * per REQ-022's "no shared module" decision.
  */
 data class YoloBox(
@@ -38,10 +39,17 @@ object YoloLabel {
             .toList()
     }
 
-    fun format(boxes: List<YoloBox>): String =
-        boxes.joinToString("\n") { b ->
+    fun format(boxes: List<YoloBox>): String = format(boxes, emptyList())
+
+    /**
+     * Like [format] but overrides the class-id column from [classOverrides] where a non-null entry
+     * is present (REQ-025 — the curator's chosen vehicle type). Index-aligned with [boxes].
+     */
+    fun format(boxes: List<YoloBox>, classOverrides: List<Int?>): String =
+        boxes.mapIndexed { i, b ->
+            val classId = classOverrides.getOrNull(i) ?: b.classId
             "%d %.6f %.6f %.6f %.6f".format(
-                Locale.US, b.classId, b.xCenter, b.yCenter, b.width, b.height,
+                Locale.US, classId, b.xCenter, b.yCenter, b.width, b.height,
             )
-        }
+        }.joinToString("\n")
 }

@@ -136,9 +136,18 @@ The classifier needs labeled images for each vehicle class — real Ukrainian st
 | Military | 300 | Only if the "auto-allow military" feature is enabled |
 
 Data sources:
+- **Curation app typed boxes (REQ-025)** — the primary source. Curators label each detection in
+  uploaded packages with a vehicle-type class (`config/vehicle-categories.json`); curated packages
+  in `done/` then carry `nc > 1` YOLO labels with per-box vehicle type. Note the class keys differ
+  slightly from this doc (`medical` vs `ambulance`, `other` vs `military`) — reconcile the list
+  when this classifier is actually built.
 - Ukrainian public dashcam repositories (e.g., YouTube dashcam channels)
 - Open-license street photography
-- Images collected with the in-app training data collection feature (REQ-001 scope extension — separate requirement)
+
+> **Architecture note:** this doc recommends a *separate full-frame MobileNet classifier* (car
+> colour, light bar, livery text — features a plate crop lacks). REQ-025 instead folds the type
+> into the *detection* labels (plate-box class, or a curator-drawn car box). These are not
+> mutually exclusive — REQ-025 builds the labelled data; the model choice here is still open.
 
 Training pipeline: standard image classification fine-tuning in Python (not YOLO), exported via `tf.lite.TFLiteConverter`. See `training/` for the eventual pipeline location.
 

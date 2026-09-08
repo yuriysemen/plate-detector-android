@@ -193,6 +193,7 @@ Resources:
                   - !Sub "arn:aws:s3:::${BucketName}/curation/*"
                   - !Sub "arn:aws:s3:::${BucketName}/done/*"
                   - !Sub "arn:aws:s3:::${BucketName}/rejected/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/config/*"   # REQ-025 vehicle-category list (read-only)
               - Sid: WriteCurationOutputs
                 Effect: Allow
                 Action: s3:PutObject

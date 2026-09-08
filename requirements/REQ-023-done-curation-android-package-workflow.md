@@ -95,8 +95,9 @@ involved.
      `done/<package_id>/<subset>/{images,labels}/...`.
   2. Uploads every `rejected` item's image+label to
      `rejected/<package_id>/<subset>/{images,labels}/...`.
-  3. Copies `data.yaml` verbatim into `done/<package_id>/data.yaml` (synthesizing a minimal one
-     only if the source ZIP has none).
+  3. Writes `done/<package_id>/data.yaml` — the `train`/`val`/`test`/`nc`/`names` header is
+     regenerated from the vehicle-category list (REQ-025); the source `device:` provenance block is
+     preserved.
   4. Writes `done/<package_id>/_manifest.json` (`curator_email` = who started, `completed_by` =
      who tapped Complete, `started_at`, `completed_at`, `total`/`accepted`/`rejected`,
      `accepted_by_subset`, and a `reviewers` map — per-curator accept/reject tally).
@@ -209,8 +210,9 @@ All in `curation-android/app/src/main/java/.../curation/`:
 - **UI** — `CurationHomeScreen` (bottom-nav tabs + busy dialog + error snackbar), `PackageTabs`
   (the three lists; In Progress shows stale rows with Discard / Take over), `ReviewScreen` (image +
   read-only YOLO overlay, Prev/Reject/Accept/Next, jump-to-item sheet, zero-box ⇒ Reject-only).
-- `data.yaml` is **copied verbatim** from the source ZIP into `done/<id>/` (minimal one synthesized
-  only if absent).
+- `done/<id>/data.yaml`: the YOLO header is **regenerated** from the REQ-025 category list
+  (`nc` / `names`), the source `device:` block is kept. `_manifest.json` also carries
+  `category_list_version` + `class_counts` (REQ-025).
 
 The criteria below are behavioural and await a full on-device run (start → review → complete)
 against a real uploaded package.

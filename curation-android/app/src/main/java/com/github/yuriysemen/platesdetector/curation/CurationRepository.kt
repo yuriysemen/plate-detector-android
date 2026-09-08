@@ -35,9 +35,10 @@ class CurationRepository(
     context: Context,
     private val auth: CuratorAuthManager,
 ) {
+    private val appContext = context.applicationContext
     private val bucket = CurationConfig.datasetBucket
     private val cache = PackageCache(context)
-    private val tmpDir = File(context.applicationContext.cacheDir, "downloads").apply { mkdirs() }
+    private val tmpDir = File(appContext.cacheDir, "downloads").apply { mkdirs() }
 
     private suspend fun client(): AmazonS3Client = withContext(Dispatchers.IO) {
         AmazonS3Client(
@@ -54,6 +55,16 @@ class CurationRepository(
                 .withBucketName(bucket).withPrefix("uploads/").withMaxKeys(1)
             client().listObjectsV2(req).keyCount
         }
+    }
+
+    // ── REQ-025 vehicle categories ─────────────────────────────────────────
+
+    /** The category list from `config/vehicle-categories.json`, falling back to the bundled
+     *  asset on any failure (offline, not seeded yet, no `config/` read grant). */
+    suspend fun fetchCategories(): VehicleCategories = withContext(Dispatchers.IO) {
+        runCatching {
+            VehicleCategories.fromJson(getText(client(), "config/vehicle-categories.json"))
+        }.getOrElse { VehicleCategories.bundledDefault(appContext) }
     }
 
     // ── Listing the three screens ──────────────────────────────────────────
@@ -94,6 +105,7 @@ class CurationRepository(
     suspend fun startPackage(
         upload: UploadRef,
         curatorEmail: String,
+        categories: VehicleCategories,
         onProgress: ProgressSink,
     ): CurationManifest = withContext(Dispatchers.IO) {
         val s3 = client()
@@ -115,6 +127,8 @@ class CurationRepository(
             startedAt = nowIso(),
             curatorEmail = curatorEmail,
             items = items,
+            categoryListVersion = categories.version,
+            categories = categories,
         )
         putManifest(s3, manifest)
         onProgress(3, 3)
@@ -149,8 +163,21 @@ class CurationRepository(
 
     suspend fun completePackage(
         manifest: CurationManifest,
+        categories: VehicleCategories,
         onProgress: ProgressSink,
     ): DoneManifest = withContext(Dispatchers.IO) {
+        // The labels already accepted into this package's manifest were classified against
+        // `manifest.categoryListVersion`. Regenerating data.yaml/class_counts from a *different*
+        // version here would silently produce a package whose labels fall outside its own
+        // nc/names — reject rather than substitute. In normal operation `categories` is always
+        // the manifest's own embedded snapshot (see CurationViewModel.complete), so this only
+        // trips for a pre-fix manifest with no snapshot whose best-effort fallback disagrees.
+        check(categories.version == manifest.categoryListVersion) {
+            "Category list mismatch: package \"${manifest.filename}\" was reviewed against " +
+                "version ${manifest.categoryListVersion}, but version ${categories.version} is " +
+                "what's available now. Completing would produce labels outside data.yaml's " +
+                "nc/names range — refusing. Reconnect so the package's own list can be used."
+        }
         val s3 = client()
         val id = manifest.packageId
         val ops = mutableListOf<Pair<File, String>>()
@@ -176,8 +203,7 @@ class CurationRepository(
             onProgress(i + 1, total)
         }
 
-        val dataYaml = cache.readDataYaml(id) ?: synthesizeDataYaml()
-        putText(s3, "done/$id/data.yaml", dataYaml)
+        putText(s3, "done/$id/data.yaml", rewriteDataYamlHeader(cache.readDataYaml(id), categories))
         onProgress(total - 1, total)
 
         val done = DoneManifest(
@@ -192,6 +218,8 @@ class CurationRepository(
             rejected = manifest.rejected,
             perSubsetAccepted = manifest.perSubsetAccepted(),
             reviewers = manifest.reviewers(),
+            categoryListVersion = manifest.categoryListVersion,
+            classCounts = manifest.classCounts(categories),
         )
         putText(s3, "done/$id/_manifest.json", done.toJson())
         onProgress(total, total)
@@ -244,12 +272,24 @@ class CurationRepository(
         s3.putObject(PutObjectRequest(bucket, key, file))
     }
 
-    private fun synthesizeDataYaml(): String = buildString {
-        appendLine("train: train/images")
-        appendLine("val: val/images")
-        appendLine("test: test/images")
-        appendLine("nc: 1")
-        appendLine("names: ['License_Plate']")
+    /**
+     * Regenerates the YOLO header (`train`/`val`/`test`/`nc`/`names`) from the vehicle-category
+     * list (REQ-025), preserving the `device:` provenance block from the source `data.yaml`.
+     */
+    private fun rewriteDataYamlHeader(source: String?, categories: VehicleCategories): String {
+        val names = categories.orderedNames()
+        val header = buildString {
+            appendLine("train: train/images")
+            appendLine("val: val/images")
+            appendLine("test: test/images")
+            appendLine("nc: ${names.size}")
+            appendLine("names: [${names.joinToString(", ") { "'$it'" }}]")
+        }
+        val tail = source?.lineSequence()
+            ?.dropWhile { !it.trimStart().startsWith("device:") }
+            ?.joinToString("\n")
+            ?.takeIf { it.isNotBlank() }
+        return if (tail != null) "$header\n$tail\n" else header
     }
 
     companion object {

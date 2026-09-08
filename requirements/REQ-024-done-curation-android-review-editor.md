@@ -1,10 +1,18 @@
 ---
 id: REQ-024
 title: Dataset Curation Android App — Review Editor (Accept, Edit, Reject)
-status: draft
+status: done
 priority: high
 depends_on: REQ-022, REQ-023
 ---
+
+> **Status — done (2026-09-07).** Move (drag) and resize (8-handle drag) of any box, plus
+> pinch-zoom/pan and double-tap-to-reset, are implemented on `ReviewScreen`, alongside REQ-025's
+> earlier add-box/delete/class-picker/Accept-Reject work. The geometry math
+> (`BoxGeometry.hitTest`/`applyHandle`) is pure and unit-tested; the Compose gesture wiring itself
+> is not (no instrumented-test harness in this project yet — same gap as REQ-023/025). See
+> "Implementation notes" at the end. Acceptance criteria below are behavioural and await a full
+> on-device run, same as REQ-023/025.
 
 ## Summary
 
@@ -30,7 +38,9 @@ call happens per box edit; only the per-item decision triggers a `manifest.json`
 
 ## Non-goals
 
-- Multi-class editing — single class (`License_Plate`); no class picker.
+- The vehicle-type **class picker** and **add-box** — these live in **REQ-025** (already
+  implemented on `ReviewScreen`). This requirement is precise geometry editing (move / resize /
+  delete of any box, pinch-zoom/pan) layered on top.
 - Pixel-level image editing (crop/rotate/brightness/contrast).
 - OCR-assisted box suggestion or auto-correction.
 - Server-side re-validation of the zero-box rule — there is no backend in this design (REQ-022); the
@@ -60,18 +70,19 @@ call happens per box edit; only the per-item decision triggers a `manifest.json`
 
 - **Move** — drag an existing box.
 - **Resize** — drag a corner/edge handle.
-- **Delete** — remove a box that doesn't correspond to a real plate.
-- **Add** — draw a new rectangle for a plate the on-device model missed.
-- Edits are held in local UI state until the item is marked Accepted or Rejected; navigating away
-  without deciding discards edits for that item (no autosave of in-progress edits).
+- **Delete** / **Add** already exist (REQ-025); this requirement adds precise geometry editing of
+  any box (plate or car).
+- Edits update `working_label` in `curation/<package_id>/manifest.json` (REQ-025 already persists
+  box add/delete this way, on a debounce) — an item's geometry survives an app kill mid-review.
 
 ## Accept
 
-- Enabled only when the image has at least one box (zero-box rule).
-- On tap: writes the current box list as YOLO `.txt` content into the local unzip cache's label
-  file for that item, updates that item's entry in `curation/<package_id>/manifest.json` to
-  `{status: "accepted", label_content: "<...>"}`, refreshes package progress counts, and advances to
-  the next `pending` item.
+- Enabled only when the image has at least one box (zero-box rule) **and every box has a vehicle
+  class** (REQ-025).
+- On tap: writes the current box list — geometry + chosen class ids — as YOLO `.txt` content into
+  the local unzip cache's label file, updates the item's manifest entry to `{status: "accepted",
+  label_content: "<...>"}`, refreshes package progress counts, and advances to the next `pending`
+  item.
 - If the curator deletes every box, Accept is disabled and a hint is shown — the image must be
   Rejected instead.
 
@@ -88,12 +99,49 @@ call happens per box edit; only the per-item decision triggers a `manifest.json`
 - Already-decided items (`accepted`/`rejected`) are visible via a "jump to item" list but are
   **read-only** in v1 — to change a decision, the whole package must be Released (REQ-023) and
   restarted.
+- Navigating away from a still-`pending` item **keeps** its in-progress box edits — geometry and
+  class picks live in `working_label`/`box_classes` on `curation/<package_id>/manifest.json`
+  (REQ-025's debounced persistence, which move/resize reuses), not in transient screen state.
+  Returning to the item later (even after an app kill) shows the same edited boxes; its manifest
+  `status` stays `pending` either way. This supersedes this doc's original "edits are discarded on
+  navigate" design — REQ-025 changed that before REQ-024 was built.
 
 ## No heartbeat
 
 There is no heartbeat call — this design has no server-side claim-expiry concept (REQ-022/REQ-023
 have no claim/lock marker at all in the single-curator model), so there is nothing that needs to be
 kept alive by periodic pings.
+
+---
+
+## Implementation notes
+
+All in `curation-android/app/src/main/java/.../curation/`:
+
+- **`BoxGeometry.kt`** (new, pure Kotlin, no Compose runtime dependency beyond the `Offset` value
+  type — unit-tested via `BoxGeometryTest`): `DragHandle` (`MOVE`/4 corners/4 edges), `hitTest`
+  (selected box's handles first, then topmost box body, else `null` — all in normalized `[0,1]`
+  box space with a per-axis handle radius, since a non-square image maps 1 normalized unit to a
+  different pixel count per axis), `applyHandle` (shift one handle by a normalized delta, clamped
+  to `[0,1]` and never below `MIN_SIZE = 0.01f`, matching `toNormalizedBox`'s add-box threshold;
+  guards a box that's already narrower than `MIN_SIZE` so resize never throws).
+- **`CurationViewModel.moveBox(index, updated)`** — same shape as `setBoxClass`/`addBox`/
+  `deleteBox`: replaces one box's geometry, re-serializes via `YoloLabel.format`, writes through
+  `manifest.withItemBoxes`, debounced save. No new manifest fields.
+- **`ReviewScreen`** — the `Canvas`'s pointer handling is four always-attached `pointerInput`
+  blocks that each no-op unless their mode is active (mirrors `android/.../FrameDetailScreen.kt`'s
+  chaining): add-box drag (REQ-025, unchanged), double-tap-to-reset-zoom, move/resize drag (hit-
+  tests via `BoxGeometry`, live-previews the dragged box in local state, commits once via
+  `moveBox` on drag end so the manifest gets one write per gesture, not per frame), and an
+  always-active two-finger pinch-zoom/pan (`awaitEachGesture` + `calculateCentroid`/`calculateZoom`/
+  `calculatePan`, ported from the same reference screen). Drawing wraps the image + boxes in a
+  `withTransform { translate(pan); scale(zoom) }`; the selected box's 8 handles are drawn at a
+  screen-constant size (`radius / zoomScale`). Pinch-zoom/pan stays active on a decided (read-only)
+  item so a curator can still inspect it; move/resize and add-box don't.
+
+Verified: `BoxGeometryTest` (10 cases) passes; `:app:compileDebugKotlin`, `:app:testDebugUnitTest`,
+and `:app:assembleDebug` all succeed. Real touch-gesture feel (drag/pinch/pan on a device) has not
+been checked — same gap as REQ-023/025's on-device criteria below.
 
 ---
 
@@ -111,6 +159,7 @@ kept alive by periodic pings.
       progress shown on the In Progress screen (REQ-023).
 - [ ] Zoom and pan work via both touch gestures.
 - [ ] Editing one item does not affect any other item's files or manifest entry.
-- [ ] Navigating away from an item without marking Accept/Reject discards its in-progress edits and
-      leaves its manifest status unchanged.
+- [ ] Navigating away from a pending item without marking Accept/Reject **keeps** its in-progress
+      box edits (geometry + classes) — returning to the item, even after an app kill, shows the
+      same edited boxes; its manifest `status` stays `pending`.
 - [ ] Already-decided items are viewable via the jump list but their boxes cannot be edited in v1.

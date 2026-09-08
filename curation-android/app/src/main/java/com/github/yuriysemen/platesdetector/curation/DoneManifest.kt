@@ -18,6 +18,8 @@ data class DoneManifest(
     val rejected: Int,
     val perSubsetAccepted: Map<String, Int>,
     val reviewers: Map<String, ReviewerCount>,  // per-curator accept/reject tally
+    val categoryListVersion: Int,               // REQ-025 class scheme in force
+    val classCounts: Map<String, Int>,          // accepted-box count per class key
 ) {
     fun toJson(): String = JSONObject().apply {
         put("package_id", packageId)
@@ -38,6 +40,8 @@ data class DoneManifest(
                 })
             }
         })
+        put("category_list_version", categoryListVersion)
+        put("class_counts", JSONObject(classCounts.toMap()))
     }.toString(2)
 
     companion object {
@@ -50,6 +54,8 @@ data class DoneManifest(
                 val c = revObj.getJSONObject(k)
                 ReviewerCount(c.optInt("accepted", 0), c.optInt("rejected", 0))
             }
+            val ccObj = o.optJSONObject("class_counts") ?: JSONObject()
+            val ccMap = ccObj.keys().asSequence().associateWith { ccObj.optInt(it, 0) }
             return DoneManifest(
                 packageId = o.getString("package_id"),
                 filename = o.optString("filename", o.getString("package_id")),
@@ -62,6 +68,8 @@ data class DoneManifest(
                 rejected = o.optInt("rejected", 0),
                 perSubsetAccepted = subsetMap,
                 reviewers = revMap,
+                categoryListVersion = o.optInt("category_list_version", 1),
+                classCounts = ccMap,
             )
         }
     }

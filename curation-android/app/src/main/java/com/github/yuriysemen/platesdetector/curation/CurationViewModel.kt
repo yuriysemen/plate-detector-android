@@ -30,6 +30,11 @@ data class ReviewSession(
     val currentItem: ManifestItem get() = manifest.items[index]
 }
 
+/** The current item's boxes and the curator's chosen class per box (`null` = unclassified). */
+data class ReviewBoxes(val boxes: List<YoloBox>, val classes: List<Int?>) {
+    val allClassified: Boolean get() = boxes.isNotEmpty() && boxes.indices.all { classes.getOrNull(it) != null }
+}
+
 class CurationViewModel(
     private val repo: CurationRepository,
     private val auth: CuratorAuthManager,
@@ -49,6 +54,10 @@ class CurationViewModel(
     var errorBanner by mutableStateOf<String?>(null)
         private set
 
+    /** REQ-025 vehicle-category list (S3 with bundled fallback), loaded once per VM. */
+    var categories by mutableStateOf<VehicleCategories?>(null)
+        private set
+
     /** Set when the refresh/session token has died — CurationApp routes back to sign-in. */
     var sessionExpired by mutableStateOf(false)
         private set
@@ -57,6 +66,7 @@ class CurationViewModel(
     private var ipJob: Job? = null
     private var doneJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var manifestSaveJob: Job? = null
 
     fun clearErrorBanner() { errorBanner = null }
 
@@ -82,12 +92,23 @@ class CurationViewModel(
         doneJob = viewModelScope.launch { done = load { repo.listDone() } }
     }
 
+    private suspend fun ensureCategories(): VehicleCategories =
+        categories ?: repo.fetchCategories().also { categories = it }
+
+    /**
+     * The category list to classify/display against for the OPEN session: its own embedded
+     * snapshot (taken at Start, REQ-025 offline-completion fix) when present, else the app-level
+     * fetch/bundled fallback — only reached for a manifest written before the snapshot existed.
+     */
+    val sessionCategories: VehicleCategories? get() = session?.manifest?.categories ?: categories
+
     fun startReview(upload: UploadRef) {
         if (busy != null) return
         viewModelScope.launch {
             busy = BusyState("Downloading ${upload.filename}…", 0, 3)
             val ok = runCatchingSession {
-                val manifest = repo.startPackage(upload, auth.currentUserEmail()) { c, t ->
+                val cats = ensureCategories()
+                val manifest = repo.startPackage(upload, auth.currentUserEmail(), cats) { c, t ->
                     busy = BusyState("Preparing ${upload.filename}…", c, t)
                 }
                 val items = repo.ensureLocalCopy(manifest) { _, _ -> }
@@ -105,6 +126,7 @@ class CurationViewModel(
         viewModelScope.launch {
             busy = BusyState("Opening ${manifest.filename}…", 0, 2)
             runCatchingSession {
+                ensureCategories()
                 val items = repo.ensureLocalCopy(manifest) { c, t ->
                     busy = BusyState("Downloading ${manifest.filename}…", c, t)
                 }
@@ -124,6 +146,7 @@ class CurationViewModel(
 
     fun closeSession() {
         heartbeatJob?.cancel()
+        viewModelScope.launch { flushManifestSave() }
         session = null
         refreshInProgress()
     }
@@ -151,8 +174,84 @@ class CurationViewModel(
         if (index in s.items.indices) session = s.copy(index = index)
     }
 
+    // ── REQ-025: per-box class picking + add/delete ────────────────────────
+
+    /** Boxes and chosen classes for the current item. Decided items show their baked-in classes. */
+    fun currentBoxes(): ReviewBoxes {
+        val s = session ?: return ReviewBoxes(emptyList(), emptyList())
+        val item = s.currentItem
+        return if (item.status == ItemStatus.ACCEPTED) {
+            val boxes = YoloLabel.parse(item.labelContent)
+            ReviewBoxes(boxes, boxes.map { it.classId })
+        } else {
+            val text = item.workingLabel
+                ?: item.labelContent
+                ?: s.current.labelFile.takeIf { it.exists() }?.readText()
+            val boxes = YoloLabel.parse(text)
+            ReviewBoxes(boxes, boxes.indices.map { item.boxClasses.getOrNull(it) })
+        }
+    }
+
+    fun setBoxClass(boxIndex: Int, classId: Int) {
+        val s = session ?: return
+        if (s.currentItem.status != ItemStatus.PENDING) return
+        val rb = currentBoxes()
+        if (boxIndex !in rb.boxes.indices) return
+        val classes = rb.boxes.indices.map { if (it == boxIndex) classId else rb.classes.getOrNull(it) }
+        val updated = s.manifest.withItemBoxes(s.index, s.currentItem.workingLabel, classes)
+        session = s.copy(manifest = updated)
+        saveManifestDebounced(updated)
+    }
+
+    fun addBox(box: YoloBox, classId: Int) {
+        val s = session ?: return
+        if (s.currentItem.status != ItemStatus.PENDING) return
+        val rb = currentBoxes()
+        val boxes = rb.boxes + box
+        val classes = rb.classes + classId
+        val updated = s.manifest.withItemBoxes(s.index, YoloLabel.format(boxes, classes), classes)
+        session = s.copy(manifest = updated)
+        saveManifestDebounced(updated)
+    }
+
+    /** Replace one box's geometry after a move/resize drag (REQ-024); class id is unaffected. */
+    fun moveBox(boxIndex: Int, updated: YoloBox) {
+        val s = session ?: return
+        if (s.currentItem.status != ItemStatus.PENDING) return
+        val rb = currentBoxes()
+        if (boxIndex !in rb.boxes.indices) return
+        val boxes = rb.boxes.toMutableList().also { it[boxIndex] = updated }
+        val newManifest = s.manifest.withItemBoxes(s.index, YoloLabel.format(boxes, rb.classes), rb.classes)
+        session = s.copy(manifest = newManifest)
+        saveManifestDebounced(newManifest)
+    }
+
+    fun deleteBox(boxIndex: Int) {
+        val s = session ?: return
+        if (s.currentItem.status != ItemStatus.PENDING) return
+        val rb = currentBoxes()
+        if (boxIndex !in rb.boxes.indices) return
+        val boxes = rb.boxes.filterIndexed { i, _ -> i != boxIndex }
+        val classes = rb.classes.filterIndexed { i, _ -> i != boxIndex }
+        val working = if (boxes.isEmpty()) null else YoloLabel.format(boxes, classes)
+        val updated = s.manifest.withItemBoxes(s.index, working, classes)
+        session = s.copy(manifest = updated)
+        saveManifestDebounced(updated)
+    }
+
+    fun canAcceptCurrent(): Boolean =
+        session?.currentItem?.status == ItemStatus.PENDING && currentBoxes().allClassified
+
+    fun accept() {
+        val rb = currentBoxes()
+        if (!rb.allClassified) return
+        decide(ItemStatus.ACCEPTED, YoloLabel.format(rb.boxes, rb.classes), null)
+    }
+
+    fun reject(reason: String?) = decide(ItemStatus.REJECTED, null, reason)
+
     /** Accept/reject the current item, persist the manifest, advance to the next pending item. */
-    fun decide(status: ItemStatus, labelContent: String?, reason: String?) {
+    private fun decide(status: ItemStatus, labelContent: String?, reason: String?) {
         val s = session ?: return
         val updated = s.manifest.withDecision(
             s.index, status, labelContent, reason,
@@ -165,15 +264,36 @@ class CurationViewModel(
             manifest = updated,
             index = if (nextPending >= 0) nextPending else s.index,
         )
+        manifestSaveJob?.cancel()
         viewModelScope.launch { runCatchingSession { repo.putManifest(updated) } }
     }
+
+    private fun saveManifestDebounced(m: CurationManifest) {
+        manifestSaveJob?.cancel()
+        manifestSaveJob = viewModelScope.launch {
+            delay(MANIFEST_SAVE_DEBOUNCE_MS)
+            runCatchingSession { repo.putManifest(m) }
+        }
+    }
+
+    private suspend fun flushManifestSave() {
+        manifestSaveJob?.cancel()
+        session?.manifest?.let { runCatchingSession { repo.putManifest(it) } }
+    }
+
+    // ── Complete / release ────────────────────────────────────────────────
 
     fun complete(manifest: CurationManifest, onDone: () -> Unit) {
         if (busy != null) return
         viewModelScope.launch {
             busy = BusyState("Uploading ${manifest.filename}…", 0, 1)
             val ok = runCatchingSession {
-                repo.completePackage(manifest) { c, t ->
+                // Always the package's own snapshot when it has one — never a freshly-fetched
+                // list, so an offline (or delayed) Complete can't mix a package's labels with a
+                // different category-list version's nc/names. ensureCategories() (network-or-
+                // bundled) is only a best-effort fallback for a pre-fix manifest with no snapshot.
+                val cats = manifest.categories ?: ensureCategories()
+                repo.completePackage(manifest, cats) { c, t ->
                     busy = BusyState("Uploading ${manifest.filename}…", c, t)
                 }
             }
@@ -224,10 +344,13 @@ class CurationViewModel(
 
     override fun onCleared() {
         heartbeatJob?.cancel()
+        manifestSaveJob?.cancel()
     }
 
     companion object {
         /** How often the review screen re-PUTs the manifest as a keep-alive. */
         const val HEARTBEAT_MS = 3 * 60 * 1000L
+        /** Coalesce rapid box-class picks into one manifest write. */
+        const val MANIFEST_SAVE_DEBOUNCE_MS = 800L
     }
 }

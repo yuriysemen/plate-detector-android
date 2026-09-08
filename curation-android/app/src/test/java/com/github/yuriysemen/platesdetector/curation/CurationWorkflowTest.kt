@@ -1,6 +1,8 @@
 package com.github.yuriysemen.platesdetector.curation
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,6 +60,52 @@ class YoloLabelTest {
         val reparsed = YoloLabel.parse(YoloLabel.format(src))
         assertEquals(1, reparsed.size)
         assertEquals(0.123456f, reparsed[0].width, 1e-6f)
+    }
+
+    @Test
+    fun formatAppliesClassOverrides() {
+        val src = listOf(
+            YoloBox(0, 0.1f, 0.1f, 0.1f, 0.1f),
+            YoloBox(0, 0.2f, 0.2f, 0.1f, 0.1f),
+        )
+        val out = YoloLabel.format(src, listOf(2, null))  // null keeps the box's own class
+        assertEquals(listOf("2", "0"), out.lines().map { it.substringBefore(' ') })
+    }
+}
+
+class VehicleCategoriesTest {
+
+    private val json = """
+        {"version":3,"classes":[
+          {"id":0,"key":"license_plate","label":"License plate"},
+          {"id":2,"key":"police","label":"Police car"},
+          {"id":1,"key":"civil","label":"Civil car"}
+        ]}
+    """.trimIndent()
+
+    @Test
+    fun parsesAndSortsById() {
+        val c = VehicleCategories.fromJson(json)
+        assertEquals(3, c.version)
+        assertEquals(listOf(0, 1, 2), c.classes.map { it.id })
+        assertEquals("Police car", c.labelFor(2))
+        assertTrue(c.contains(1))
+        assertFalse(c.contains(9))
+    }
+
+    @Test
+    fun orderedNamesFillsById() {
+        assertEquals(listOf("license_plate", "civil", "police"),
+            VehicleCategories.fromJson(json).orderedNames())
+    }
+
+    @Test
+    fun toJsonObjectRoundTrips() {
+        // The manifest snapshot (REQ-025 offline-completion fix) embeds this — must survive a
+        // full serialize/deserialize, not just the version number.
+        val c = VehicleCategories.fromJson(json)
+        val back = VehicleCategories.fromJsonObject(c.toJsonObject())
+        assertEquals(c, back)
     }
 }
 
@@ -133,6 +181,158 @@ class CurationManifestTest {
             .withDecision(2, ItemStatus.ACCEPTED, labelContent = "x")
         assertEquals(mapOf("train" to 2, "val" to 1), m.perSubsetAccepted())
     }
+
+    // ── REQ-025 ───────────────────────────────────────────────────────────
+
+    @Test
+    fun boxClassesRoundTripWithNulls() {
+        val m = sample().withItemBoxes(0, "0 0.5 0.5 0.1 0.1\n1 0.2 0.2 0.1 0.1", listOf(2, null))
+        val back = CurationManifest.fromJson(m.toJson())
+        assertEquals(listOf<Int?>(2, null), back.items[0].boxClasses)
+        assertEquals("0 0.5 0.5 0.1 0.1\n1 0.2 0.2 0.1 0.1", back.items[0].workingLabel)
+        assertEquals(1, back.categoryListVersion)
+    }
+
+    @Test
+    fun allBoxesClassifiedGate() {
+        val m = sample().withItemBoxes(0, "l", listOf(3, null))
+        assertFalse(m.allBoxesClassified(0, boxCount = 2))
+        val m2 = m.withItemBoxes(0, "l", listOf(3, 1))
+        assertTrue(m2.allBoxesClassified(0, boxCount = 2))
+        assertFalse(m2.allBoxesClassified(0, boxCount = 0))  // zero-box never acceptable
+    }
+
+    @Test
+    fun classCountsOverAcceptedItems() {
+        val cats = VehicleCategories.fromJson(
+            """{"version":1,"classes":[
+                 {"id":0,"key":"license_plate","label":"L"},
+                 {"id":2,"key":"police","label":"P"}]}"""
+        )
+        val m = sample()
+            .withDecision(0, ItemStatus.ACCEPTED,
+                labelContent = "0 0.1 0.1 0.1 0.1\n2 0.2 0.2 0.1 0.1")
+            .withDecision(1, ItemStatus.ACCEPTED, labelContent = "2 0.3 0.3 0.1 0.1")
+            .withDecision(2, ItemStatus.REJECTED)
+        assertEquals(mapOf("license_plate" to 1, "police" to 2), m.classCounts(cats))
+    }
+
+    @Test
+    fun categorySnapshotRoundTripsWithManifest() {
+        // Offline-completion fix: the package's own category-list snapshot must survive a
+        // manifest write/read, not just its version number.
+        val cats = VehicleCategories.fromJson(
+            """{"version":2,"classes":[
+                 {"id":0,"key":"license_plate","label":"L"},
+                 {"id":6,"key":"other","label":"Other"}]}"""
+        )
+        val m = sample().copy(categoryListVersion = cats.version, categories = cats)
+        val back = CurationManifest.fromJson(m.toJson())
+        assertEquals(cats, back.categories)
+        assertEquals(2, back.categoryListVersion)
+    }
+
+    @Test
+    fun categorySnapshotAbsentOnLegacyManifest() {
+        // A manifest written before this field existed has no "category_list" key at all.
+        val back = CurationManifest.fromJson(sample().toJson())
+        assertNull(back.categories)
+    }
+}
+
+// ── REQ-024 ──────────────────────────────────────────────────────────────
+
+class BoxGeometryTest {
+
+    private val eps = 1e-5f
+    private fun box(cx: Float, cy: Float, w: Float, h: Float) = YoloBox(0, cx, cy, w, h)
+
+    @Test
+    fun cornerResizeMovesOnlyThatCorner() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.TL, dx = 0.05f, dy = 0.05f)
+        assertEquals(0.15f, out.width, eps)
+        assertEquals(0.15f, out.height, eps)
+        assertEquals(0.6f, out.xCenter + out.width / 2f, eps)   // right edge unchanged
+        assertEquals(0.6f, out.yCenter + out.height / 2f, eps)  // bottom edge unchanged
+    }
+
+    @Test
+    fun edgeHandleResizeIsSingleAxis() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.RM, dx = 0.1f, dy = 0f)
+        assertEquals(0.3f, out.width, eps)
+        assertEquals(0.2f, out.height, eps)  // untouched by a right-edge drag
+        assertEquals(0.5f, out.yCenter, eps)
+    }
+
+    @Test
+    fun moveTranslatesWithoutResizing() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.2f, 0.2f), DragHandle.MOVE, dx = 0.1f, dy = -0.1f)
+        assertEquals(0.2f, out.width, eps)
+        assertEquals(0.2f, out.height, eps)
+        assertEquals(0.6f, out.xCenter, eps)
+        assertEquals(0.4f, out.yCenter, eps)
+    }
+
+    @Test
+    fun moveClampsAtImageBounds() {
+        val out = BoxGeometry.applyHandle(box(0.9f, 0.5f, 0.1f, 0.1f), DragHandle.MOVE, dx = 0.5f, dy = 0f)
+        assertEquals(0.1f, out.width, eps)  // size preserved, just pinned to the edge
+        assertEquals(1f, out.xCenter + out.width / 2f, eps)
+    }
+
+    @Test
+    fun resizeClampsAtImageBounds() {
+        val out = BoxGeometry.applyHandle(box(0.9f, 0.5f, 0.1f, 0.1f), DragHandle.TR, dx = 0.5f, dy = -0.5f)
+        assertEquals(1f, out.xCenter + out.width / 2f, eps)   // right edge pinned at 1
+        assertEquals(0f, out.yCenter - out.height / 2f, eps)  // top edge pinned at 0
+    }
+
+    @Test
+    fun resizeNeverShrinksBelowMinSize() {
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.1f, 0.1f), DragHandle.TL, dx = 0.5f, dy = 0.5f)
+        assertTrue(out.width >= BoxGeometry.MIN_SIZE - eps)
+        assertTrue(out.height >= BoxGeometry.MIN_SIZE - eps)
+    }
+
+    @Test
+    fun resizeOnAlreadyTinyBoxDoesNotThrow() {
+        // A box narrower than MIN_SIZE can exist from earlier real-world data; resizing it must
+        // recover rather than crash on an inverted coerceIn range.
+        val out = BoxGeometry.applyHandle(box(0.5f, 0.5f, 0.005f, 0.005f), DragHandle.LM, dx = 0.1f, dy = 0f)
+        assertTrue(out.width >= BoxGeometry.MIN_SIZE - eps)
+    }
+
+    @Test
+    fun hitTestPrefersSelectedBoxHandleOverAnotherBoxBody() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)   // edges 0.4..0.6
+        val b = box(0.55f, 0.55f, 0.3f, 0.3f) // edges 0.4..0.7 — covers a's TL handle too
+        val hit = BoxGeometry.hitTest(
+            Offset(0.4f, 0.4f), listOf(a, b), selected = 0,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertEquals(0 to DragHandle.TL, hit)
+    }
+
+    @Test
+    fun hitTestFallsBackToTopmostBoxBody() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)
+        val b = box(0.55f, 0.55f, 0.3f, 0.3f)
+        val hit = BoxGeometry.hitTest(
+            Offset(0.55f, 0.55f), listOf(a, b), selected = null,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertEquals(1 to DragHandle.MOVE, hit)
+    }
+
+    @Test
+    fun hitTestReturnsNullOnEmptySpace() {
+        val a = box(0.5f, 0.5f, 0.2f, 0.2f)
+        val hit = BoxGeometry.hitTest(
+            Offset(0.05f, 0.05f), listOf(a), selected = null,
+            handleRadiusX = 0.02f, handleRadiusY = 0.02f,
+        )
+        assertNull(hit)
+    }
 }
 
 class DoneManifestTest {
@@ -149,6 +349,8 @@ class DoneManifestTest {
                 "c@example.com" to ReviewerCount(4, 1),
                 "d@example.com" to ReviewerCount(3, 2),
             ),
+            categoryListVersion = 2,
+            classCounts = mapOf("license_plate" to 12, "police" to 3, "civil" to 40),
         )
         assertEquals(d, DoneManifest.fromJson(d.toJson()))
     }

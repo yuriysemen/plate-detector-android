@@ -30,6 +30,7 @@ Each image has a paired `.txt` file with one line per detected object:
 - `x_center`, `y_center`, `width`, `height` are **normalized to [0, 1]** relative to the saved image's pixel dimensions.
 - Multiple detections in the same frame = multiple lines in the same `.txt` file.
 - A frame with no detections is **not saved at all** (decided in REQ-001). The saver is only invoked when `detections.isNotEmpty()`.
+- `class_id` is **`0` at collection time** (single-class plate detection). The **curation app** (REQ-025) reassigns it to a vehicle-type class (`0` license_plate, `1` civil, `2` police, `3` fire, `4` medical, `5` other) — so a curated dataset in `done/` has `nc > 1` and the class column is meaningful. See `config/vehicle-categories.json` and REQ-025.
 
 Example for two plates detected in one frame:
 
