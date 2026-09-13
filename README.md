@@ -1,8 +1,23 @@
 # plate-detector-android
-An Android app for on-device license-plate detection, paired with a set of model-training experiments that export TensorFlow Lite (TFLite) models. The repository is intentionally organized to let me compare different training pipelines over time.
-YOLO is the first (and currently implemented) detection experiment, with room for additional approaches later. Plate text is read on-device via ML Kit OCR.
 
-## Features
+An end-to-end license-plate detection product: an Android app that runs a TFLite YOLO model
+on-device and reads plate text via ML Kit OCR, the AWS infrastructure and training-data
+curation tooling that turn its opt-in uploads into a growing labeled dataset, and the training
+pipelines that turn that dataset back into new models. YOLO is the first (and currently
+implemented) detection experiment; the repo is organized to let additional approaches be compared
+over time.
+
+## What's in this repo
+
+| Component | What it demonstrates |
+|---|---|
+| [`android/`](android/README.md) — the detection app | On-device ML (TFLite YOLO + ML Kit OCR), Cognito auth, SigV4-signed cloud upload, background work scheduling |
+| [`curation-android/`](curation-android/README.md) — the data-curation app | A second, purpose-built Android app for a human-in-the-loop labeling workflow directly against S3 (no backend API) |
+| [`infra/aws/`](infra/aws/README.md) — cloud infrastructure | AWS SAM: S3, Lambda, API Gateway, Cognito User/Identity Pools, scoped IAM roles |
+| [`training/`](training/ultralytics/README.md) / [`experiments/`](experiments/ultralytics/README.md) — model training | Python YOLO training/export pipelines that consume the curated dataset |
+| [`requirements/`](requirements/README.md) | Spec-driven development trail — one `REQ-NNN` doc per feature, from initial detection format through cloud upload, curation workflow, and auth hardening |
+
+## Android app features
 - Real-time license plate detection (on-device, TFLite YOLO)
 - Bounding box overlay with confidence score
 - OCR — reads plate text using ML Kit (always active; text shown in bounding box label)
@@ -37,15 +52,14 @@ At runtime, signed-in users automatically receive model updates from S3 (`models
 the dataset bucket). The app checks on startup and every hour; the user confirms before any
 download is applied.
 
-## Project structure (high level)
-- `android/` — Android application source.
-- `curation-android/` — standalone, internal-only Android app for a trusted curator to review uploaded YOLO packages in S3 and promote them into a training-ready `done/` dataset. Reuses the same Cognito backend as `android/` but talks to S3 directly via a scoped `CuratorRole` (no backend API). See `curation-android/CLAUDE.md`. Requirements: REQ-022–REQ-025 (done). Note: a `curators`-group account resolves *both* apps to `CuratorRole` (shared User Pool client) — `CuratorRole` is granted `execute-api:Invoke` so the main app still works for a curator (REQ-029).
-- `infra/aws/` — AWS SAM infrastructure (S3 bucket, Lambda, API Gateway, Cognito, `CuratorRole`) for cloud dataset upload and curation. See `infra/aws/README.md` for deploy instructions.
-- `training/` — Ready-to-run training pipelines implemented in Python.
-- `experiments/` — Exploratory training experiments. Some experiments may be promoted into `training/` after they prove useful; others remain here for history and comparison.
-  - `experiments/ultralytics/` for alternative training/export scripts.
-- `datasets/dataset_YOLO/` for the initial YOLO dataset layout and format expectations.
-- `requirements/` — spec-driven development trail: one `REQ-NNN-<status>-<title>.md` per feature (draft/done/superseded), from initial detection format through cloud upload, curation workflow, and auth hardening.
+## Notes on the components above
+- `curation-android/` reuses the same Cognito backend as `android/` but talks to S3 directly via
+  a scoped `CuratorRole` (no backend API). A `curators`-group account resolves *both* apps to
+  `CuratorRole` (shared User Pool client), which is why `CuratorRole` is also granted
+  `execute-api:Invoke` — otherwise a curator's own account couldn't use the main app.
+- `experiments/` holds exploratory training work; entries may be promoted into `training/` once
+  they prove useful, or stay for history and comparison.
+- `datasets/dataset_YOLO/` documents the initial YOLO dataset layout and format expectations.
 
 ## Release artifacts (signed when secrets are available)
 The GitHub Actions release workflow signs artifacts when the Android keystore secrets are provided. When the secrets are missing, it still builds unsigned release outputs.
