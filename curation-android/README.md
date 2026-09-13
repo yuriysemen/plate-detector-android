@@ -19,8 +19,9 @@ REQ-022, REQ-023, REQ-024, REQ-025 (all done).
    aws cognito-idp admin-add-user-to-group \
      --user-pool-id <UserPoolId> --username <email-or-sub> --group-name curators
    ```
-3. **Configure** `local.properties` — `COGNITO_*` from the stack outputs (same values as
-   `../android/local.properties`) and `DATASET_BUCKET_NAME` from the `DatasetBucketName` output.
+3. **Configure** — copy `local.properties.example` to `local.properties` and fill in `COGNITO_*`
+   from the stack outputs (same values as `../android/local.properties`) and
+   `DATASET_BUCKET_NAME` from the `DatasetBucketName` output.
 4. **Build & install:**
    ```bash
    ./gradlew :app:installDebug

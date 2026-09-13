@@ -146,14 +146,16 @@ aws s3 ls s3://plate-dataset-uploads/uploads/ --profile plate-detector-admin
 
 ### Deploy
 
-`samconfig.toml` already contains the bucket name, region, and admin ARN, so no interactive prompts are needed:
+`samconfig.toml` is gitignored (it holds your account ID and bucket name). Copy
+`samconfig.toml.example` to `samconfig.toml` and fill in your own `BucketName` and
+`AdminPrincipalArn`, then:
 
 ```bash
 cd infra/aws
 sam build && sam deploy
 ```
 
-To change any parameter (e.g. bucket name or region), edit `samconfig.toml` first, then redeploy. To be prompted interactively instead, run `sam deploy --guided`.
+To change any parameter (e.g. bucket name or region), edit `samconfig.toml` first, then redeploy. To be prompted interactively instead (and skip creating `samconfig.toml` by hand), run `sam deploy --guided`.
 
 ---
 
