@@ -1,6 +1,6 @@
 # plate-detector-android
 An Android app for on-device license-plate detection, paired with a set of model-training experiments that export TensorFlow Lite (TFLite) models. The repository is intentionally organized to let me compare different training pipelines over time.
-YOLO is the first (and currently implemented) experiment, with room for additional approaches later. OCR (reading plate text) is planned.
+YOLO is the first (and currently implemented) detection experiment, with room for additional approaches later. Plate text is read on-device via ML Kit OCR.
 
 ## Features
 - Real-time license plate detection (on-device, TFLite YOLO)
@@ -44,7 +44,8 @@ download is applied.
 - `training/` — Ready-to-run training pipelines implemented in Python.
 - `experiments/` — Exploratory training experiments. Some experiments may be promoted into `training/` after they prove useful; others remain here for history and comparison.
   - `experiments/ultralytics/` for alternative training/export scripts.
-- `dataset_YOLO/` for the initial YOLO dataset layout and format expectations.
+- `datasets/dataset_YOLO/` for the initial YOLO dataset layout and format expectations.
+- `requirements/` — spec-driven development trail: one `REQ-NNN-<status>-<title>.md` per feature (draft/done/superseded), from initial detection format through cloud upload, curation workflow, and auth hardening.
 
 ## Release artifacts (signed when secrets are available)
 The GitHub Actions release workflow signs artifacts when the Android keystore secrets are provided. When the secrets are missing, it still builds unsigned release outputs.

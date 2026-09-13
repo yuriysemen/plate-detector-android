@@ -6,7 +6,7 @@ dataset. Never published to an app store; installed by sideloading the debug/rel
 
 It shares the main app's Cognito backend but accesses S3 **directly** through a scoped
 `CuratorRole` — no backend API. Full rationale and spec: [`../requirements`](../requirements)
-REQ-022 (done), REQ-023 / REQ-024 (draft).
+REQ-022, REQ-023, REQ-024, REQ-025 (all done).
 
 ## Quick start
 
