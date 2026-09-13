@@ -40,7 +40,15 @@ class DatasetExporter(context: Context) {
         val sizeBytes: Long,
         val createdAt: Long,
         val uploadStatus: UploadStatus = UploadStatus.NOT_QUEUED,
-        val statusUpdatedAt: Long = createdAt
+        val statusUpdatedAt: Long = createdAt,
+        /** Human-readable reason for the current status — mainly the failure cause. */
+        val statusDetail: String? = null
+    )
+
+    data class SidecarInfo(
+        val status: UploadStatus,
+        val updatedAt: Long,
+        val detail: String? = null
     )
 
     data class SplitConfig(val trainRatio: Float = 0.70f, val valRatio: Float = 0.20f) {
@@ -70,9 +78,18 @@ class DatasetExporter(context: Context) {
         }.getOrDefault(Stats(0, 0, null, null, null, null))
     }
 
+    /** Total on-device size of the upload buffer (images + labels). `manifest.json` is negligible. */
+    fun trainingUsageBytes(): Long {
+        val imgBytes = imagesDir.listFiles()?.sumOf { it.length() } ?: 0L
+        val lblBytes = labelsDir.listFiles()?.sumOf { it.length() } ?: 0L
+        return imgBytes + lblBytes
+    }
+
     fun listExports(): List<ExportFile> {
         if (!exportsDir.exists()) return emptyList()
         val files = exportsDir.listFiles().orEmpty()
+        // Half-written sidecars from a killed worker (see writeUploadStatus) — never keep them.
+        files.filter { it.name.endsWith(".upload.json.tmp") }.forEach { it.delete() }
         // Sidecars whose ZIP is gone are leftovers (e.g. from a prior app version); clean them up.
         files.filter { it.name.endsWith(".upload.json") }
             .forEach { sidecar ->
@@ -81,8 +98,11 @@ class DatasetExporter(context: Context) {
             }
         return files.filter { it.extension.equals("zip", ignoreCase = true) }
             .map { f ->
-                val (status, updatedAt) = readSidecarInfo(f)
-                ExportFile(f, f.nameWithoutExtension, f.length(), f.lastModified(), status, updatedAt)
+                val info = readSidecarInfo(f)
+                ExportFile(
+                    f, f.nameWithoutExtension, f.length(), f.lastModified(),
+                    info.status, info.updatedAt, info.detail
+                )
             }
             .sortedByDescending { it.createdAt }
     }
@@ -179,28 +199,44 @@ class DatasetExporter(context: Context) {
         zipFile.delete()
     }
 
-    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarInfo(zipFile).first
+    fun readUploadStatus(zipFile: File): UploadStatus = readSidecarInfo(zipFile).status
 
-    /** Stamps `updated_at` with the current time — this is the "last operation time" used to detect stuck sessions. */
-    fun writeUploadStatus(zipFile: File, status: UploadStatus) {
-        sidecarFor(zipFile).writeText(
-            JSONObject()
-                .put("status", status.name)
-                .put("updated_at", System.currentTimeMillis())
-                .toString()
-        )
+    /**
+     * Stamps `updated_at` with the current time — this is the "last operation time" used to detect
+     * stuck sessions. When [detail] is null the previous detail (if any) is preserved, so a plain
+     * UPLOADING → PENDING transition doesn't erase the reason a prior attempt failed.
+     */
+    fun writeUploadStatus(zipFile: File, status: UploadStatus, detail: String? = null) {
+        val effectiveDetail = detail ?: readSidecarInfo(zipFile).detail
+        val payload = JSONObject()
+            .put("status", status.name)
+            .put("updated_at", System.currentTimeMillis())
+            .apply { if (effectiveDetail != null) put("detail", effectiveDetail) }
+            .toString()
+        // Write-then-rename so a worker killed mid-write can't leave a half-written sidecar —
+        // a corrupt sidecar reads back as NOT_QUEUED and the failed upload vanishes from the UI.
+        val sidecar = sidecarFor(zipFile)
+        val tmp = File(sidecar.parentFile, "${sidecar.name}.tmp")
+        runCatching {
+            tmp.writeText(payload)
+            if (!tmp.renameTo(sidecar)) {
+                sidecar.writeText(payload)
+                tmp.delete()
+            }
+        }.onFailure { runCatching { tmp.delete() } }
     }
 
-    private fun readSidecarInfo(zipFile: File): Pair<UploadStatus, Long> {
+    private fun readSidecarInfo(zipFile: File): SidecarInfo {
         val sidecar = sidecarFor(zipFile)
-        if (!sidecar.exists()) return UploadStatus.NOT_QUEUED to zipFile.lastModified()
+        if (!sidecar.exists()) return SidecarInfo(UploadStatus.NOT_QUEUED, zipFile.lastModified())
         return runCatching {
             val json = JSONObject(sidecar.readText())
             val status = UploadStatus.valueOf(json.getString("status"))
             // Older sidecars have no "updated_at" — fall back to the sidecar file's own mtime.
             val updatedAt = json.optLong("updated_at", sidecar.lastModified())
-            status to updatedAt
-        }.getOrDefault(UploadStatus.NOT_QUEUED to zipFile.lastModified())
+            val detail = json.optString("detail").takeIf { it.isNotEmpty() }
+            SidecarInfo(status, updatedAt, detail)
+        }.getOrDefault(SidecarInfo(UploadStatus.NOT_QUEUED, zipFile.lastModified()))
     }
 
     private fun sidecarFor(zipFile: File) = File(zipFile.parent, "${zipFile.nameWithoutExtension}.upload.json")

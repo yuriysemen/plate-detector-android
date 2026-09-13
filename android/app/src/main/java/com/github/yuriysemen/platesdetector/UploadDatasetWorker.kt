@@ -40,9 +40,19 @@ class UploadDatasetWorker(
         const val TAG_DATASET_UPLOAD    = "dataset_upload"
         private const val NOTIFICATION_ID = 1001
         private const val PROGRESS_THROTTLE_MS = 250L
+        private const val SESSION_DEAD_DETAIL =
+            "your sign-in has expired. Open Contribute and tap \"Sign in again\"."
+
+        /** Message for a 401/403 where the session is fine but the request was rejected. */
+        fun notAuthorizedDetail(httpCode: Int): String = if (httpCode == 403)
+            "your account isn't authorized to upload (HTTP 403). If you were just granted access, sign out and back in; otherwise the upload API needs a config fix."
+        else
+            "the upload request was rejected (HTTP $httpCode) — an app/server configuration mismatch."
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        AppConfig.seedPrefsIfNeeded(applicationContext)
+
         val zipPath       = inputData.getString(KEY_ZIP_PATH)         ?: return@withContext Result.failure()
         val deviceId      = inputData.getString(KEY_DEVICE_ID)        ?: return@withContext Result.failure()
         val uploadUrl     = inputData.getString(KEY_UPLOAD_URL)       ?: return@withContext Result.failure()
@@ -54,7 +64,14 @@ class UploadDatasetWorker(
         if (!zipFile.exists()) return@withContext Result.failure()
 
         val exporter = DatasetExporter(applicationContext)
+        val frameCount = inputData.getInt(KEY_FRAME_COUNT, 0)
         exporter.writeUploadStatus(zipFile, UploadStatus.UPLOADING)
+        if (runAttemptCount == 0) {
+            UploadLog.log(
+                applicationContext,
+                "Upload started: ${zipFile.name} — $frameCount frames, ${humanSize(zipFile.length())}"
+            )
+        }
 
         // Obtain short-lived STS credentials via the Cognito Identity Pool.
         // SessionExpiredException means the user must sign in again — don't retry.
@@ -62,41 +79,69 @@ class UploadDatasetWorker(
             CognitoAuthManager(applicationContext).getAwsCredentials()
         } catch (e: SessionExpiredException) {
             CognitoAuthManager(applicationContext).markSessionExpired()
-            exporter.writeUploadStatus(zipFile, UploadStatus.FAILED)
+            failNow(exporter, zipFile, SESSION_DEAD_DETAIL)
             return@withContext Result.failure()
         } catch (e: Exception) {
-            return@withContext retry(exporter, zipFile)
+            return@withContext retry(exporter, zipFile, "couldn't get sign-in credentials: ${e.message ?: e.javaClass.simpleName}")
         }
 
         val region = regionFromUrl(uploadUrl).ifEmpty { identityPoolId.substringBefore(":") }
 
-        val frameCount = inputData.getInt(KEY_FRAME_COUNT, 0)
+        // Requests a presigned URL and PUTs the ZIP. The inner retry covers an *expired presigned
+        // URL* (S3 PUT → 403, putZip returns false). An ApiUnauthorizedException here means the
+        // signed get-upload-url request was rejected (401/403) — the caller mints fresh creds and
+        // tries once more; if it still fails that's an authorization/config problem, not expiry.
+        suspend fun doUpload(creds: AWSSessionCredentials): Boolean {
+            var url = requestPresignedUrl(
+                uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, creds, region
+            ).first
+            var ok = putZip(url, zipFile)
+            if (!ok) {
+                url = requestPresignedUrl(
+                    uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, creds, region
+                ).first
+                ok = putZip(url, zipFile)
+            }
+            return ok
+        }
 
         return@withContext try {
-            var presignedUrl = requestPresignedUrl(
-                uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
-            ).first
-            var putSucceeded = putZip(presignedUrl, zipFile)
-
-            if (!putSucceeded) {
-                // 403: presigned URL expired — re-request once and retry the PUT
-                presignedUrl = requestPresignedUrl(
-                    uploadUrl, zipFile.name, deviceId, userId, userPoolId, identityPoolId, credentials, region
-                ).first
-                putSucceeded = putZip(presignedUrl, zipFile)
+            val putSucceeded = try {
+                doUpload(credentials)
+            } catch (e: ApiUnauthorizedException) {
+                // get-upload-url rejected the signed request. Cached STS credentials may be stale
+                // after a silent token refresh — mint fresh ones and try exactly once more.
+                val fresh = CognitoAuthManager(applicationContext).getAwsCredentials(forceRefresh = true)
+                doUpload(fresh)
             }
 
             if (putSucceeded) {
                 exporter.onUploadSuccess(zipFile)
+                UploadLog.log(
+                    applicationContext,
+                    "Upload complete: ${zipFile.name} — $frameCount frames sent",
+                    UploadLog.Level.SUCCESS
+                )
                 if (inputData.getBoolean(KEY_IS_AUTO_UPLOAD, false)) {
                     showUploadNotification(frameCount)
                 }
                 Result.success()
             } else {
-                retry(exporter, zipFile)
+                retry(exporter, zipFile, "S3 rejected the upload (HTTP 403) even after refreshing the link")
             }
+        } catch (e: SessionExpiredException) {
+            // Thrown by getAwsCredentials(forceRefresh = true) when the refresh token is dead too.
+            CognitoAuthManager(applicationContext).markSessionExpired()
+            failNow(exporter, zipFile, SESSION_DEAD_DETAIL)
+            Result.failure()
+        } catch (e: ApiUnauthorizedException) {
+            // Rejected even with freshly-minted credentials. The session is valid — this is an
+            // authorization / config problem (e.g. curator role without execute-api). Do NOT
+            // sign the user out; a retry won't help either.
+            failNow(exporter, zipFile, notAuthorizedDetail(e.httpCode))
+            Result.failure()
         } catch (e: Exception) {
-            retry(exporter, zipFile)
+            retry(exporter, zipFile, e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -120,14 +165,34 @@ class UploadDatasetWorker(
         nm.notify(NOTIFICATION_ID, notification)
     }
 
-    private fun retry(exporter: DatasetExporter, zipFile: File): Result =
-        if (runAttemptCount < MAX_ATTEMPTS - 1) {
-            exporter.writeUploadStatus(zipFile, UploadStatus.PENDING)
+    /** Records a terminal failure — sidecar detail + a persistent [UploadLog] line. No retry. */
+    private fun failNow(exporter: DatasetExporter, zipFile: File, reason: String) {
+        exporter.writeUploadStatus(zipFile, UploadStatus.FAILED, reason)
+        UploadLog.log(applicationContext, "Upload failed: $reason", UploadLog.Level.ERROR)
+    }
+
+    private fun retry(exporter: DatasetExporter, zipFile: File, reason: String): Result {
+        val attempt = runAttemptCount + 1
+        return if (runAttemptCount < MAX_ATTEMPTS - 1) {
+            exporter.writeUploadStatus(zipFile, UploadStatus.PENDING, "Attempt $attempt failed: $reason — retrying")
+            UploadLog.log(applicationContext, "Attempt $attempt failed: $reason — retrying")
             Result.retry()
         } else {
-            exporter.writeUploadStatus(zipFile, UploadStatus.FAILED)
+            exporter.writeUploadStatus(zipFile, UploadStatus.FAILED, "Failed after $attempt attempts: $reason")
+            UploadLog.log(
+                applicationContext,
+                "Upload failed after $attempt attempts: $reason",
+                UploadLog.Level.ERROR
+            )
             Result.failure()
         }
+    }
+
+    private fun humanSize(bytes: Long): String = when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
+        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+    }
 
     // Returns (upload_url, object_key) from the Lambda endpoint.
     // The request is SigV4-signed using short-lived STS credentials from the Identity Pool.
@@ -171,8 +236,14 @@ class UploadDatasetWorker(
             conn.readTimeout    = 15_000
             conn.doOutput       = true
             conn.outputStream.use { it.write(bodyBytes) }
-            if (conn.responseCode !in 200..299) {
-                throw Exception("get-upload-url HTTP ${conn.responseCode}")
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val body = runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(300) }.getOrNull().orEmpty()
+                android.util.Log.w("UploadDatasetWorker", "get-upload-url HTTP $code $body")
+                when {
+                    code == 401 || code == 403 -> throw ApiUnauthorizedException(code, "get-upload-url HTTP $code ${body.trim()}")
+                    else                       -> throw Exception("get-upload-url HTTP $code ${body.trim()}")
+                }
             }
             val json = JSONObject(conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) })
             return Pair(json.getString("upload_url"), json.getString("object_key"))

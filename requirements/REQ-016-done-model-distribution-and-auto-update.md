@@ -3,6 +3,7 @@ id: REQ-016
 title: Model Distribution — S3 Storage, Authenticated Lambda, and On-Device Auto-Update
 status: done
 priority: high
+note: REQ-029 changes the sign-out cleanup — the downloaded model is now KEPT on sign-out and removed only on a different-user sign-in or a backend reconfigure. "Sign-out deletes filesDir/models/downloaded/" no longer holds.
 ---
 
 ## Summary

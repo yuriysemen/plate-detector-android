@@ -70,6 +70,7 @@ fun SettingsScreen(
     confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
     collectTrainingData: Boolean,
+    isSignedIn: Boolean,
     onCollectTrainingDataChange: (Boolean) -> Unit,
     collectFirstTimeShown: Boolean,
     onCollectFirstTimeShownAck: () -> Unit,
@@ -78,6 +79,8 @@ fun SettingsScreen(
     scanIntervalMs: Int,
     onScanIntervalMsChange: (Int) -> Unit,
     onNavigateToContribute: () -> Unit,
+    onSignIn: () -> Unit,
+    sessionExpired: Boolean = false,
     latestModelVersion: String = "",
     compatibleModelVersion: String = "",
     lastModelCheckTime: Long = 0L,
@@ -111,6 +114,24 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text("Settings", style = MaterialTheme.typography.titleLarge)
+
+            if (sessionExpired) {
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "Your sign-in has expired. Model updates and uploads are paused until you sign in again.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onNavigateToContribute) { Text("Sign in") }
+                    }
+                }
+            }
 
             Text("Select model", style = MaterialTheme.typography.titleMedium)
 
@@ -355,11 +376,11 @@ fun SettingsScreen(
                     title = { Text("Contribute training data?") },
                     text = {
                         Text(
-                            "When enabled, the app will:\n\n" +
-                            "• Save camera frames to this device whenever a plate is detected.\n" +
-                            "• Upload a packaged dataset to a private research server to improve plate detection.\n\n" +
-                            "Images are stored under a private device identifier. " +
-                            "To delete: open Contribute data and tap Reset collected data."
+                            "When enabled and you are signed in, the app will:\n\n" +
+                            "• Save camera frames whenever a plate is detected.\n" +
+                            "• Upload them to a private research server to improve plate detection.\n\n" +
+                            "Frames are held on this device only until the next upload, then deleted. " +
+                            "Nothing is saved while you are signed out."
                         )
                     },
                     confirmButton = {
@@ -375,32 +396,55 @@ fun SettingsScreen(
                 )
             }
 
-            // Contribute data row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToContribute() }
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Contribute data", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        if (collectTrainingData) "On — collecting and uploading frames"
-                        else "Disabled — no frames are collected",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
+            // "Contribute data" is only shown to a signed-in user — it's useless without an
+            // account (REQ-026 gates capture on sign-in). When signed out, this row is a plain
+            // "Sign in" entry instead, so authentication is still reachable from Settings.
+            if (isSignedIn) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToContribute() }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Contribute data", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (collectTrainingData) "On — saving and uploading frames"
+                            else "Off — no frames are saved",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Switch(
+                        checked = collectTrainingData,
+                        onCheckedChange = { enable ->
+                            if (enable && !collectFirstTimeShown) showCollectConsentDialog = true
+                            else onCollectTrainingDataChange(enable)
+                        },
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
-                Switch(
-                    checked = collectTrainingData,
-                    onCheckedChange = { enable ->
-                        if (enable && !collectFirstTimeShown) showCollectConsentDialog = true
-                        else onCollectTrainingDataChange(enable)
-                    },
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSignIn() }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Sign in", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (sessionExpired) "Session expired — sign in to sync again"
+                            else "Sign in to contribute data and get model updates",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
             }
         }
     }

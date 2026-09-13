@@ -30,12 +30,12 @@
 - [x] Bundled default models (downloaded at build time from GitHub Releases via `model_v*` tag; graceful fallback when no release found)
 - [x] Multiple models selectable in Settings
 - [x] Model description from `.txt` sidecar file
-- [x] Delete downloaded model (cleared on sign-out; auto-replaced when update is applied)
+- [x] Delete downloaded model (auto-replaced when an update is applied; removed on a **different-user** sign-in or backend reconfigure — no longer on a plain sign-out, REQ-029)
 - ~~Custom model import from device storage~~ — removed in REQ-016; server download is now the only runtime update path
 
 ### UI
-- [x] Settings screen (model picker, confidence slider, scan interval picker, analysis resolution picker, model activity log with "Check now" + "Details", Contribute data row)
-- [x] "No models" error screen with retry
+- [x] Settings screen (model picker, confidence slider, scan interval picker, analysis resolution picker, model activity log with "Check now" + "Details"; "Contribute data" row when signed in, "Sign in" row when signed out; "session expired" card)
+- [x] "No models" error screen — Retry + Sign in / Sign out (REQ-027)
 
 ### Training data collection
 - [x] Opt-in "Contribute data" row in Settings (Switch + summary + tap-to-navigate to ContributeScreen); default off; persisted in SharedPreferences (`collect_training_data`)
@@ -43,12 +43,10 @@
 - [x] `manifest.json` tracks `next_seq`, `total_frames`, `total_detections`, `multi_detection_frames`, and collection date range; updated after every saved frame; survives app restarts
 - [x] Dataset upload — creates `plates_dataset_<timestamp>.zip` in `filesDir/exports/` with frames randomly shuffled and split into `train/`, `val/`, `test/` subdirectories (fixed 70/20/10 split); auto-resets collected data on success; enqueues WorkManager upload job; ZIP deleted from device after successful upload
 - [x] Configurable storage quota — editable via ✏ icon on the "Storage used" line in ContributeScreen stats card (default 500 MB, min 100 MB, MB only); 80% yellow warning banner on camera + ContributeScreen; collection paused (red banner) at 100%
-- [x] Dataset Editor — scrollable 2-column grid of collected frames with overlaid boxes; long-press multi-select; batch delete with confirmation; scroll position restored when returning from Frame Detail; thumbnail boxes use same four-colour cycle as the detail editor
-- [x] Frame Detail Editor — two explicit modes: **view** (default, read-only, Back exits immediately) and **edit** (entered via ✏ icon; Cancel/Back show discard dialog if dirty, return to view mode); tap to select box; drag body to move, drag handles (8 per box) to resize; `+` FAB always visible in edit mode regardless of selection state; draw new box by dragging (snaps to minimum size); delete selected box via `×` in top bar; delete frame via `⋮` overflow; saves YOLO-normalized coordinates back to `.txt`
-- [x] Frame Detail Editor: pinch-to-zoom (1×–8×) pivoting at pinch midpoint; two-finger pan with 25%-visibility clamp; double-tap resets to 1×; zoom level indicator fades after 1.5 s; all single-finger interactions coordinate-corrected for zoom (REQ-012)
+- ~~Dataset Editor / Frame Detail Editor~~ — **removed from the generic app in REQ-026**; all box review/editing moved to `curation-android`. REQ-012 superseded.
 - [x] Frame file names include capture date, time, and 6-digit sequence (`<YYYYMMDD>_<HHmmss>_<NNNNNN>`); image and label always share the same base name (REQ-013)
 - [x] Exported `data.yaml` includes a `device:` metadata block: phone model, manufacturer, Android version, SDK, app version, model ID, anonymised device ID (SHA-256 hash, first 16 hex chars), export timestamp, and collection date range; block is ignored by `yolo train` (REQ-013)
-- [x] **Manual frame capture** — `CameraAlt` button in top bar; visible only when collection is on; saves latest analyzed frame via `TrainingDataSaver.saveFrameManual()` with empty label file (missed-plate marker, `total_frames` +1); toast "Frame saved"; 1 s cooldown with 35% alpha dimming; quota-full guard shows toast without cooldown; empty-label frames distinguishable from auto-detected frames (always ≥ 1 annotation) (REQ-020)
+- [x] **Manual frame capture** — `CameraAlt` button in top bar; visible only when collecting **and signed in** (REQ-026); saves latest analyzed frame via `TrainingDataSaver.saveFrameManual()` with empty label file (missed-plate marker, `total_frames` +1); toast "Frame saved"; 1 s cooldown with 35% alpha dimming; quota-full guard shows toast without cooldown; empty-label frames distinguishable from auto-detected frames (always ≥ 1 annotation) (REQ-020)
 - [x] **Burst frame collection** — `BurstMode` button in top bar (visible when collecting is on); setup dialog to configure count (default 100, min 1); captures every analyzed frame (YOLO labels when detections present, empty label file otherwise); regular auto-save suspended during burst to prevent double-saves; yellow icon tint + `"Burst: N / M"` progress line in subtitle while active; single-shot capture button disabled during burst; tapping the button while active cancels immediately; completion dialog offers "Send to server" (enqueues `UploadDatasetWorker` + resets counter + starts next round) or "Stop collecting"; falls back to "Go to upload screen" when not signed in / URL not configured (REQ-021)
 
 ### Model distribution and auto-update (requirements: REQ-016)
@@ -61,6 +59,13 @@
 - [x] **Latest-model version banner** — Settings card when `latest.model_version > compatible.model_version` (newer model requires app update) (REQ-016)
 - [x] **Mobile data toggle renamed** — "Use mobile data" (covers uploads and model downloads); pref key unchanged (REQ-016)
 - [x] **Custom model import removed** — `.tflite` import from device storage removed; server download is the only runtime update path (REQ-016)
+
+### Generic-app cleanup + auth robustness (requirements: REQ-026 – REQ-029)
+- [x] **On-device review/editing removed** — Dataset Editor + Frame Detail deleted; capture path unchanged (auto/manual/burst still ship the model's predicted YOLO boxes); upload ZIP format unchanged so `curation-android` needs no change. Capture now requires **signed in AND `collect_training_data`** — nothing is written to disk otherwise. ContributeScreen simplified (no "View dataset"). (REQ-026)
+- [x] **Auth-failure detection + recovery** — API HTTP 401/403 recognised (was swallowed); one forced-credential-refresh retry; `NoModelsScreen` gets Sign in / Sign out so a fresh install / broken auth isn't a dead end; auth state re-syncs on `ON_START`. (REQ-027)
+- [x] **Upload diagnostics** — failure reason stored per-ZIP and shown on the history card; persistent `UploadLog` (`filesDir/upload_log.json`, capped 100) + "Upload activity" line & Details dialog on ContributeScreen. (REQ-028)
+- [x] **Auth robustness** — `CuratorRole` granted `execute-api:Invoke` (a `curators` member's token resolves the *main* app to `CuratorRole`; needs `sam deploy`). App-side: terminal Cognito errors → `SessionExpiredException` (were infinite retry); a persistent 401/403 fails the job with a message and **keeps the session** (was an aggressive logout loop); `getAwsCredentials()` serialized process-wide; `AppConfig.seedPrefsIfNeeded` re-seeds on backend change; `signOut()` clears the SDK token caches; sign-out keeps the downloaded model; MFA/`NEW_PASSWORD_REQUIRED` handled; sidecar writes atomic; `ModelUpdateLog` capped. (REQ-029)
+- [x] **Auto Backup disabled** — `android:allowBackup="false"` + `data_extraction_rules.xml` excludes `training_data/`, `exports/`, `models/`, `upload_log.json` and the Cognito token prefs from D2D transfer. Nothing this app stores leaves the device. (REQ-007 §5)
 
 ---
 
@@ -93,7 +98,7 @@
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
 ### Training data collection (requirements: REQ-007)
-- [ ] **Play Store compliance** — Privacy Policy update, Auto Backup exclusion, Data Safety declaration (REQ-007)
+- [ ] **Play Store compliance** — Privacy Policy update, Data Safety declaration (REQ-007). Auto Backup exclusion: **done** (`allowBackup="false"`).
 
 ### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)
 - [x] **Unified Contribute data flow** — single "Contribute data" row in Settings; ContributeScreen owns stats card (frames/detections/storage with ✏ quota edit), upload config, upload action, and "Upload history" section; no mode selection — cloud upload is the only path; ZIP deleted from device after successful upload (REQ-005, REQ-014)
@@ -105,7 +110,7 @@
 - [x] **AWS infrastructure** — SAM template deploys private S3 bucket (Block Public Access, AES-256), Lambda (generates pre-signed PUT URLs, sanitises inputs), and HTTP API Gateway; two operator inputs: bucket name + admin IAM principal ARN; stack output `UploadServiceUrl` pasted into app Settings; deploy instructions in `infra/aws/README.md` (REQ-018)
 - [x] **Upload authentication — AWS infrastructure** — Cognito User Pool (email + password, self-registration, email verification required); Identity Pool linked to User Pool (`AllowUnauthenticatedIdentities: false`); API Gateway requires SigV4; S3 path now `uploads/<user_sub>/<device_id>/<filename>` (REQ-018)
 - [x] **Upload authentication — Android client** — `AuthScreen` with sign-up / sign-in / verify-email flows; friendly error messages for all Cognito exception types; `UserNotConfirmedException` auto-routes to verify screen; `CognitoAuthManager` wraps SDK callbacks as `suspendCancellableCoroutine` (late callbacks after navigation are safely dropped); ID token exchanged for STS credentials via `CognitoCachingCredentialsProvider`; `UploadDatasetWorker` SigV4-signs requests using `AWS4Signer`; Cognito config and upload URL embedded via `BuildConfig` from `local.properties` (`AppConfig.seedPrefsIfNeeded()` seeds `UploadPrefs` on first launch — no UI entry fields); auth status row in ContributeScreen with Sign in / Sign out; `AutoUploadWorker` skips when user not signed in; sign-out cancels auto-upload schedule (REQ-014)
-- [x] **Session-expiry detection** — `isSignedIn()` now returns `false` once the Cognito refresh token has actually expired, not just when never signed in; `SessionExpiredException` caught by `UploadDatasetWorker` or the hourly `ModelCheckWorker` calls `markSessionExpired()` (keeps cached email + downloaded model, unlike a full sign-out); ContributeScreen shows a red "session expired" banner + auth-status message + button label, distinct from "not signed in"; state re-synced from `CognitoAuthManager` whenever ContributeScreen is opened, so an expiry detected in the background is picked up on next visit (REQ-014)
+- [x] **Session-expiry detection** — `isSignedIn()` returns `false` once the refresh token has expired; a genuine `SessionExpiredException` → `markSessionExpired()` (keeps cached email + downloaded model). A persistent API 401/403 does **not** expire the session (REQ-029 — it's authorization, not expiry). ContributeScreen shows a red "session expired" banner distinct from "not signed in"; state re-synced on `ON_START` / 30 s poll / screen open (REQ-014, REQ-027, REQ-029)
 - [x] **Manual upload bypasses network preference** — "Upload collected data", including a restart of a stuck/failed job, always uses `CONNECTED` (any network including mobile data); only the scheduled auto-upload respects the "Upload on mobile data" toggle (REQ-014)
 
 ### Auto-parking settings (requirements: REQ-017)

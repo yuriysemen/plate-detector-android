@@ -44,7 +44,8 @@ The `preBuild` task downloads a bundled default model from the latest GitHub Rel
    "No detection model" screen and waits for a runtime download after sign-in.
 
 At runtime, signed-in users receive model updates via `GET /get-model-url` (Lambda); downloaded
-models live in `filesDir/models/downloaded/` and are deleted on sign-out.
+models live in `filesDir/models/downloaded/`. They're kept across sign-out and removed only when a
+**different** account signs in or the app is rebuilt for a different Cognito backend (REQ-029).
 
 ## Architecture
 
@@ -56,24 +57,20 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 3. `CameraPreviewWithAnalysis` — binds CameraX `Preview` + `ImageAnalysis` to the lifecycle. Frame → YUV→NV21→JPEG→Bitmap conversion, rotation, then detection on a single-thread executor.
 4. `PlateDetector` — wraps TFLite `Interpreter`. Accepts `ModelSource` (asset, file path, or content URI), performs letterbox preprocessing, runs inference, decodes `[1, N, 6]` output (`[x1,y1,x2,y2,score,class]`), and unprojects coordinates back to original-image space.
 5. `PlateOCR` — wraps ML Kit `TextRecognizer`. Receives a cropped plate bitmap, returns `OCRResult` with cleaned alphanumeric text.
-6. `ContributeScreen` — shows a stats card (frames collected, total detections, storage used with ✏ quota edit; "View dataset" and "Reset collected data" buttons), storage quota banners (80% warning / 100% pause), upload configuration card (auth status row with sign-in/out — or a "Session expired" message when the Cognito refresh token has died, distinct from "Not signed in" — mobile data toggle, daily auto-upload time, last auto-upload date), a global "Upload collected data" button (disabled only when there are no frames, not signed in, session expired, or within a 60 s cooldown after the last tap — otherwise always tappable, including mid-upload, where tapping again cancels every outstanding upload job and restarts fresh), and an "Upload history" section listing only active entries (pending/uploading/failed) — successful uploads delete their ZIP and sidecar immediately, so no history persists on device. A row actively `UPLOADING` shows a determinate progress indicator + live percentage (reported by the worker via `setProgress`, throttled to ≥250 ms), falling back to an indeterminate spinner if no progress has arrived yet. Each history row additionally gets its own **Restart** button once it's `FAILED` (immediately) or stuck `PENDING`/`UPLOADING` (no status update in 30+ minutes, tracked via a sidecar `updated_at` timestamp and a 15 s UI tick) — tapping it re-enqueues only that entry (atomic `REPLACE`), leaving other in-flight uploads untouched. Upload URL and Cognito config IDs are embedded at build time via `BuildConfig`/`AppConfig` — no UI fields for them.
-7. `DatasetEditorScreen` — 2-column lazy grid of collected frames; thumbnails decoded asynchronously with bounding boxes overlaid; long-press multi-select + batch delete; tap to open `FrameDetailScreen`.
-8. `FrameDetailScreen` — full-res frame editor; boxes stored in canvas-pixel space during editing; `SideEffect` re-projects boxes when canvas geometry changes (e.g. FAB row collapses on selection); saves YOLO-normalized coordinates back to `.txt` via `DatasetEditor`.
-9. `DatasetEditor` — data layer for the editor: loads `FrameEntry` list, parses YOLO label files into `YoloBox` lists, saves edited boxes, deletes frame pairs (image + label), rebuilds `manifest.json`.
+6. `ContributeScreen` — status card ("Frames waiting to upload", capture-status line, storage-used with ✏ quota edit, "Reset collected data"), storage quota banners (80% / 100%), upload-config card (auth row: **Sign in** / **Sign in again** (non-destructive re-auth) / **Sign out**, or "Session expired"; mobile-data toggle; daily time; last upload), the global "Upload collected data" button (60 s cooldown; tapping mid-upload cancels + restarts fresh), an **"Upload activity"** line + Details dialog over the persistent `UploadLog`, and the "Upload history" list — active/failed entries, per-row **Restart**, and the recorded **failure reason** shown under a failed row. No "View dataset" button (editor removed). Config IDs are `BuildConfig`/`AppConfig`, no UI fields.
+
+**On-device dataset editing was removed (REQ-026).** `DatasetEditorScreen`, `FrameDetailScreen`, `DatasetEditor`, `FrameEntry`, `YoloBox` are gone. The generic app only captures (auto / manual / burst, all shipping the model's predicted boxes) and uploads; review/editing lives in `curation-android`. Capture is gated on **`collect_training_data` AND signed in** — `LiveDetectionUi` computes `captureActive` and nothing is written to `training_data/` unless both hold.
 
 **Key data types:**
-- `ModelSpec` — per-model metadata (id, display title, source, confidence threshold, description, origin).
-- `ModelSource` — sealed class: `Asset(path)`, `FilePath(file)`, `ContentUri(uri)`.
-- `CoordFormat` — `XYXY_SCORE_CLASS` or `YXYX_SCORE_CLASS`; controls how model output columns are interpreted.
-- `Detection` — bounding box in original-image pixels, score, classId, optional OCR text/confidence.
-- `ModelOrigin` — `DEFAULT` (bundled asset), `CUSTOM` (imported to internal storage), `LEGACY_EXTERNAL` (old content URI path).
+- `ModelSpec` / `ModelSource` (`Asset` / `FilePath` / `ContentUri`) / `CoordFormat` / `Detection` / `ModelOrigin` (`DEFAULT` bundled, `DOWNLOADED`, legacy `CUSTOM`/`LEGACY_EXTERNAL`).
+- `SessionExpiredException` (real expiry → sign out), `ApiUnauthorizedException(httpCode)` (API 401/403, session valid — authz/config, NOT expiry), `RetryableHttpException` (429/5xx), `AuthChallengeException` (MFA / `NEW_PASSWORD_REQUIRED`).
+- `UploadLog` — persistent (`filesDir/upload_log.json`, capped 100); `ModelUpdateLog` — in-memory, capped 100.
 
-**Model management:**
-- `ModelPrefs` (SharedPreferences) persists the selected model ID, per-model confidence thresholds, show-labels flag, and OCR toggle.
-- Custom models are copied to `context.filesDir/models/custom/` on import and validated by attempting to construct a `TFLite Interpreter`.
-- `tflite` files are marked `noCompress` in the build config so they can be memory-mapped; the loader falls back to `readBytes()` if `openFd` fails.
+**Auth:** `CognitoAuthManager.getAwsCredentials()` is serialized process-wide by a companion `Mutex` (the periodic/startup/inline `ModelCheckWorker` paths + `UploadDatasetWorker` were racing the credential cache). Terminal Cognito errors map to `SessionExpiredException`. A persistent API 401/403, even after a forced credential refresh, fails the job with a message but **keeps the user signed in** — this is the curator-role / config case, not a dead session. `AppConfig.seedPrefsIfNeeded()` re-seeds `UploadPrefs` if the APK was rebuilt for a different backend and wipes the stale session. `signOut()` also clears the SDK's own `CognitoIdentityProviderCache` / `com.amazonaws.android.auth` prefs.
 
-**Processing guard:** detection is disabled when the app is not in the foreground (`ON_STOP` lifecycle event), preventing background inference.
+**Backup:** `android:allowBackup="false"` — no cloud Auto Backup, no `adb backup`. `res/xml/data_extraction_rules.xml` also excludes `training_data/`, `exports/`, `models/`, `upload_log.json` and the Cognito prefs from Android 12+ device-to-device transfer.
+
+**Processing guard:** detection is disabled when the app is not in the foreground (`ON_STOP`).
 
 ## Commit preparation
 

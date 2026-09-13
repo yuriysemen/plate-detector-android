@@ -33,6 +33,8 @@ class ModelCheckWorker(
             performCheck(applicationContext)
             Result.success()
         } catch (e: SessionExpiredException) {
+            // performCheck already called markSessionExpired(). (An authorization 401/403 is
+            // handled inside performCheck without throwing — it does not reach here.)
             Result.failure()
         } catch (e: Exception) {
             Result.retry()
@@ -45,7 +47,15 @@ class ModelCheckWorker(
 
         suspend fun performCheck(context: Context) = withContext(Dispatchers.IO) {
             val ctx = context
+            AppConfig.seedPrefsIfNeeded(ctx)
+            val auth = CognitoAuthManager(ctx)
             if (UploadPrefs.getCognitoUserId(ctx).isEmpty()) return@withContext
+            if (auth.isSessionExpired()) {
+                // Session is already known-dead. Don't hammer the endpoint (and the activity log)
+                // every hour — the user re-authenticates from the Contribute screen.
+                ModelUpdateLog.log("Model check skipped — sign in again to resume updates", ModelUpdateLog.Level.ERROR)
+                return@withContext
+            }
             val baseUrl = UploadPrefs.getUploadUrl(ctx)
             if (baseUrl.isBlank()) return@withContext
 
@@ -53,9 +63,9 @@ class ModelCheckWorker(
             DownloadedModelPrefs.setLastCheckTime(ctx)
 
             val credentials = try {
-                CognitoAuthManager(ctx).getAwsCredentials()
+                auth.getAwsCredentials()
             } catch (e: SessionExpiredException) {
-                CognitoAuthManager(ctx).markSessionExpired()
+                auth.markSessionExpired()
                 ModelUpdateLog.log("Model check: session expired — sign in again", ModelUpdateLog.Level.ERROR)
                 throw e
             } catch (e: Exception) {
@@ -73,8 +83,37 @@ class ModelCheckWorker(
                 UploadPrefs.getIdentityPoolId(ctx).substringBefore(":")
             }
 
+            val endpoint = "$baseUrl/get-model-url"
             val response = try {
-                sigV4Get("$baseUrl/get-model-url", "app_version", appVersion, credentials, region)
+                sigV4Get(endpoint, "app_version", appVersion, credentials, region)
+            } catch (e: ApiUnauthorizedException) {
+                // The server rejected the signed request (HTTP 401/403). The cached STS
+                // credentials may just be stale — mint fresh ones and try exactly once more.
+                ModelUpdateLog.log("Model check: access denied (HTTP ${e.httpCode}) — refreshing credentials…")
+                val fresh = try {
+                    auth.getAwsCredentials(forceRefresh = true)
+                } catch (se: SessionExpiredException) {
+                    auth.markSessionExpired()
+                    ModelUpdateLog.log("Model check: session expired — sign in again", ModelUpdateLog.Level.ERROR)
+                    throw se
+                }
+                try {
+                    sigV4Get(endpoint, "app_version", appVersion, fresh, region)
+                } catch (e2: ApiUnauthorizedException) {
+                    // Fresh credentials still rejected — an authorization / config problem, NOT a
+                    // dead session. Don't sign the user out; model checks just pause.
+                    val hint = if (e2.httpCode == 403)
+                        "your account isn't authorized to fetch model updates. If you were just granted access, sign out and back in; otherwise the server config needs a fix."
+                    else
+                        "the request signature was rejected (HTTP ${e2.httpCode}) — an app/server config mismatch."
+                    ModelUpdateLog.log("Model updates paused — $hint", ModelUpdateLog.Level.ERROR)
+                    return@withContext
+                }
+            } catch (e: RetryableHttpException) {
+                // 429 / 5xx — a transient server problem. Let doWork() -> Result.retry() so
+                // WorkManager backs off instead of waiting a full hour for the next tick.
+                ModelUpdateLog.log("Model check: ${e.message} — will retry", ModelUpdateLog.Level.ERROR)
+                throw e
             } catch (e: Exception) {
                 ModelUpdateLog.log("Model check failed: ${e.message}", ModelUpdateLog.Level.ERROR)
                 return@withContext
@@ -132,8 +171,15 @@ class ModelCheckWorker(
                 sdkRequest.headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
                 conn.connectTimeout = 15_000
                 conn.readTimeout    = 15_000
-                if (conn.responseCode !in 200..299) {
-                    throw Exception("get-model-url HTTP ${conn.responseCode}")
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    val body = runCatching { conn.errorStream?.bufferedReader()?.readText()?.take(300) }.getOrNull().orEmpty()
+                    android.util.Log.w("ModelCheckWorker", "get-model-url HTTP $code $body")
+                    when {
+                        code == 401 || code == 403 -> throw ApiUnauthorizedException(code, "get-model-url HTTP $code ${body.trim()}")
+                        code == 429 || code >= 500 -> throw RetryableHttpException("get-model-url HTTP $code")
+                        else                       -> throw Exception("get-model-url HTTP $code ${body.trim()}")
+                    }
                 }
                 return JSONObject(conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) })
             } finally {

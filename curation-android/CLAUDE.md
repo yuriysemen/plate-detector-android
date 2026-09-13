@@ -40,8 +40,9 @@ Run from `curation-android/`. A JDK 17+ is required; if none is on `PATH`, use A
 
 ## Configuration
 
-`local.properties` (committed, same convention as `android/local.properties`) supplies
-`buildConfigField`s via a `localProp()` helper in `app/build.gradle.kts`:
+`local.properties` (gitignored; copy `local.properties.example` and fill in real values, same
+convention as `android/local.properties`) supplies `buildConfigField`s via a `localProp()` helper
+in `app/build.gradle.kts`:
 
 | Key | Notes |
 |---|---|

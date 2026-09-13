@@ -1,0 +1,22 @@
+## Copy this file to samconfig.toml and fill in your own values, or run
+## `sam deploy --guided` to generate it interactively instead.
+## samconfig.toml is gitignored — never commit it.
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "plate-detector-upload"
+region = "us-east-1"
+
+[default.build.parameters]
+cached   = true
+parallel = true
+
+[default.deploy.parameters]
+capabilities      = "CAPABILITY_IAM"
+confirm_changeset = true
+region            = "us-east-1"
+resolve_s3        = true
+parameter_overrides = "BucketName=\"<globally-unique-bucket-name>\" AdminPrincipalArn=\"arn:aws:iam::<account-id>:user/<admin-user>\" PresignedUrlExpirySeconds=\"3600\" StageName=\"prod\""
+s3_prefix = "plate-detector-upload"
+image_repositories = []

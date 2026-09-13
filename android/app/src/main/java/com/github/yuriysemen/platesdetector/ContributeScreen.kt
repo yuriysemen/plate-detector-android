@@ -2,6 +2,8 @@ package com.github.yuriysemen.platesdetector
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -46,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -72,7 +76,7 @@ import androidx.compose.runtime.collectAsState
 @Composable
 fun ContributeScreen(
     onBack: () -> Unit,
-    onEditDataset: () -> Unit,
+    collectTrainingData: Boolean,
     storageQuotaMb: Int,
     onStorageQuotaMbChange: (Int) -> Unit,
     uploadServiceUrl: String,
@@ -91,7 +95,6 @@ fun ContributeScreen(
 ) {
     val context = LocalContext.current
     val exporter = remember { DatasetExporter(context) }
-    val editor = remember { DatasetEditor(context) }
     val scope = rememberCoroutineScope()
 
     var stats by remember { mutableStateOf(exporter.readStats()) }
@@ -100,7 +103,7 @@ fun ContributeScreen(
     val usagePct = if (quotaBytes > 0) (storageUsageBytes * 100L / quotaBytes).toInt().coerceIn(0, 100) else 0
 
     LaunchedEffect(stats) {
-        storageUsageBytes = withContext(Dispatchers.IO) { editor.trainingUsageBytes() }
+        storageUsageBytes = withContext(Dispatchers.IO) { exporter.trainingUsageBytes() }
     }
 
     var isUploading by remember { mutableStateOf(false) }
@@ -111,6 +114,10 @@ fun ContributeScreen(
     var showQuotaDialog by remember { mutableStateOf(false) }
     var quotaDialogText by remember(storageQuotaMb) { mutableStateOf(storageQuotaMb.toString()) }
     var exportsRefreshTick by remember { mutableStateOf(0) }
+    var showUploadLogDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { UploadLog.ensureLoaded(context) }
+    val uploadLog by UploadLog.entries.collectAsState()
 
     // Ticks periodically so stuck-session restart eligibility (based on elapsed time since
     // the last status update) becomes available live, without requiring the user to leave
@@ -187,9 +194,17 @@ fun ContributeScreen(
             result.fold(
                 onSuccess = { zipFile ->
                     enqueueUpload(zipFile, stats.totalFrames, forceAnyNetwork = true)
+                    UploadLog.log(context, "Upload queued — ${stats.totalFrames} frames")
                     refresh()
                 },
-                onFailure = { errorMessage = it.message ?: "Export failed" }
+                onFailure = {
+                    errorMessage = it.message ?: "Export failed"
+                    UploadLog.log(
+                        context,
+                        "Packaging failed: ${it.message ?: it.javaClass.simpleName}",
+                        UploadLog.Level.ERROR
+                    )
+                }
             )
             delay(60_000)
             cooldownActive = false
@@ -203,6 +218,7 @@ fun ContributeScreen(
             // where the pending cancellation is still in flight and KEEP silently drops the new
             // enqueue because it still sees the old job as "pending".
             enqueueUpload(zipFile, stats.totalFrames, forceAnyNetwork = true, policy = ExistingWorkPolicy.REPLACE)
+            UploadLog.log(context, "Upload restarted: ${zipFile.nameWithoutExtension}")
             exportsRefreshTick++
         }
     }
@@ -218,7 +234,7 @@ fun ContributeScreen(
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
             title = { Text("Reset collected data") },
-            text = { Text("Delete all ${stats.totalFrames} collected frames? This cannot be undone.") },
+            text = { Text("Delete ${stats.totalFrames} buffered frames? This cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = { showResetDialog = false; doReset() }) { Text("Delete") }
             },
@@ -273,6 +289,51 @@ fun ContributeScreen(
         )
     }
 
+    if (showUploadLogDialog) {
+        AlertDialog(
+            onDismissRequest = { showUploadLogDialog = false },
+            title = { Text("Upload activity") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (uploadLog.isEmpty()) {
+                        Text(
+                            "No upload activity recorded yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        uploadLog.reversed().forEach { entry ->
+                            val time = SimpleDateFormat("MMM d, HH:mm:ss", Locale.getDefault())
+                                .format(Date(entry.timeMs))
+                            Text(
+                                "$time  ${entry.message}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = when (entry.level) {
+                                    UploadLog.Level.ERROR   -> MaterialTheme.colorScheme.error
+                                    UploadLog.Level.SUCCESS -> Color(0xFF4CAF50)
+                                    else                    -> MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showUploadLogDialog = false }) { Text("Close") }
+            },
+            dismissButton = {
+                if (uploadLog.isNotEmpty()) {
+                    TextButton(onClick = { UploadLog.clear(context) }) { Text("Clear") }
+                }
+            }
+        )
+    }
+
     BackHandler { onBack() }
 
     // Active upload jobs: list all ZIPs that have a non-idle status. Successfully uploaded
@@ -301,9 +362,9 @@ fun ContributeScreen(
                 item {
                     StorageBanner(
                         text = if (usagePct >= 100)
-                            "Storage limit reached ($storageQuotaMb MB). Upload or edit your dataset."
+                            "Storage limit reached ($storageQuotaMb MB). Upload your buffered frames to keep collecting."
                         else
-                            "Training storage at $usagePct% — consider uploading or editing your dataset.",
+                            "Training storage at $usagePct% — upload your buffered frames soon.",
                         isError = usagePct >= 100,
                         actionLabel = null,
                         onAction = null
@@ -322,13 +383,13 @@ fun ContributeScreen(
                         onAction = onSignIn
                     )
                 }
-            } else if (!uploadConfigured) {
+            } else if (!isSignedIn) {
                 item {
                     StorageBanner(
-                        text = "Upload not configured — data will be collected but not sent.",
+                        text = "Sign in to save captured frames — nothing is saved while signed out.",
                         isError = false,
-                        actionLabel = null,
-                        onAction = null
+                        actionLabel = "Sign in",
+                        onAction = onSignIn
                     )
                 }
             }
@@ -341,8 +402,32 @@ fun ContributeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val usageMb = storageUsageBytes / (1024f * 1024f)
-                        Text("Frames collected: ${stats.totalFrames}")
-                        Text("Total detections: ${stats.totalDetections}")
+                        Text("Frames waiting to upload: ${stats.totalFrames}")
+                        Text("Total boxes: ${stats.totalDetections}")
+
+                        // Capture status — whether frames are actually being saved right now.
+                        val captureStatus: Pair<String, Boolean> = when {
+                            !collectTrainingData -> "Image saving is off" to false
+                            sessionExpired       -> "Paused — session expired" to true
+                            !isSignedIn          -> "Paused — sign in to save frames" to true
+                            else                 -> "Saving frames — signed in as $signedInEmail" to false
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                captureStatus.first,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (captureStatus.second) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (collectTrainingData && (!isSignedIn || sessionExpired)) {
+                                TextButton(onClick = onSignIn) { Text("Sign in") }
+                            }
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -367,21 +452,11 @@ fun ContributeScreen(
                                 )
                             }
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onEditDataset,
-                                enabled = stats.totalFrames > 0,
-                                modifier = Modifier.weight(1f)
-                            ) { Text("View dataset") }
-                            OutlinedButton(
-                                onClick = { showResetDialog = true },
-                                enabled = stats.totalFrames > 0,
-                                modifier = Modifier.weight(1f)
-                            ) { Text("Reset collected data") }
-                        }
+                        OutlinedButton(
+                            onClick = { showResetDialog = true },
+                            enabled = stats.totalFrames > 0,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Reset collected data") }
                     }
                 }
             }
@@ -434,7 +509,13 @@ fun ContributeScreen(
                                 }
                             }
                             if (isSignedIn) {
-                                TextButton(onClick = onSignOut) { Text("Sign out") }
+                                // "Sign in again" re-runs the sign-in flow for the same account to
+                                // mint fresh tokens without signing out first — the fix for a
+                                // wedged session that still reports "Signed in".
+                                Column(horizontalAlignment = Alignment.End) {
+                                    TextButton(onClick = onSignIn) { Text("Sign in again") }
+                                    TextButton(onClick = onSignOut) { Text("Sign out") }
+                                }
                             } else {
                                 TextButton(onClick = onSignIn) { Text("Sign in") }
                             }
@@ -515,6 +596,32 @@ fun ContributeScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+            }
+
+            // Upload activity — one-line status + "Details" for the full log (mirrors the
+            // model-update activity line in Settings). Visible whenever anything has been logged,
+            // even after the per-upload history rows are gone (they're deleted on success).
+            if (uploadLog.isNotEmpty()) {
+                item {
+                    val latest = uploadLog.last()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            latest.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = when (latest.level) {
+                                UploadLog.Level.ERROR   -> MaterialTheme.colorScheme.error
+                                UploadLog.Level.SUCCESS -> Color(0xFF4CAF50)
+                                else                    -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { showUploadLogDialog = true }) { Text("Details") }
+                    }
                 }
             }
 
@@ -660,6 +767,16 @@ private fun UploadJobCard(
                 if (canRestart) {
                     TextButton(onClick = onRestart) { Text("Restart") }
                 }
+            }
+
+            // The recorded reason for a failed / stuck upload — this is the "why".
+            val detail = item.statusDetail
+            if (detail != null && (uploadStatus == UploadStatus.FAILED || canRestart)) {
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

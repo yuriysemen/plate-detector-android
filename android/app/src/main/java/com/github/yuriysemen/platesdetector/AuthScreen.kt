@@ -59,6 +59,9 @@ private fun friendlyAuthError(e: Throwable): String = when (e.javaClass.simpleNa
     "NotAuthorizedException"     -> "Incorrect email or password."
     "UserNotFoundException"      -> "No account found with this email."
     "UserNotConfirmedException"  -> "Your email isn't verified yet."
+    "AuthChallengeException",
+    "IllegalStateException"      -> e.message ?: "This account can't sign in right now."
+    "PasswordResetRequiredException" -> "This account needs a password reset. Contact the administrator."
     "CodeMismatchException"      -> "Incorrect verification code. Please try again."
     "ExpiredCodeException"       -> "This code has expired. Tap 'Resend code' to get a new one."
     "LimitExceededException",

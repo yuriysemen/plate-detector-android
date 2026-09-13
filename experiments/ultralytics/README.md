@@ -6,7 +6,7 @@ This folder contains Python scripts and a Jupyter notebook that train a YOLOv11 
 
 * Python 3.9+ (recommended)
 * A working PyTorch + Ultralytics environment
-* The dataset referenced by `../dataset_YOLO/data.yaml`
+* The dataset referenced by `../../datasets/dataset_YOLO/data.yaml`
 
 Install dependencies (file name matches the repo):
 
@@ -26,7 +26,7 @@ python yolo_test_model.py
 
 What it does:
 
-1. `yolo_train_model.py` selects the best available device (MPS, CUDA, or CPU) and trains `yolo11n.pt` for one epoch on `../dataset_YOLO/data.yaml`.
+1. `yolo_train_model.py` selects the best available device (MPS, CUDA, or CPU) and trains `yolo11n.pt` for one epoch on `../../datasets/dataset_YOLO/data.yaml`.
 2. `yolo_export_model.py` exports a TFLite model with NMS enabled.
 3. `yolo_test_model.py` runs a quick validation visualization on the first validation image.
 

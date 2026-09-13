@@ -9,6 +9,7 @@ build/
 # Local configuration
 ####################################
 keystore.properties
+local.properties
 
 ####################################
 # Signing keys (NEVER COMMIT)
