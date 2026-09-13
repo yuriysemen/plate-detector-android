@@ -97,8 +97,12 @@
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
-### Training data collection (requirements: REQ-007)
-- [ ] **Play Store compliance** — Privacy Policy update, Data Safety declaration (REQ-007). Auto Backup exclusion: **done** (`allowBackup="false"`).
+### Training data collection (requirements: REQ-007, REQ-030)
+- [ ] **Play Store compliance** — Privacy Policy rewrite, Data Safety declaration (incl. the
+      Personal info/email data type), and an account-deletion mechanism (REQ-007). Auto Backup
+      exclusion: **done** (`allowBackup="false"`).
+- [ ] **Next release readiness** — version bump, store listing refresh, staged rollout (REQ-030),
+      gated on REQ-007 being complete.
 
 ### Cloud dataset upload (requirements: REQ-014, REQ-015, REQ-018)
 - [x] **Unified Contribute data flow** — single "Contribute data" row in Settings; ContributeScreen owns stats card (frames/detections/storage with ✏ quota edit), upload config, upload action, and "Upload history" section; no mode selection — cloud upload is the only path; ZIP deleted from device after successful upload (REQ-005, REQ-014)
