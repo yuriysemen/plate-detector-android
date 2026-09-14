@@ -42,3 +42,4 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [033](REQ-033-done-curation-remove-vehicle-type-classification.md) | done | Curation — Remove Vehicle-Type Classification, Single License-Plate Class |
 | [034](REQ-034-done-curation-simplify-reject-allow-redecide.md) | done | Curation — Drop Reject Reason, Allow Changing an Already-Decided Item |
 | [035](REQ-035-done-curation-done-folder-structure-and-completion-button.md) | done | Curation — Mirror Upload Folder Structure in done/, Surface Complete in ReviewScreen |
+| [036](REQ-036-draft-curation-view-done-package-images.md) | draft | Curation — View a Done Package's Images |

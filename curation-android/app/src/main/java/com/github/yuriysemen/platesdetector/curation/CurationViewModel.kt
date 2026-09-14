@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -345,6 +346,13 @@ class CurationViewModel(
     private suspend fun runCatchingSession(block: suspend () -> Unit): Boolean =
         try {
             block(); true
+        } catch (e: CancellationException) {
+            // Always rethrow — this fires when a newer debounced save (or session close) cancels
+            // an older one still in flight, which is normal coroutine cancellation, not a failure.
+            // Catching it here without rethrowing broke structured concurrency and surfaced a
+            // confusing "StandaloneCoroutine was cancelled" error banner for something that
+            // wasn't actually wrong.
+            throw e
         } catch (e: SessionExpiredException) {
             auth.markSessionExpired(); sessionExpired = true; false
         } catch (e: Exception) {
