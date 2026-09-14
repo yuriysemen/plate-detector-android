@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -55,6 +56,9 @@ class CurationViewModel(
     var busy by mutableStateOf<BusyState?>(null)
         private set
     var session by mutableStateOf<ReviewSession?>(null)
+        private set
+    /** Open Done-package viewer (REQ-036), if any. */
+    var doneViewer by mutableStateOf<DoneViewerData?>(null)
         private set
     var errorBanner by mutableStateOf<String?>(null)
         private set
@@ -329,6 +333,25 @@ class CurationViewModel(
             busy = null
             if (ok) { onDone(); refreshInProgress(); refreshNotProcessed() }
         }
+    }
+
+    // ── Done package viewer (REQ-036) ───────────────────────────────────────
+
+    fun openDoneViewer(manifest: DoneManifest) {
+        if (busy != null || doneViewer != null) return
+        viewModelScope.launch {
+            busy = BusyState("Loading ${manifest.filename}…", 0, 1)
+            runCatchingSession {
+                doneViewer = repo.loadDoneImages(manifest) { c, t -> busy = BusyState("Loading ${manifest.filename}…", c, t) }
+            }
+            busy = null
+        }
+    }
+
+    fun closeDoneViewer() {
+        val data = doneViewer ?: return
+        doneViewer = null
+        viewModelScope.launch(Dispatchers.IO) { repo.cleanupDoneViewer(data) }
     }
 
     // ── error handling ─────────────────────────────────────────────────────

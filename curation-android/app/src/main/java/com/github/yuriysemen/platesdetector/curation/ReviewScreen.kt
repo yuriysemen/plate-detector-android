@@ -476,7 +476,9 @@ private fun reviewHint(item: ManifestItem, boxes: List<YoloBox>): Pair<String, B
         else -> null
     }
 
-private fun fitRect(canvas: IntSize, imgW: Int, imgH: Int): Rect {
+/** Letterbox-fits an `imgW`×`imgH` image inside `canvas`, centered. Shared with `DoneViewerScreen`
+ *  (REQ-036), which draws the same read-only box overlay outside a review session. */
+fun fitRect(canvas: IntSize, imgW: Int, imgH: Int): Rect {
     if (canvas.width == 0 || canvas.height == 0 || imgW == 0 || imgH == 0) return Rect(0f, 0f, 0f, 0f)
     val scale = min(canvas.width / imgW.toFloat(), canvas.height / imgH.toFloat())
     val dw = imgW * scale

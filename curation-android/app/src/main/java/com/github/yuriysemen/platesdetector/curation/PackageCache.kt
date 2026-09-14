@@ -16,6 +16,34 @@ data class CachedItem(
 )
 
 /**
+ * Unzips [zip] into [targetDir] (created if needed), guarding against zip-slip. Does not delete
+ * [zip] or clear [targetDir] first — callers that want either do it themselves. Shared by
+ * [PackageCache.unzip] (the working review copy) and [CurationRepository]'s Done-package viewer
+ * (REQ-036), which unzips into its own temp directory instead.
+ */
+fun unzipInto(zip: File, targetDir: File) {
+    targetDir.mkdirs()
+    val targetCanonical = targetDir.canonicalPath + File.separator
+    ZipInputStream(zip.inputStream().buffered()).use { zis ->
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val out = File(targetDir, entry.name)
+            if (!out.canonicalPath.startsWith(targetCanonical)) {
+                throw SecurityException("Zip entry escapes target dir: ${entry.name}")
+            }
+            if (entry.isDirectory) {
+                out.mkdirs()
+            } else {
+                out.parentFile?.mkdirs()
+                out.outputStream().use { zis.copyTo(it) }
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+    }
+}
+
+/**
  * On-device working copy of a package: the source ZIP is downloaded and unzipped into
  * `filesDir/packages/<package_id>/` and review reads/writes entirely from there. Only
  * `manifest.json` is synced to S3 (REQ-022 working-copy strategy) — so this cache is rebuildable
@@ -35,26 +63,7 @@ class PackageCache(context: Context) {
     suspend fun unzip(packageId: String, zip: File) = withContext(Dispatchers.IO) {
         val target = dir(packageId)
         target.deleteRecursively()
-        target.mkdirs()
-        val targetCanonical = target.canonicalPath + File.separator
-        ZipInputStream(zip.inputStream().buffered()).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val out = File(target, entry.name)
-                // zip-slip guard
-                if (!out.canonicalPath.startsWith(targetCanonical)) {
-                    throw SecurityException("Zip entry escapes target dir: ${entry.name}")
-                }
-                if (entry.isDirectory) {
-                    out.mkdirs()
-                } else {
-                    out.parentFile?.mkdirs()
-                    out.outputStream().use { zis.copyTo(it) }
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
-            }
-        }
+        unzipInto(zip, target)
         marker(packageId).writeText(System.currentTimeMillis().toString())
         zip.delete()
     }

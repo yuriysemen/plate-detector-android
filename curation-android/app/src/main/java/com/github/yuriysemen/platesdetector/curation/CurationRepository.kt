@@ -29,6 +29,17 @@ data class InProgressItem(val manifest: CurationManifest, val lastActivityMs: Lo
     fun isStale(nowMs: Long): Boolean = inactiveMs(nowMs) > CurationRepository.STALE_IN_PROGRESS_MS
 }
 
+/** One image from a Done package's accepted-items archive, for the read-only viewer (REQ-036). */
+data class DoneViewImage(
+    val subset: String,
+    val imageFile: File,
+    val boxes: List<YoloBox>,
+)
+
+/** Result of loading a Done package for viewing — [tempDir] must be passed to
+ *  [CurationRepository.cleanupDoneViewer] when the viewer closes. */
+data class DoneViewerData(val filename: String, val tempDir: File, val images: List<DoneViewImage>)
+
 /**
  * Direct, IAM-scoped S3 access from the device (REQ-022/REQ-023). Credentials come from
  * [CuratorAuthManager] via the Identity Pool's token-based role mapping (`CuratorRole`). All
@@ -310,6 +321,68 @@ class CurationRepository(
         client().deleteObject(bucket, "curation/$packageId/manifest.json")
         cache.delete(packageId)
     }
+
+    // ── Done package viewer (REQ-036) ───────────────────────────────────────
+
+    /**
+     * Downloads a Done package's accepted images for read-only viewing, into a fresh temp
+     * directory the caller must pass to [cleanupDoneViewer] when done. Uses [DoneManifest.doneZipKey]
+     * when present (REQ-035 packages — one archive download); falls back to listing and
+     * downloading loose objects under the pre-REQ-035 flat `done/<packageId>/` shape otherwise.
+     */
+    suspend fun loadDoneImages(manifest: DoneManifest, onProgress: ProgressSink): DoneViewerData =
+        withContext(Dispatchers.IO) {
+            val s3 = client()
+            val tempDir = File(appContext.cacheDir, "done_view/${manifest.packageId}-${System.currentTimeMillis()}")
+            tempDir.mkdirs()
+
+            val zipKey = manifest.doneZipKey
+            if (zipKey != null) {
+                onProgress(0, 2)
+                val zipFile = File(tmpDir, "${manifest.packageId}-view.zip")
+                s3.getObject(GetObjectRequest(bucket, zipKey), zipFile)
+                onProgress(1, 2)
+                unzipInto(zipFile, tempDir)
+                zipFile.delete()
+                onProgress(2, 2)
+            } else {
+                // Pre-REQ-035 package: images/labels are loose objects, not an archive.
+                val prefix = "done/${manifest.packageId}/"
+                val imageKeys = listKeys(s3, prefix).filter { it.key.contains("/images/") }
+                imageKeys.forEachIndexed { i, summary ->
+                    val relative = summary.key.removePrefix(prefix)
+                    val dest = File(tempDir, relative).apply { parentFile?.mkdirs() }
+                    s3.getObject(GetObjectRequest(bucket, summary.key), dest)
+
+                    val subset = relative.substringBefore("/images/")
+                    val base = File(relative).nameWithoutExtension
+                    val labelDest = File(tempDir, "$subset/labels/$base.txt").apply { parentFile?.mkdirs() }
+                    runCatching { s3.getObject(GetObjectRequest(bucket, "$prefix$subset/labels/$base.txt"), labelDest) }
+
+                    onProgress(i + 1, imageKeys.size.coerceAtLeast(1))
+                }
+            }
+
+            DoneViewerData(manifest.filename, tempDir, readDoneViewImages(tempDir))
+        }
+
+    fun cleanupDoneViewer(data: DoneViewerData) {
+        data.tempDir.deleteRecursively()
+    }
+
+    private fun readDoneViewImages(root: File): List<DoneViewImage> =
+        listOf("train", "val", "test").flatMap { subset ->
+            val imagesDir = File(root, "$subset/images")
+            val labelsDir = File(root, "$subset/labels")
+            (imagesDir.listFiles()?.toList().orEmpty())
+                .filter { it.isFile && it.extension.lowercase() in PackageCache.IMAGE_EXTS }
+                .sortedBy { it.name }
+                .map { img ->
+                    val labelFile = File(labelsDir, "${img.nameWithoutExtension}.txt")
+                    val boxes = if (labelFile.exists()) YoloLabel.parse(labelFile.readText()) else emptyList()
+                    DoneViewImage(subset, img, boxes)
+                }
+        }
 
     // ── S3 helpers ─────────────────────────────────────────────────────────
 

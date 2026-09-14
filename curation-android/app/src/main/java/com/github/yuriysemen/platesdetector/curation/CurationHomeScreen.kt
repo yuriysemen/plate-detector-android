@@ -66,6 +66,17 @@ fun CurationHomeScreen(
         return
     }
 
+    // Full-screen Done-package viewer (REQ-036), same pattern as review above.
+    val doneViewer = vm.doneViewer
+    if (doneViewer != null) {
+        DoneViewerScreen(
+            data = doneViewer,
+            onBack = { vm.closeDoneViewer() },
+        )
+        BusyDialog(vm.busy)
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

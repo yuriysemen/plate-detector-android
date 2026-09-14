@@ -1,7 +1,7 @@
 ---
 id: REQ-036
 title: Curation — View a Done Package's Images
-status: draft
+status: done
 priority: medium
 ---
 
@@ -54,30 +54,45 @@ from the archive instead of the working cache.
   from "nothing accepted" by checking `accepted > 0`), list objects directly under
   `done/<packageId>/` via S3 `ListObjectsV2` and download/display those instead of a zip.
 
-## Open questions (need your input before implementation)
+## Resolved questions
 
-- [ ] **Grid of thumbnails, or a simple scrollable list of full-width images?** A grid gets you
-      browsing more images at once; a list is simpler to build and matches `ReviewScreen`'s
-      single-image-at-a-time mental model more closely. My instinct is a grid (this is a "browse
-      what's in here" use case, not a "review one at a time" one), but happy to go either way.
-- [ ] **Show the box overlay by default, or only on demand (e.g. a toggle)?** Showing it always is
-      simpler and more directly useful for QA ("does this final label look right"), but adds a
-      bit of visual noise if someone just wants to skim the photos themselves.
-- [ ] **Any per-image action beyond viewing** — e.g. a way to flag "this shouldn't have been
-      accepted" from inside the viewer, which would presumably need to feed back into REQ-034's
-      change-decision flow somehow? Flagging this as a real possibility but treating it as
-      out of scope unless you want it folded in here — REQ-034 already only supports changing a
-      decision on an **In Progress** package, not a completed one, so wiring this up would be a
-      third piece of work of its own.
+Implemented using my own recommendations (no explicit answers given before implementation):
 
-## Acceptance criteria (draft — pending the above)
+- **Q1 (grid vs. list):** grid — a 3-column `LazyVerticalGrid`, grouped by subset with a header
+  row per subset (`item(span = { GridItemSpan(maxLineSpan) })`).
+- **Q2 (box overlay always vs. toggle):** always shown, in the full-size dialog opened by tapping
+  a thumbnail (not on the thumbnail itself, to keep the grid legible at small size).
+- **Q3 (any action beyond viewing):** none — purely read-only, as originally scoped. No
+  flag/change-decision affordance from this screen.
 
-- [ ] Tapping a `DoneTab` card opens a read-only viewer showing that package's accepted images.
-- [ ] Images are grouped/labeled by subset (train/val/test).
-- [ ] Final YOLO boxes are visible per image (per the Q2 decision above).
-- [ ] A fully-rejected package (`doneZipKey == null`, `accepted == 0`) shows a clear "nothing was
+## Implementation notes
+
+- **Thumbnails are downsampled**, not decoded at full resolution — `BitmapFactory.Options
+  .inSampleSize`, targeting ~200px on the long side, computed per image from `inJustDecodeBounds`.
+  A package can have hundreds of images; decoding every one at full camera resolution just to show
+  a grid would be wasteful and risks memory pressure. The full-size dialog decodes at full
+  resolution, since only one image is ever open at a time there.
+- **Lazy by construction**: `LazyVerticalGrid` doesn't compose off-screen items, so each
+  thumbnail's own `LaunchedEffect(image.imageFile) { ... }` only fires when that cell actually
+  becomes visible — no separate "visible items" tracking needed.
+- **Geometry reuse**: `ReviewScreen`'s `fitRect()` (letterbox-fit an image inside a canvas) was
+  made non-private so `DoneViewerScreen` could reuse it for the full-size dialog's box overlay
+  instead of duplicating that math.
+- **Zip-slip-guarded unzip reuse**: extracted the entry-copying loop out of `PackageCache.unzip()`
+  into a shared top-level `unzipInto(zip, targetDir)` (`PackageCache.kt`), used by both the
+  existing working-copy unzip and the new Done-viewer's temp-dir unzip.
+- **Temp storage**: downloads/unzips into `filesDir/cache/done_view/<packageId>-<timestamp>/` —
+  deliberately separate from `filesDir/packages/` (the working-copy cache), since this isn't a
+  working copy and has different lifecycle/cleanup rules (deleted on viewer close, always).
+
+## Acceptance criteria
+
+- [x] Tapping a `DoneTab` card opens a read-only viewer showing that package's accepted images.
+- [x] Images are grouped/labeled by subset (train/val/test).
+- [x] Final YOLO boxes are visible per image (in the full-size dialog).
+- [x] A fully-rejected package (`doneZipKey == null`, `accepted == 0`) shows a clear "nothing was
       accepted into this package" message instead of attempting a download.
-- [ ] A pre-REQ-035 completed package (`doneZipKey == null`, `accepted > 0`) still works, via the
+- [x] A pre-REQ-035 completed package (`doneZipKey == null`, `accepted > 0`) still works, via the
       old flat-path fallback.
-- [ ] Closing the viewer leaves no local trace — the temp download/unzip is deleted.
-- [ ] No Accept/Reject/box-editing affordance appears anywhere in this screen.
+- [x] Closing the viewer leaves no local trace — the temp download/unzip is deleted.
+- [x] No Accept/Reject/box-editing affordance appears anywhere in this screen.

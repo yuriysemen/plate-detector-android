@@ -90,6 +90,8 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 | `CurationViewModel` (REQ-024) | `currentBoxes()` (boxes, all implicitly `LICENSE_PLATE_CLASS_ID`) / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()` |
 | `ReviewScreen` | Image + box overlay (cyan, pink when selected — no more amber/unclassified state), top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject/Accept/Next when pending, Prev/**Change decision**/Next when already decided (REQ-034 — no reason prompt on reject, no confirmation on change-decision), jump-to-item sheet. Accept blocked only while there are zero boxes. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
 | `Format` | `nowIso()` (top-level), date/size/subset formatting |
+| `CurationRepository` / `CurationViewModel` (REQ-036) | `loadDoneImages()`/`cleanupDoneViewer()` and `openDoneViewer()`/`closeDoneViewer()` — download+unzip (or old-scheme fallback) a Done package's accepted images into a temp dir for viewing, deleted on close |
+| `DoneViewerScreen` (REQ-036) | Read-only: `LazyVerticalGrid` of downsampled thumbnails grouped by subset; tapping one opens a full-size dialog with boxes overlaid (reuses `ReviewScreen.fitRect()`). No editing, no Accept/Reject — nothing here changes a decision |
 
 **Auth → credentials flow:** sign-in caches sub + email → `getIdToken()` (SDK auto-refresh,
 throws `SessionExpiredException` when the refresh token is dead) → `newCredentialsProvider()` sets
@@ -156,6 +158,20 @@ button already used, just reachable without leaving the review screen. `Curation
 drops the open session directly on success when it's the one just completed, rather than relying
 on the caller to separately call `closeSession()` — otherwise a stale heartbeat/flush could
 resurrect the `curation/<id>/manifest.json` that `completePackage()` just deleted.
+
+**Done package viewer (REQ-036).** Tapping a `DoneTab` card opens `DoneViewerScreen` — read-only,
+no Accept/Reject/box-editing anywhere in it, since a Done package has nothing left to decide and
+its working cache is already gone (deleted on Complete). `CurationViewModel.openDoneViewer()` calls
+`CurationRepository.loadDoneImages()`, which downloads and unzips `DoneManifest.doneZipKey` into a
+fresh temp dir (`filesDir`'s cache, not `filesDir/packages/` — this isn't a working copy); for a
+pre-REQ-035 package with no `doneZipKey`, it falls back to listing and downloading the loose
+objects under the old flat `done/<packageId>/` shape instead. Images are shown in a
+`LazyVerticalGrid` grouped by subset, each thumbnail decoded downsampled
+(`BitmapFactory.Options.inSampleSize`, targeting ~200px) so a package with hundreds of images
+doesn't decode everything at full resolution just to render a grid; tapping one opens it full-size
+in a dialog with its final YOLO boxes overlaid (reusing `ReviewScreen`'s `fitRect()` letterbox math
+and the same box-drawing approach, just non-interactive). `CurationViewModel.closeDoneViewer()`
+deletes the temp download — nothing about viewing a Done package leaves a lasting local copy.
 
 ## Infra
 

@@ -133,7 +133,7 @@ fun DoneTab(vm: CurationViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(dones, key = { it.packageId }) { d ->
-                Card(Modifier.fillMaxWidth()) {
+                Card(onClick = { vm.openDoneViewer(d) }, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(d.filename, style = MaterialTheme.typography.titleSmall,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
