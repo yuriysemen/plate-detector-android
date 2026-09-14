@@ -1,10 +1,11 @@
 # Plate Curation (Android)
 
 Internal-only Android app for a single trusted curator to review YOLO packages uploaded to S3 by
-the main [`../android`](../android) app and promote the good ones into a training-ready `done/`
-dataset. Never published to an app store; installed by sideloading the debug/release APK.
+the [`../training-android`](../training-android) app and promote the good ones into a
+training-ready `done/` dataset. Never published to an app store; installed by sideloading the
+debug/release APK.
 
-It shares the main app's Cognito backend but accesses S3 **directly** through a scoped
+It shares `training-android`'s Cognito backend but accesses S3 **directly** through a scoped
 `CuratorRole` — no backend API. Full rationale and spec: [`../requirements`](../requirements)
 REQ-022, REQ-023, REQ-024, REQ-025 (all done).
 
@@ -20,7 +21,7 @@ REQ-022, REQ-023, REQ-024, REQ-025 (all done).
      --user-pool-id <UserPoolId> --username <email-or-sub> --group-name curators
    ```
 3. **Configure** — copy `local.properties.example` to `local.properties` and fill in `COGNITO_*`
-   from the stack outputs (same values as `../android/local.properties`) and
+   from the stack outputs (same values as `../training-android/local.properties`) and
    `DATASET_BUCKET_NAME` from the `DatasetBucketName` output.
 4. **Build & install:**
    ```bash

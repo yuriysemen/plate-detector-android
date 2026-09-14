@@ -1,4 +1,4 @@
-package com.github.yuriysemen.platesdetector
+package com.github.yuriysemen.platesdetector.training
 
 import android.Manifest
 import android.content.Context
@@ -269,6 +269,33 @@ internal object UploadPrefs {
         prefs(context).getString(KEY_IDENTITY_POOL_ID, "") ?: ""
     fun setIdentityPoolId(context: Context, v: String) =
         prefs(context).edit { putString(KEY_IDENTITY_POOL_ID, v) }
+
+    // ── Manual (in-app) backend configuration (REQ-032) ───────────────────
+    // A field set via BackendConfigScreen is "pinned": AppConfig.seedPrefsIfNeeded() skips it
+    // forever afterward, even across rebuilds with different local.properties values. Per-field,
+    // not all-or-nothing, so overriding just the upload URL doesn't also freeze the Cognito trio.
+    private const val KEY_USER_POOL_ID_PINNED     = "cognito_user_pool_id_pinned"
+    private const val KEY_APP_CLIENT_ID_PINNED    = "cognito_app_client_id_pinned"
+    private const val KEY_IDENTITY_POOL_ID_PINNED = "cognito_identity_pool_id_pinned"
+    private const val KEY_UPLOAD_URL_PINNED       = "upload_service_url_pinned"
+
+    fun isUserPoolIdPinned(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_USER_POOL_ID_PINNED, false)
+    fun isAppClientIdPinned(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_APP_CLIENT_ID_PINNED, false)
+    fun isIdentityPoolIdPinned(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_IDENTITY_POOL_ID_PINNED, false)
+    fun isUploadUrlPinned(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_UPLOAD_URL_PINNED, false)
+
+    fun setUserPoolIdManual(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_USER_POOL_ID, v); putBoolean(KEY_USER_POOL_ID_PINNED, true) }
+    fun setAppClientIdManual(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_APP_CLIENT_ID, v); putBoolean(KEY_APP_CLIENT_ID_PINNED, true) }
+    fun setIdentityPoolIdManual(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_IDENTITY_POOL_ID, v); putBoolean(KEY_IDENTITY_POOL_ID_PINNED, true) }
+    fun setUploadUrlManual(context: Context, v: String) =
+        prefs(context).edit { putString(KEY_UPLOAD_URL, v); putBoolean(KEY_UPLOAD_URL_PINNED, true) }
 
     fun getCognitoUserId(context: Context): String =
         prefs(context).getString(KEY_COGNITO_USER_ID, "") ?: ""
@@ -630,6 +657,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     }
     val lastModelCheckTime = remember(reloadKey) { DownloadedModelPrefs.getLastCheckTime(context) }
     var showAuth by rememberSaveable { mutableStateOf(false) }
+    var showBackendConfig by rememberSaveable { mutableStateOf(false) }
     val deviceId = remember {
         DatasetExporter.computeDeviceId(
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
@@ -728,6 +756,22 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
         ModelUpdateLog.log("Signed out — model updates paused (current model kept)")
         reloadKey++
     }
+    // A backend reconfigure (REQ-032) invalidates any cached session/model the same way a
+    // rebuilt-for-a-different-backend seed does — see AppConfig.seedPrefsIfNeeded().
+    val handleBackendIdentityChanged: () -> Unit = {
+        authManager.signOutAndWipeModel()
+        isSignedIn = false
+        signedInEmail = ""
+        sessionExpired = false
+        AutoUploadWorker.cancel(context)
+        ModelCheckWorker.cancel(context)
+        reloadKey++
+    }
+    // Routes to backend configuration first when it isn't set up yet, instead of opening
+    // AuthScreen against an empty/invalid Cognito pool.
+    val requestSignIn: () -> Unit = {
+        if (AppConfig.isBackendConfigured(context)) showAuth = true else showBackendConfig = true
+    }
 
     // A background worker (ModelCheckWorker, UploadDatasetWorker) can mark the session expired
     // while this screen is backgrounded. Re-read the cached auth state every time the app comes
@@ -794,7 +838,13 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
     // here — a fresh install with no bundled model, a different-user sign-in, or a backend
     // reconfigure can all land here, and the only escape is to (re-)authenticate and download.
     if (models.isEmpty()) {
-        if (showAuth) {
+        if (showBackendConfig) {
+            BackendConfigScreen(
+                onBack = { showBackendConfig = false },
+                onSaved = { showBackendConfig = false; showAuth = true },
+                onIdentityChanged = handleBackendIdentityChanged
+            )
+        } else if (showAuth) {
             AuthScreen(
                 authManager = authManager,
                 onSignedIn = handleSignedIn,
@@ -806,8 +856,9 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 isSignedIn = isSignedIn,
                 sessionExpired = sessionExpired,
                 signedInEmail = signedInEmail,
-                onSignIn = { showAuth = true },
-                onSignOut = handleSignOut
+                onSignIn = requestSignIn,
+                onSignOut = handleSignOut,
+                onOpenBackendConfig = { showBackendConfig = true }
             )
         }
         return
@@ -815,8 +866,13 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
 
     val selected = models.firstOrNull { it.id == selectedId }
 
-    if (showSettings || selected == null || !isModelEnabled || showAuth) {
+    if (showSettings || selected == null || !isModelEnabled || showAuth || showBackendConfig) {
         when {
+            showBackendConfig -> BackendConfigScreen(
+                onBack = { showBackendConfig = false },
+                onSaved = { showBackendConfig = false },
+                onIdentityChanged = handleBackendIdentityChanged
+            )
             showAuth -> AuthScreen(
                 authManager = authManager,
                 onSignedIn = handleSignedIn,
@@ -853,7 +909,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                 isSignedIn = isSignedIn,
                 signedInEmail = signedInEmail,
                 sessionExpired = sessionExpired,
-                onSignIn = { showAuth = true },
+                onSignIn = requestSignIn,
                 onSignOut = handleSignOut
             )
             else -> SettingsScreen(
@@ -902,7 +958,7 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     if (enable) {
                         // Capture only runs while signed in — send the user to sign in now so
                         // enabling the toggle actually starts saving frames.
-                        if (!isSignedIn) showAuth = true
+                        if (!isSignedIn) requestSignIn()
                     } else {
                         AutoUploadWorker.cancel(context)
                     }
@@ -913,7 +969,9 @@ fun LivePlateDetectionScreen(openContribute: Boolean = false) {
                     collectFirstTimeShown = true
                 },
                 onNavigateToContribute = { showExport = true },
-                onSignIn = { showAuth = true },
+                onSignIn = requestSignIn,
+                onOpenBackendConfig = { showBackendConfig = true },
+                backendConfigured = AppConfig.isBackendConfigured(context),
                 sessionExpired = sessionExpired,
                 latestModelVersion = latestModelVersion,
                 compatibleModelVersion = compatibleModelVersion,
@@ -1000,7 +1058,8 @@ private fun NoModelsScreen(
     sessionExpired: Boolean,
     signedInEmail: String,
     onSignIn: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onOpenBackendConfig: () -> Unit
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -1054,6 +1113,12 @@ private fun NoModelsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.6f)
                 )
+            }
+
+            // Always reachable, independent of whatever the app currently believes about its own
+            // configuration — the one place you can get to BackendConfigScreen no matter what.
+            TextButton(onClick = onOpenBackendConfig) {
+                Text("Configure backend…")
             }
         }
     }

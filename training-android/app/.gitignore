@@ -9,7 +9,6 @@ build/
 # Local configuration
 ####################################
 keystore.properties
-local.properties
 
 ####################################
 # Signing keys (NEVER COMMIT)
@@ -88,9 +87,3 @@ fastlane/test_output
 .idea/workspace.xml
 .idea/navEditor.xml
 .idea/assetWizardSettings.xml
-/my-release-key.base64
-
-####################################
-# Gradle auto-generated daemon JVM pin (regenerated locally; do not commit)
-####################################
-gradle/gradle-daemon-jvm.properties

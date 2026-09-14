@@ -41,7 +41,7 @@ Optional parameters (defaults shown, override if needed):
 | API Gateway HTTP API | HTTPS endpoint for the Lambdas; **IAM-authenticated** (SigV4 required) |
 | Cognito User Pool (`PlateDetectorUsers`) | Email + password accounts; SRP auth, self sign-up with email verification |
 | Cognito Identity Pool (`PlateDetectorDevices`) | Exchanges a User Pool ID token for short-lived STS credentials — no static AWS keys in the APK |
-| IAM role (`DeviceAuthRole`) | Default role for authenticated Cognito identities (the main `android/` app): `execute-api:Invoke` on `POST /get-upload-url` and `GET /get-model-url` only. No direct S3 access. |
+| IAM role (`DeviceAuthRole`) | Default role for authenticated Cognito identities (`training-android/`): `execute-api:Invoke` on `POST /get-upload-url` and `GET /get-model-url` only. No direct S3 access. |
 | Cognito group (`curators`) + IAM role (`CuratorRole`) | Gates the internal `curation-android` app (REQ-022). A signed-in `curators` member's ID token resolves — via the Identity Pool's token-based role mapping — to `CuratorRole`, which has **direct** scoped S3 access: read-only `config/` (REQ-025 category list); list/read `uploads/`, `curation/`, `done/`, `rejected/`; write `curation/`, `done/`, `rejected/`; delete `curation/` only. Never touches `uploads/` or `config/` destructively. Non-members fall back to `DeviceAuthRole` (unchanged). |
 
 ---
@@ -64,7 +64,7 @@ their ID token. To revoke, use `admin-remove-user-from-group` with the same argu
 
 The `curation-android` app also needs `DatasetBucketName` from the stack outputs — paste it into
 `curation-android/local.properties` as `DATASET_BUCKET_NAME` (the `COGNITO_*` values are the same
-as the main app).
+as `training-android`).
 
 ### Vehicle-category list (REQ-025)
 

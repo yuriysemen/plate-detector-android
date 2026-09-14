@@ -38,3 +38,4 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [029](REQ-029-done-auth-robustness.md) | done | Auth Robustness — Curator API Access + Login/Logout Failure-Path Hardening |
 | [030](REQ-030-draft-google-play-release-readiness.md) | draft | Google Play Release Readiness — Next Production Release |
 | [031](REQ-031-draft-split-detection-and-training-apps.md) | draft | Split android/ into a Detection-Only Published App and a training-android Data-Collection App |
+| [032](REQ-032-done-training-android-in-app-backend-config.md) | done | In-App Backend Configuration Screen (training-android) |

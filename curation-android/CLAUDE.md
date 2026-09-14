@@ -46,7 +46,7 @@ in `app/build.gradle.kts`:
 
 | Key | Notes |
 |---|---|
-| `COGNITO_USER_POOL_ID` | Same shared `PlateDetectorUsers` pool as the main app |
+| `COGNITO_USER_POOL_ID` | Same shared `PlateDetectorUsers` pool as `training-android` |
 | `COGNITO_APP_CLIENT_ID` | Same app client |
 | `COGNITO_IDENTITY_POOL_ID` | Same identity pool; **AWS region is derived from its `<region>:` prefix** |
 | `DATASET_BUCKET_NAME` | `plate-dataset-uploads` (stack output `DatasetBucketName`) |
@@ -122,7 +122,7 @@ no snapshot and falls back to a fresh fetch/bundled list, same risk as before.
 
 `../infra/aws/template.yaml` — `CuratorRole`, `CuratorGroup`, and a `Type: Token` entry in
 `DeviceIdentityPoolRoleAttachment.RoleMappings`. Deploy with `cd ../infra/aws && sam build &&
-sam deploy`. `DeviceAuthRole` (the main app) is untouched.
+sam deploy`. `DeviceAuthRole` (`training-android`) is untouched.
 
 ## Not yet built
 

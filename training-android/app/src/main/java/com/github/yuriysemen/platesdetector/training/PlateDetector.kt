@@ -1,4 +1,4 @@
-package com.github.yuriysemen.platesdetector
+package com.github.yuriysemen.platesdetector.training
 
 import android.content.Context
 import android.graphics.Bitmap

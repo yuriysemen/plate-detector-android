@@ -7,7 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Android app for real-time on-device license plate detection and OCR. Uses a YOLO TFLite model for bounding-box detection and ML Kit for text recognition. The working directory for the Android project is `android/` (this folder); Gradle commands must be run from here.
+**Internal-only, not published to Google Play** — the training-data-collection counterpart to the
+public [`../android/`](../android/CLAUDE.md) app (see [REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md)).
+It started as a full copy of `android/` (same detection/OCR/capture/upload pipeline, `applicationId`
+`com.github.yuriysemen.platesdetector.training`) and is where all data-collection code now lives —
+`android/` no longer has any of it. Live detection (YOLO TFLite + ML Kit OCR) still exists here
+because capture decisions depend on it, not because this app is meant to be used as a detector by
+itself. The working directory for this Android project is `training-android/` (this folder);
+Gradle commands must be run from here.
 
 ## Build commands
 
@@ -67,6 +74,8 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 - `UploadLog` — persistent (`filesDir/upload_log.json`, capped 100); `ModelUpdateLog` — in-memory, capped 100.
 
 **Auth:** `CognitoAuthManager.getAwsCredentials()` is serialized process-wide by a companion `Mutex` (the periodic/startup/inline `ModelCheckWorker` paths + `UploadDatasetWorker` were racing the credential cache). Terminal Cognito errors map to `SessionExpiredException`. A persistent API 401/403, even after a forced credential refresh, fails the job with a message but **keeps the user signed in** — this is the curator-role / config case, not a dead session. `AppConfig.seedPrefsIfNeeded()` re-seeds `UploadPrefs` if the APK was rebuilt for a different backend and wipes the stale session. `signOut()` also clears the SDK's own `CognitoIdentityProviderCache` / `com.amazonaws.android.auth` prefs.
+
+**Backend configuration (REQ-032):** `COGNITO_USER_POOL_ID` / `COGNITO_APP_CLIENT_ID` / `COGNITO_IDENTITY_POOL_ID` / `UPLOAD_SERVICE_URL` can now be edited on-device via `BackendConfigScreen`, not just baked in at build time. Every runtime call site already read these from `UploadPrefs` (not `BuildConfig` directly), so this was mostly a UI addition. Each field has its own "pinned" flag in `UploadPrefs` (`is*Pinned()` / `set*Manual()`) — once set via the screen, `AppConfig.seedPrefsIfNeeded()` skips that field forever, even across rebuilds with different `local.properties` values (a manual edit always wins). `AppConfig.IDENTITY_POOL_ID_PATTERN` (`<region>:<uuid>`) is the shared validity check used by `isConfigured`, `isBackendConfigured()`, and the screen's own save validation — plain non-empty wasn't enough, since a `local.properties` copy-pasted from `local.properties.example` without editing it is non-empty but not a real value. `NoModelsScreen` also has an always-visible "Configure backend…" link, independent of whatever `isBackendConfigured()` reports, so the screen is reachable no matter what state the stored config is in.
 
 **Backup:** `android:allowBackup="false"` — no cloud Auto Backup, no `adb backup`. `res/xml/data_extraction_rules.xml` also excludes `training_data/`, `exports/`, `models/`, `upload_log.json` and the Cognito prefs from Android 12+ device-to-device transfer.
 

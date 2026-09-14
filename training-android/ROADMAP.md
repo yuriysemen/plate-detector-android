@@ -1,6 +1,15 @@
 # Roadmap
 
+> This app (`training-android/`) is the unpublished data-collection counterpart split out of
+> `android/` per [REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md).
+> This history is inherited from `android/` as of the split — everything below still applies here;
+> `android/`'s own roadmap now only covers the detection-only app.
+
 ## Done
+
+### Backend configuration (requirements: REQ-032)
+- [x] **In-app backend configuration screen** — `BackendConfigScreen` edits `COGNITO_USER_POOL_ID` / `COGNITO_APP_CLIENT_ID` / `COGNITO_IDENTITY_POOL_ID` / `UPLOAD_SERVICE_URL` on-device instead of requiring a rebuild; each field "pins" independently once manually saved, permanently opting out of build-time reconciliation; reachable from Settings, from `NoModelsScreen`'s always-visible "Configure backend…" link, and auto-routed to from a sign-in attempt while unconfigured; validates the Identity Pool ID's `<region>:<uuid>` shape so a placeholder/malformed value is never silently treated as configured
+- [x] **Model-discovery validation** — `PlateDetector.isValidModel()` filters candidate models by their actual tensor shape before they're selectable, and the asset scan is scoped to `assets/models/` only (an earlier whole-assets-root fallback could surface an unrelated `.tflite` bundled by a dependency like ML Kit and crash on construction instead of showing "No detection model found")
 
 ### Camera
 - [x] Live camera preview (CameraX, back camera)
@@ -31,7 +40,6 @@
 - [x] Multiple models selectable in Settings
 - [x] Model description from `.txt` sidecar file
 - [x] Delete downloaded model (auto-replaced when an update is applied; removed on a **different-user** sign-in or backend reconfigure — no longer on a plain sign-out, REQ-029)
-- [x] Model-discovery validation — `PlateDetector.isValidModel()` filters candidate models by their actual tensor shape before they're selectable, and asset discovery is scoped to `assets/models/` only (an earlier whole-assets-root fallback could surface an unrelated `.tflite` bundled by a dependency like ML Kit and crash on construction instead of showing "No detection model found")
 - ~~Custom model import from device storage~~ — removed in REQ-016; server download is now the only runtime update path
 
 ### UI

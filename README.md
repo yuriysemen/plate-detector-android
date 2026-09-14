@@ -11,8 +11,9 @@ over time.
 
 | Component | What it demonstrates |
 |---|---|
-| [`android/`](android/README.md) — the detection app | On-device ML (TFLite YOLO + ML Kit OCR), Cognito auth, SigV4-signed cloud upload, background work scheduling |
-| [`curation-android/`](curation-android/README.md) — the data-curation app | A second, purpose-built Android app for a human-in-the-loop labeling workflow directly against S3 (no backend API) |
+| [`android/`](android/README.md) — the published detection app | On-device ML (TFLite YOLO + ML Kit OCR). Being trimmed to detection-only, no storage/upload/accounts — see [REQ-031](requirements/REQ-031-draft-split-detection-and-training-apps.md) |
+| [`training-android/`](training-android/README.md) — the data-collection app | Cognito auth, SigV4-signed cloud upload, background work scheduling — everything `android/`'s collection pipeline used to do, now unpublished and internal-only |
+| [`curation-android/`](curation-android/README.md) — the data-curation app | A third, purpose-built Android app for a human-in-the-loop labeling workflow directly against S3 (no backend API) |
 | [`infra/aws/`](infra/aws/README.md) — cloud infrastructure | AWS SAM: S3, Lambda, API Gateway, Cognito User/Identity Pools, scoped IAM roles |
 | [`training/`](training/ultralytics/README.md) / [`experiments/`](experiments/ultralytics/README.md) — model training | Python YOLO training/export pipelines that consume the curated dataset |
 | [`requirements/`](requirements/README.md) | Spec-driven development trail — one `REQ-NNN` doc per feature, from initial detection format through cloud upload, curation workflow, and auth hardening |
