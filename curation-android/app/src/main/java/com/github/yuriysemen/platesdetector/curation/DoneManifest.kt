@@ -3,8 +3,12 @@ package com.github.yuriysemen.platesdetector.curation
 import org.json.JSONObject
 
 /**
- * Written to `done/<package_id>/_manifest.json` on Complete — a small audit record. The curated
- * images themselves live under `done/<package_id>/<subset>/{images,labels}/`.
+ * Written on Complete (REQ-035) to `<doneBaseKey>._manifest.json` — a small audit record kept as
+ * an un-zipped sidecar, deliberately, so `CurationRepository.listDone()` can list every completed
+ * package's summary without downloading and unzipping its archive. The curated images themselves
+ * are in the sibling archive named by [doneZipKey] (rejected items similarly in [rejectedZipKey]).
+ * A manifest from before REQ-035 has neither — its images live loose under the pre-REQ-035
+ * `done/<package_id>/<subset>/{images,labels}/` shape instead.
  */
 data class DoneManifest(
     val packageId: String,
@@ -20,6 +24,8 @@ data class DoneManifest(
     val reviewers: Map<String, ReviewerCount>,  // per-curator accept/reject tally
     val categoryListVersion: Int,               // REQ-025 class scheme in force
     val classCounts: Map<String, Int>,          // accepted-box count per class key
+    val doneZipKey: String? = null,             // REQ-035: S3 key of the accepted-items archive; null if nothing was accepted
+    val rejectedZipKey: String? = null,         // REQ-035: S3 key of the rejected-items archive; null if nothing was rejected
 ) {
     fun toJson(): String = JSONObject().apply {
         put("package_id", packageId)
@@ -42,6 +48,8 @@ data class DoneManifest(
         })
         put("category_list_version", categoryListVersion)
         put("class_counts", JSONObject(classCounts.toMap()))
+        if (doneZipKey != null) put("done_zip_key", doneZipKey)
+        if (rejectedZipKey != null) put("rejected_zip_key", rejectedZipKey)
     }.toString(2)
 
     companion object {
@@ -70,6 +78,8 @@ data class DoneManifest(
                 reviewers = revMap,
                 categoryListVersion = o.optInt("category_list_version", 1),
                 classCounts = ccMap,
+                doneZipKey = o.optString("done_zip_key", "").ifEmpty { null },
+                rejectedZipKey = o.optString("rejected_zip_key", "").ifEmpty { null },
             )
         }
     }

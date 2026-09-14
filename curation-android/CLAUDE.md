@@ -79,13 +79,13 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 | `PackageId` / `UploadRef` | `packageIdOf(sub, device, filename)`; parse `uploads/<sub>/<device>/<file>.zip` |
 | `YoloLabel` | YOLO `.txt` parse/format (comma-decimal + blank-line tolerant); `format(boxes, classOverrides)` for the curator's chosen classes |
 | `VehicleCategories` | Category-list infrastructure kept from REQ-025, now a single `license_plate` entry — `fromJson`/`fromJsonObject` + `bundledDefault(context)` (`assets/vehicle-categories.json`). `id` = YOLO class id, pinned. `toJsonObject()` embeds the full list, not just its version — what a package snapshots at Start |
-| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and `done/<id>/_manifest.json`; `withDecision`, `withItemBoxes` (working geometry + `box_classes`), `reviewers()`, `classCounts()`, count helpers. `CurationManifest.categories` is the package's own category-list snapshot (`category_list` JSON key) |
+| `CurationManifest` / `DoneManifest` | JSON models for `curation/<id>/manifest.json` and the `done/`/`rejected/` completion sidecar/archives (REQ-035, see below); `withDecision`, `withItemBoxes` (working geometry + `box_classes`), `reviewers()`, `classCounts()`, count helpers. `CurationManifest.categories` is the package's own category-list snapshot (`category_list` JSON key). `DoneManifest.doneZipKey`/`.rejectedZipKey` point at the sibling archives |
 | `PackageCache` | `filesDir/packages/<id>/` — zip-slip-guarded unzip, item listing, label read/write, delete |
 | `CurationRepository` | All S3 (paginated `ListObjectsV2`, get/put/delete): `listNotProcessed` / `listInProgress` (→ `InProgressItem` with last-activity ms) / `listDone`, `startPackage`, `putManifest`, `ensureLocalCopy`, `completePackage`, `releasePackage`. Also `checkAccess()` (REQ-022). |
 | `CurationViewModel` | Tab states, blocking `busy` progress, review `session`, `decide()` (stamps `decided_by`/`decided_at`, rewrites manifest, auto-advances), `complete`/`release`, ~3 min manifest heartbeat |
 | `CurationHomeScreen` | Bottom-nav tabs + busy dialog + error snackbar; hosts `ReviewScreen` full-screen when a session is open |
 | `PackageTabs` | `NotProcessedTab` / `InProgressTab` (stale rows → Discard / Take over) / `DoneTab` |
-| `CurationRepository` | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback, used only to embed a snapshot at `startPackage` / as a legacy-manifest fallback); `completePackage` regenerates `data.yaml` header from its `categories` param and `check()`s its version matches the manifest's |
+| `CurationRepository` | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback, used only to embed a snapshot at `startPackage` / as a legacy-manifest fallback); `completePackage` builds and uploads compressed archives (REQ-035, see below), regenerating `data.yaml`'s header from its `categories` param inside the accepted-items zip and `check()`ing its version matches the manifest's |
 | `BoxGeometry` (REQ-024) | Pure, Compose-free geometry in normalized `[0,1]` box space, unit-tested: `hitTest` (selected box's 8 handles first, else topmost box body), `applyHandle` (move/resize one box, clamped to image bounds + a min size) |
 | `CurationViewModel` (REQ-024) | `currentBoxes()` (boxes, all implicitly `LICENSE_PLATE_CLASS_ID`) / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()` |
 | `ReviewScreen` | Image + box overlay (cyan, pink when selected — no more amber/unclassified state), top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject/Accept/Next when pending, Prev/**Change decision**/Next when already decided (REQ-034 — no reason prompt on reject, no confirmation on change-decision), jump-to-item sheet. Accept blocked only while there are zero boxes. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
@@ -97,9 +97,10 @@ the Identity Pool `logins` map → because the ID token carries the `curators` g
 pool's **token-based role mapping** returns `CuratorRole` credentials.
 
 **Workflow state is entirely S3-file-derived** — no status field / DB. Not Processed = an
-`uploads/**/*.zip` with no `curation/<id>/manifest.json` and no `done/<id>/_manifest.json`;
-In Progress = the curation manifest exists; Done = the done manifest exists. Transitions are
-PUT/DELETE of those files.
+`uploads/**/*.zip` with no `curation/<id>/manifest.json` and no done manifest sidecar anywhere
+under `done/`; In Progress = the curation manifest exists; Done = a done manifest sidecar exists.
+Transitions are PUT/DELETE of those files. "A done manifest sidecar exists" checks both naming
+schemes — see "Completion output (REQ-035)" below.
 
 **Vehicle classification removed.** REQ-025 originally required curators to pick a vehicle type
 (civil / police / fire / medical / other / license_plate) per box before Accept. That's gone —
@@ -125,6 +126,36 @@ consistent — it still snapshots and completes against the old 6-class list, so
 package isn't disrupted by the version bump to a single class. `completePackage` additionally
 `check()`s the version matches as a backstop. A manifest from before the snapshot existed has no
 snapshot and falls back to a fresh fetch/bundled list, same risk as before.
+
+**Completion output (REQ-035).** `completePackage()` uploads compressed archives, not one S3
+object per image/label — a 100-item package's output is a small, constant number of `PUT`s instead
+of 200+. Layout, mirroring `uploads/<sub>/<device>/<filename>.zip`'s nested path shape rather than
+the flat `packageId` used for `curation/` and the local cache:
+
+```
+done/<sub>/<device>/<filename-stem>-curated-<YYYYMMDD>_<HHmmss>.zip            ← accepted items: <subset>/images/, <subset>/labels/, data.yaml
+done/<sub>/<device>/<filename-stem>-curated-<YYYYMMDD>_<HHmmss>._manifest.json  ← sidecar, NOT zipped in
+rejected/<sub>/<device>/<filename-stem>-rejected-<YYYYMMDD>_<HHmmss>.zip        ← rejected items: <subset>/images/, <subset>/labels/ — no manifest, nothing lists rejected/
+```
+
+The manifest stays an un-zipped sidecar, deliberately: `listDone()` populates the Done tab by
+listing every `_manifest.json` under `done/` and reading each one directly (small, individually
+fetchable). If it moved inside the zip, showing the Done tab would mean downloading and unzipping
+every completed package. `DoneManifest.doneZipKey` / `.rejectedZipKey` record the sibling
+archive's S3 key (null if that side had nothing — e.g. a fully-rejected package has no
+`doneZipKey`) so later tooling doesn't have to guess it from the manifest's own key. Neither zip's
+existence is retroactive — a package completed **before** this shipped keeps living under the old
+flat `done/<packageId>/<subset>/{images,labels}/` layout with loose files and no per-item archive;
+`listNotProcessed()`/`listDone()` recognize both the old and new manifest-sidecar shapes
+(`PackageId.packageIdFromDoneManifestKey` for the new one, a string suffix-strip for the old one)
+so neither an old nor a new completed package is mistaken for un-processed.
+
+`ReviewScreen`'s top app bar has an always-visible "Complete" action (a checkmark icon), enabled
+only once `session.manifest.pending == 0` — the same trigger `PackageTabs.kt`'s list-row Complete
+button already used, just reachable without leaving the review screen. `CurationViewModel.complete()`
+drops the open session directly on success when it's the one just completed, rather than relying
+on the caller to separately call `closeSession()` — otherwise a stale heartbeat/flush could
+resurrect the `curation/<id>/manifest.json` that `completePackage()` just deleted.
 
 ## Infra
 

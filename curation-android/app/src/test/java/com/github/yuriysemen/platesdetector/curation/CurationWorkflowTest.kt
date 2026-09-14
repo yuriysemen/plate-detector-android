@@ -37,6 +37,40 @@ class PackageIdTest {
         assertNull(parseUploadKey("uploads/sub/dev/notazip.txt", 0, 0))
         assertNull(parseUploadKey("uploads/sub/dev/a/b.zip", 0, 0))
     }
+
+    // ── REQ-035: completed-package archive naming ───────────────────────────
+
+    @Test
+    fun doneAndRejectedBaseKeysMirrorUploadPath() {
+        assertEquals(
+            "done/sub1/dev1/file-curated-20260101_120000",
+            doneBaseKey("sub1", "dev1", "file.zip", "20260101_120000"),
+        )
+        assertEquals(
+            "rejected/sub1/dev1/file-rejected-20260101_120000",
+            rejectedBaseKey("sub1", "dev1", "file.zip", "20260101_120000"),
+        )
+    }
+
+    @Test
+    fun packageIdFromDoneManifestKeyRoundTripsWithPackageIdOf() {
+        val key = "${doneBaseKey("sub1", "dev1", "file.zip", "20260101_120000")}._manifest.json"
+        assertEquals(packageIdOf("sub1", "dev1", "file.zip"), packageIdFromDoneManifestKey(key))
+    }
+
+    @Test
+    fun packageIdFromDoneManifestKeyRejectsOldFlatShape() {
+        // Pre-REQ-035 shape: done/<packageId>/_manifest.json — only two segments after "done/",
+        // not the three this parser expects. CurationRepository falls back to a separate,
+        // string-based path for this shape rather than this function returning something wrong.
+        assertNull(packageIdFromDoneManifestKey("done/sub1__dev1__file/_manifest.json"))
+    }
+
+    @Test
+    fun packageIdFromDoneManifestKeyRejectsNonDonePrefix() {
+        assertNull(packageIdFromDoneManifestKey("rejected/sub1/dev1/file-rejected-20260101_120000.zip"))
+        assertNull(packageIdFromDoneManifestKey("done/sub1/dev1/file-curated-20260101_120000.zip"))
+    }
 }
 
 class YoloLabelTest {

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -143,6 +144,16 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                     }
                     IconButton(onClick = { showJump = true }) {
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Jump to item")
+                    }
+                    // REQ-035: always visible, so Complete never requires backing out to the
+                    // In Progress list — enabled only once every item has been taken to a
+                    // decision (accepted or rejected), same trigger PackageTabs.kt's list-row
+                    // Complete button already uses.
+                    IconButton(
+                        onClick = { vm.complete(session.manifest) {} },
+                        enabled = session.manifest.pending == 0,
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Complete package")
                     }
                 },
             )

@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /** `(current, total)` progress for a long-running S3 operation. */
 typealias ProgressSink = (current: Int, total: Int) -> Unit
@@ -73,13 +76,29 @@ class CurationRepository(
         val s3 = client()
         val taken = buildSet {
             addAll(packageIdsWithSuffix(s3, "curation/", "/manifest.json"))
-            addAll(packageIdsWithSuffix(s3, "done/", "/_manifest.json"))
+            addAll(doneManifestPackageIds(s3))
         }
         listKeys(s3, "uploads/")
             .mapNotNull { parseUploadKey(it.key, it.size, it.lastModified?.time ?: 0L) }
             .filter { it.packageId !in taken }
             .sortedBy { it.lastModifiedMs }
     }
+
+    /**
+     * `packageId`s already completed under `done/`, in either naming scheme: the current nested
+     * `done/<sub>/<device>/<stem>-curated-<ts>._manifest.json` (REQ-035), or the pre-REQ-035 flat
+     * `done/<packageId>/_manifest.json` — both are supported so an upload completed before this
+     * shipped doesn't reappear in Not Processed.
+     */
+    private fun doneManifestPackageIds(s3: AmazonS3Client): Set<String> =
+        listKeys(s3, "done/")
+            .filter { it.key.endsWith("_manifest.json") }
+            .mapNotNull { summary ->
+                packageIdFromDoneManifestKey(summary.key)
+                    ?: summary.key.removePrefix("done/").removeSuffix("/_manifest.json")
+                        .takeIf { it != summary.key }
+            }
+            .toSet()
 
     suspend fun listInProgress(): List<InProgressItem> = withContext(Dispatchers.IO) {
         val s3 = client()
@@ -94,8 +113,11 @@ class CurationRepository(
 
     suspend fun listDone(): List<DoneManifest> = withContext(Dispatchers.IO) {
         val s3 = client()
+        // Matches both the current `<stem>-curated-<ts>._manifest.json` (REQ-035) and the
+        // pre-REQ-035 flat `<packageId>/_manifest.json` sidecar shape — DoneManifest.fromJson
+        // already tolerates either schema (the REQ-035 fields are optional).
         listKeys(s3, "done/")
-            .filter { it.key.endsWith("/_manifest.json") }
+            .filter { it.key.endsWith("_manifest.json") }
             .mapNotNull { runCatching { DoneManifest.fromJson(getText(s3, it.key)) }.getOrNull() }
             .sortedByDescending { it.completedAt }
     }
@@ -161,6 +183,13 @@ class CurationRepository(
 
     // ── Complete / release ─────────────────────────────────────────────────
 
+    /**
+     * Uploads a package's outcome as compressed archives (REQ-035) — one `PUT` for every accepted
+     * item's image+label plus `data.yaml`, one for every rejected item's image+label, and one
+     * small `_manifest.json` sidecar — instead of the pre-REQ-035 individual `PUT` per file (200+
+     * requests for a 100-image package). The manifest sidecar stays un-zipped so [listDone] can
+     * keep listing completed packages without downloading and unzipping every archive.
+     */
     suspend fun completePackage(
         manifest: CurationManifest,
         categories: VehicleCategories,
@@ -180,31 +209,43 @@ class CurationRepository(
         }
         val s3 = client()
         val id = manifest.packageId
-        val ops = mutableListOf<Pair<File, String>>()
+        val timestamp = completionTimestamp()
 
         manifest.items.forEach { item ->
-            val dest = when (item.status) {
-                ItemStatus.ACCEPTED -> "done/$id"
-                ItemStatus.REJECTED -> "rejected/$id"
-                ItemStatus.PENDING -> return@forEach
-            }
             if (item.status == ItemStatus.ACCEPTED && item.labelContent != null) {
                 cache.writeLabel(id, item.subset, item.basename, item.labelContent)
             }
-            val img = File(cache.dir(id), "${item.subset}/images/${item.imageName}")
-            val lbl = File(cache.dir(id), "${item.subset}/labels/${item.basename}.txt")
-            if (img.exists()) ops += img to "$dest/${item.subset}/images/${item.imageName}"
-            if (lbl.exists()) ops += lbl to "$dest/${item.subset}/labels/${item.basename}.txt"
         }
 
-        val total = ops.size + 2
-        ops.forEachIndexed { i, (file, key) ->
-            putFile(s3, key, file)
-            onProgress(i + 1, total)
+        val acceptedItems = manifest.items.filter { it.status == ItemStatus.ACCEPTED }
+        val rejectedItems = manifest.items.filter { it.status == ItemStatus.REJECTED }
+        val steps = (if (acceptedItems.isNotEmpty()) 1 else 0) +
+            (if (rejectedItems.isNotEmpty()) 1 else 0) + 1 // + manifest sidecar
+        var step = 0
+
+        var doneZipKey: String? = null
+        if (acceptedItems.isNotEmpty()) {
+            val zipFile = File(tmpDir, "$id-done.zip")
+            buildZip(
+                zipFile,
+                itemFileEntries(id, acceptedItems),
+                listOf("data.yaml" to rewriteDataYamlHeader(cache.readDataYaml(id), categories)),
+            )
+            doneZipKey = "${doneBaseKey(manifest.userSub, manifest.deviceId, manifest.filename, timestamp)}.zip"
+            putFile(s3, doneZipKey, zipFile)
+            zipFile.delete()
+            onProgress(++step, steps)
         }
 
-        putText(s3, "done/$id/data.yaml", rewriteDataYamlHeader(cache.readDataYaml(id), categories))
-        onProgress(total - 1, total)
+        var rejectedZipKey: String? = null
+        if (rejectedItems.isNotEmpty()) {
+            val zipFile = File(tmpDir, "$id-rejected.zip")
+            buildZip(zipFile, itemFileEntries(id, rejectedItems))
+            rejectedZipKey = "${rejectedBaseKey(manifest.userSub, manifest.deviceId, manifest.filename, timestamp)}.zip"
+            putFile(s3, rejectedZipKey, zipFile)
+            zipFile.delete()
+            onProgress(++step, steps)
+        }
 
         val done = DoneManifest(
             packageId = id,
@@ -220,13 +261,49 @@ class CurationRepository(
             reviewers = manifest.reviewers(),
             categoryListVersion = manifest.categoryListVersion,
             classCounts = manifest.classCounts(categories),
+            doneZipKey = doneZipKey,
+            rejectedZipKey = rejectedZipKey,
         )
-        putText(s3, "done/$id/_manifest.json", done.toJson())
-        onProgress(total, total)
+        val manifestKey = "${doneBaseKey(manifest.userSub, manifest.deviceId, manifest.filename, timestamp)}._manifest.json"
+        putText(s3, manifestKey, done.toJson())
+        onProgress(++step, steps)
 
         s3.deleteObject(bucket, "curation/$id/manifest.json")
         cache.delete(id)
         done
+    }
+
+    /** `<subset>/images/<image>` + `<subset>/labels/<basename>.txt` zip-entry-name → local-file
+     *  pairs for the given items, skipping any file that isn't actually present on disk. */
+    private fun itemFileEntries(packageId: String, items: List<ManifestItem>): List<Pair<String, File>> =
+        items.flatMap { item ->
+            val img = File(cache.dir(packageId), "${item.subset}/images/${item.imageName}")
+            val lbl = File(cache.dir(packageId), "${item.subset}/labels/${item.basename}.txt")
+            buildList {
+                if (img.exists()) add("${item.subset}/images/${item.imageName}" to img)
+                if (lbl.exists()) add("${item.subset}/labels/${item.basename}.txt" to lbl)
+            }
+        }
+
+    /** Zips [fileEntries] (zip-entry-name → source file) plus [textEntries] (zip-entry-name →
+     *  literal content) into [dest]. */
+    private fun buildZip(
+        dest: File,
+        fileEntries: List<Pair<String, File>>,
+        textEntries: List<Pair<String, String>> = emptyList(),
+    ) {
+        ZipOutputStream(FileOutputStream(dest).buffered()).use { zos ->
+            fileEntries.forEach { (entryName, file) ->
+                zos.putNextEntry(ZipEntry(entryName))
+                file.inputStream().use { it.copyTo(zos) }
+                zos.closeEntry()
+            }
+            textEntries.forEach { (entryName, text) ->
+                zos.putNextEntry(ZipEntry(entryName))
+                zos.write(text.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+            }
+        }
     }
 
     suspend fun releasePackage(packageId: String) = withContext(Dispatchers.IO) {

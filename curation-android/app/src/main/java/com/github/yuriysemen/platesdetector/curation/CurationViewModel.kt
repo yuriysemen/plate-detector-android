@@ -306,7 +306,17 @@ class CurationViewModel(
                 }
             }
             busy = null
-            if (ok) { onDone(); refreshInProgress(); refreshDone() }
+            if (ok) {
+                // Completing from inside an open ReviewScreen session (REQ-035): the manifest
+                // completePackage() just deleted from curation/ must not get resurrected by a
+                // stale heartbeat/flush, so drop the session directly rather than relying on the
+                // caller to separately call closeSession().
+                if (session?.manifest?.packageId == manifest.packageId) {
+                    heartbeatJob?.cancel()
+                    session = null
+                }
+                onDone(); refreshInProgress(); refreshDone()
+            }
         }
     }
 
