@@ -5,12 +5,14 @@ status: draft
 priority: high
 ---
 
-> **Scope note (REQ-031):** if the app is split per
-> [REQ-031](REQ-031-draft-split-detection-and-training-apps.md), the next release is a
-> *simplification* (detection-only, nothing collected) rather than the account/upload-adding
-> release this document assumed. Re-check each section below against REQ-031's final shape before
-> using this as a checklist — most of §§1–4 still apply (version bump, store listing refresh), but
-> the Data Safety / account-deletion work in REQ-007 becomes unnecessary rather than a blocker.
+> **Scope note (REQ-031):** the app has been split per
+> [REQ-031](REQ-031-done-split-detection-and-training-apps.md), now done — the next release is a
+> *simplification* (detection-only, nothing collected), not the account/upload-adding release this
+> document originally assumed. Most of §§1–4 below still apply as written (version bump, store
+> listing refresh, rollout strategy), but the Data Safety / account-deletion work in REQ-007 is now
+> unnecessary rather than a blocker — REQ-007's scope note explains why. Release sequencing (is
+> this split itself the next submission, or a separate smaller one first) is still an open call,
+> not resolved by either document.
 
 ## Summary
 

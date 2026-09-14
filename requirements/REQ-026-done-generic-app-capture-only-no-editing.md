@@ -7,6 +7,8 @@ depends_on: REQ-005, REQ-011, REQ-014, REQ-022
 supersedes_partial: REQ-011, REQ-012
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 The generic `plate-detector-android` app currently collects training frames **and** lets the

@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Defines the full layout, controls, and preference persistence for `SettingsScreen`. The screen is opened from the hamburger button in `LiveDetectionUi` and closed via the system Back gesture (which also commits the selected model).

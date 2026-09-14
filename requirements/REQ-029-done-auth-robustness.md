@@ -7,6 +7,8 @@ depends_on: REQ-014, REQ-016, REQ-022, REQ-027, REQ-028
 supersedes_partial: REQ-016
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Two parts, from one investigation into a `get-model-url HTTP 403` / "session expired" report:

@@ -1,9 +1,11 @@
 # Plate Detector (Android)
 
-The main app: real-time on-device license-plate detection (TFLite YOLO) with ML Kit OCR, plus an
-opt-in "Contribute data" flow that uploads collected frames to a private AWS S3 bucket for later
-curation and retraining. See the [repo-level README](../README.md) for the full feature list,
-privacy notes, and license.
+The published app: real-time on-device license-plate detection (TFLite YOLO) with ML Kit OCR.
+**Detection-only** — it stores nothing, uploads nothing, requires no account, and makes no
+network calls at runtime ([REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md)).
+The account/capture/upload pipeline this app used to have now lives in the internal, unpublished
+[`../training-android/`](../training-android/README.md) app instead. See the
+[repo-level README](../README.md) for the full feature list, privacy notes, and license.
 
 ## Quick start
 
@@ -15,17 +17,15 @@ privacy notes, and license.
 ```
 
 A model is required to run detection — see [Getting a model for the Android app](../README.md#getting-a-model-for-the-android-app)
-in the repo README for the three ways to provide one locally.
-
-The cloud upload / model-update features need `local.properties` configured from the
-[`infra/aws`](../infra/aws/README.md) stack outputs — copy `local.properties.example` to
-`local.properties` and fill in the `COGNITO_*` / `UPLOAD_SERVICE_URL` values. Without it, the app
-still builds and runs detection; only sign-in and upload are unavailable.
+in the repo README for the three ways to provide one locally. All of them are build-time only;
+there's no runtime download path here.
 
 ## More detail
 
 - [`CLAUDE.md`](CLAUDE.md) — architecture, key files, and build/config notes for anyone (human or
   AI) making changes here.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — deeper architecture reference.
-- [`ROADMAP.md`](ROADMAP.md) — full feature backlog and history.
+- [`ROADMAP.md`](ROADMAP.md) — feature backlog and history for this app specifically; see
+  [`../training-android/ROADMAP.md`](../training-android/ROADMAP.md) for the capture/upload/auth
+  history that used to be here.
 - [`../requirements/`](../requirements/README.md) — the spec each feature was built against.

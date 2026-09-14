@@ -6,6 +6,8 @@ priority: high
 note: Dataset Editor + Frame Detail sections removed by REQ-026 (all editing moved to curation-android). The configurable storage-quota section remains in force.
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Add a **Dataset Editor** screen that lets the user review, correct, and prune collected training images before they are exported as a YOLO dataset. Editing happens on the raw on-device data (`training_data/images/` + `training_data/labels/`) and is fully decoupled from the export pipeline (REQ-002 export logic is unchanged).

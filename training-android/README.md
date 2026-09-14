@@ -3,7 +3,7 @@
 Internal-only Android app, **not published to Google Play**, used to build the training dataset
 for the detection model. It's a copy of the published [`../android/`](../android/README.md) app
 that keeps the full sign-in / capture / cloud-upload pipeline `android/` no longer has — see
-[REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md) for why the two were
+[REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md) for why the two were
 split. Detected/captured frames upload to the same S3 bucket `curation-android` reads from.
 
 ## Quick start

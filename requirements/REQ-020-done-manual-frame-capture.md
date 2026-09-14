@@ -6,6 +6,8 @@ priority: medium
 depends_on: REQ-002, REQ-005, REQ-006
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Add a manual capture button to the live detection screen so the user can save a frame even when the model fails to detect a plate. The saved frame has an empty label file — the user can add bounding boxes later in the Dataset Editor. Empty label files are the natural marker for manually captured "missed" cases, distinguishable from auto-captured frames which always have at least one annotation.

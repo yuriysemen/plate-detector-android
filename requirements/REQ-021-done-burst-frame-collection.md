@@ -6,6 +6,8 @@ priority: medium
 depends_on: REQ-002, REQ-005, REQ-006, REQ-020
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Add a burst collection mode to the live detection screen. The user sets a target photo count (default 100), taps a burst button to start, and the app saves every analyzed frame (with YOLO labels when detections are available, or empty labels otherwise) until the target is reached. On completion a dialog offers to upload the collected data and start a new round, or stop collecting.

@@ -1,7 +1,7 @@
 # Architecture
 
 > This app (`training-android/`) is the unpublished data-collection counterpart split out of
-> `android/` per [REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md).
+> `android/` per [REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md).
 > Everything below describes this app's code as-is — nothing was removed here.
 
 ## Overview

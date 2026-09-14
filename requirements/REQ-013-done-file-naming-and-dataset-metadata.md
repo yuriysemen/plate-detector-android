@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Change collected frame file names to embed capture date, time, and a 6-digit sequence number, and enrich the exported `data.yaml` with device and build metadata so every exported package is self-describing and uniquely traceable.

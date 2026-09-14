@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 **Internal-only, not published to Google Play** — the training-data-collection counterpart to the
-public [`../android/`](../android/CLAUDE.md) app (see [REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md)).
+public [`../android/`](../android/CLAUDE.md) app (see [REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md)).
 It started as a full copy of `android/` (same detection/OCR/capture/upload pipeline, `applicationId`
 `com.github.yuriysemen.platesdetector.training`) and is where all data-collection code now lives —
 `android/` no longer has any of it. Live detection (YOLO TFLite + ML Kit OCR) still exists here

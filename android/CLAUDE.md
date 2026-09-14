@@ -7,7 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Android app for real-time on-device license plate detection and OCR. Uses a YOLO TFLite model for bounding-box detection and ML Kit for text recognition. The working directory for the Android project is `android/` (this folder); Gradle commands must be run from here.
+**Published, detection-only Android app** — real-time on-device license plate detection and OCR.
+Uses a YOLO TFLite model for bounding-box detection and ML Kit for text recognition. It stores
+nothing, uploads nothing, requires no account, and makes no network calls at runtime (see
+[REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md)). The
+account/capture/upload pipeline this app used to have now lives entirely in
+[`../training-android/`](../training-android/CLAUDE.md), an internal, unpublished counterpart —
+its history is what most of this app's `ROADMAP.md` used to describe.
+
+The working directory for the Android project is `android/` (this folder); Gradle commands must
+be run from here.
 
 ## Build commands
 
@@ -33,7 +42,9 @@ Signed release builds require env vars: `ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTO
 ## Model files
 
 The `preBuild` task downloads a bundled default model from the latest GitHub Release tagged
-`model_v<x.y.z>` (semantic version, private repo). For local builds, three options:
+`model_v<x.y.z>` (semantic version, private repo) — this happens at **build time only**, on the
+developer's machine or in CI; the installed app never makes a network call. For local builds,
+three options:
 
 1. **Token in `local.properties`** (recommended) — add `MODEL_DOWNLOAD_TOKEN=ghp_<pat>` (needs
    `repo` scope). The token is also resolved from the Gradle property `MODEL_DOWNLOAD_TOKEN` or
@@ -41,11 +52,8 @@ The `preBuild` task downloads a bundled default model from the latest GitHub Rel
 2. **Manual placement** — copy `.tflite` + `.txt` sidecar to
    `app/src/main/assets/models/`; the download step is skipped when the file already exists.
 3. **No model** — if neither is available the build succeeds with a `[WARN]`; the app shows a
-   "No detection model" screen and waits for a runtime download after sign-in.
-
-At runtime, signed-in users receive model updates via `GET /get-model-url` (Lambda); downloaded
-models live in `filesDir/models/downloaded/`. They're kept across sign-out and removed only when a
-**different** account signs in or the app is rebuilt for a different Cognito backend (REQ-029).
+   "No detection model" screen with a Retry button. There is no runtime download path — a missing
+   model can only be fixed by rebuilding or manually placing a file and reinstalling.
 
 ## Architecture
 
@@ -55,22 +63,17 @@ The app is entirely single-Activity Compose. `MainActivity` renders `LivePlateDe
 1. `LivePlateDetectionScreen` — discovers available models, manages prefs, routes between `SettingsScreen` and `LiveDetectionUi`.
 2. `LiveDetectionUi` — sets up CameraX, runs `PlateDetector` on each frame via `ImageAnalysis` (throttled to ~8 fps), optionally chains `PlateOCR` on each detected bounding box. Hosts camera controls: pinch-to-zoom, tap-to-focus, torch toggle (`camera.cameraControl.enableTorch()`; auto-off on background), zoom shortcut buttons (1×/2×/3×), and EV compensation slider (`setExposureCompensationIndex()`). Analysis resolution is selected in Settings and applied via `ResolutionSelector` on camera bind.
 3. `CameraPreviewWithAnalysis` — binds CameraX `Preview` + `ImageAnalysis` to the lifecycle. Frame → YUV→NV21→JPEG→Bitmap conversion, rotation, then detection on a single-thread executor.
-4. `PlateDetector` — wraps TFLite `Interpreter`. Accepts `ModelSource` (asset, file path, or content URI), performs letterbox preprocessing, runs inference, decodes `[1, N, 6]` output (`[x1,y1,x2,y2,score,class]`), and unprojects coordinates back to original-image space. `PlateDetector.isValidModel()` (companion function) does the same shape checks against a candidate file *before* it's offered as selectable — `LivePlateDetectionScreen.availableModels()` filters both `listAssetModels()` and `listDownloadedModels()` through it, so a build with no real model bundled can't accidentally surface an unrelated `.tflite` (e.g. one of ML Kit's own internal OCR models) as a "model" and crash on construction; it shows "No detection model found" instead. `listAssetModels()` only scans `assets/models/` — an earlier fallback that scanned the whole assets root when that folder was empty has been removed, since that's exactly what surfaced ML Kit's files in the first place.
+4. `PlateDetector` — wraps TFLite `Interpreter`. Accepts `ModelSource` (asset or file path), performs letterbox preprocessing, runs inference, decodes `[1, N, 6]` output (`[x1,y1,x2,y2,score,class]`), and unprojects coordinates back to original-image space. `PlateDetector.isValidModel()` (companion function) does the same shape checks against a candidate file *before* it's offered as selectable — `LivePlateDetectionScreen.availableModels()` filters `listAssetModels()` through it, so a build with no real model bundled can't accidentally surface an unrelated `.tflite` (e.g. one of ML Kit's own internal OCR models) as a "model" and crash on construction; it shows "No detection model found" instead. Asset discovery is scoped to `assets/models/` only — no fallback scan of the whole assets root.
 5. `PlateOCR` — wraps ML Kit `TextRecognizer`. Receives a cropped plate bitmap, returns `OCRResult` with cleaned alphanumeric text.
-6. `ContributeScreen` — status card ("Frames waiting to upload", capture-status line, storage-used with ✏ quota edit, "Reset collected data"), storage quota banners (80% / 100%), upload-config card (auth row: **Sign in** / **Sign in again** (non-destructive re-auth) / **Sign out**, or "Session expired"; mobile-data toggle; daily time; last upload), the global "Upload collected data" button (60 s cooldown; tapping mid-upload cancels + restarts fresh), an **"Upload activity"** line + Details dialog over the persistent `UploadLog`, and the "Upload history" list — active/failed entries, per-row **Restart**, and the recorded **failure reason** shown under a failed row. No "View dataset" button (editor removed). Config IDs are `BuildConfig`/`AppConfig`, no UI fields.
-
-**On-device dataset editing was removed (REQ-026).** `DatasetEditorScreen`, `FrameDetailScreen`, `DatasetEditor`, `FrameEntry`, `YoloBox` are gone. The generic app only captures (auto / manual / burst, all shipping the model's predicted boxes) and uploads; review/editing lives in `curation-android`. Capture is gated on **`collect_training_data` AND signed in** — `LiveDetectionUi` computes `captureActive` and nothing is written to `training_data/` unless both hold.
 
 **Key data types:**
-- `ModelSpec` / `ModelSource` (`Asset` / `FilePath` / `ContentUri`) / `CoordFormat` / `Detection` / `ModelOrigin` (`DEFAULT` bundled, `DOWNLOADED`, legacy `CUSTOM`/`LEGACY_EXTERNAL`).
-- `SessionExpiredException` (real expiry → sign out), `ApiUnauthorizedException(httpCode)` (API 401/403, session valid — authz/config, NOT expiry), `RetryableHttpException` (429/5xx), `AuthChallengeException` (MFA / `NEW_PASSWORD_REQUIRED`).
-- `UploadLog` — persistent (`filesDir/upload_log.json`, capped 100); `ModelUpdateLog` — in-memory, capped 100.
+- `ModelSpec` / `ModelSource` (`Asset` / `FilePath` — `FilePath` is unused today since there's no runtime download, kept for type-shape parity with `training-android`) / `CoordFormat` / `Detection` / `ModelOrigin` (only `DEFAULT` is ever produced here; `DOWNLOADED`/`CUSTOM`/`LEGACY_EXTERNAL` are vestigial and harmless).
 
-**Auth:** `CognitoAuthManager.getAwsCredentials()` is serialized process-wide by a companion `Mutex` (the periodic/startup/inline `ModelCheckWorker` paths + `UploadDatasetWorker` were racing the credential cache). Terminal Cognito errors map to `SessionExpiredException`. A persistent API 401/403, even after a forced credential refresh, fails the job with a message but **keeps the user signed in** — this is the curator-role / config case, not a dead session. `AppConfig.seedPrefsIfNeeded()` re-seeds `UploadPrefs` if the APK was rebuilt for a different backend and wipes the stale session. `signOut()` also clears the SDK's own `CognitoIdentityProviderCache` / `com.amazonaws.android.auth` prefs.
-
-**Backup:** `android:allowBackup="false"` — no cloud Auto Backup, no `adb backup`. `res/xml/data_extraction_rules.xml` also excludes `training_data/`, `exports/`, `models/`, `upload_log.json` and the Cognito prefs from Android 12+ device-to-device transfer.
+**Backup:** `android:allowBackup="false"` — no cloud Auto Backup, no `adb backup`. There's no separate `data_extraction_rules.xml` — nothing this app writes (a small `SharedPreferences` file holding the selected model id, confidence, scan interval, and label-visibility toggle) is sensitive enough to need explicit device-transfer exclusion.
 
 **Processing guard:** detection is disabled when the app is not in the foreground (`ON_STOP`).
+
+**No network, no accounts:** `INTERNET`, `ACCESS_NETWORK_STATE`, and `POST_NOTIFICATIONS` are not declared in the manifest. There is nothing to sign in to and nothing to upload.
 
 ## Commit preparation
 

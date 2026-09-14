@@ -1,7 +1,7 @@
 ---
 id: REQ-031
 title: Split android/ into a Detection-Only Published App and a training-android Data-Collection App
-status: draft
+status: done
 priority: high
 ---
 
@@ -130,30 +130,26 @@ No behavior change. Update:
   until this ships, and to `training-android/`'s *internal* data-handling practices afterward
   (not to Play Store compliance, since it won't be published there).
 
-## Open questions (need a decision before implementation starts)
+## Open questions — resolved
 
-- [ ] Does `training-android/` need its own signing/release process at all, or is
-      `installDebug`-only sufficient (matches `curation-android/`)?
-- [ ] Should the existing Play Store listing's next release be **this split** (i.e., the next
-      production update is "detection got simpler, nothing is collected anymore"), or should the
-      collection features be pulled from Play first as a separate, smaller release, with the
-      training app arriving after? Affects REQ-030's timeline.
-- [ ] `training-android/`'s own model auto-update (§1) still depends on the Cognito/API-Gateway
-      path — confirm REQ-029's `sam deploy` (still pending) happens before `training-android/` is
-      used for real, or its uploads/model-checks will hit the same `execute-api` 403 the fix
-      addressed.
+- **`training-android/` signing:** `installDebug`-only, matching `curation-android/`. No CI
+  signing workflow was added for it.
+- **Release sequencing:** not decided by this document — still an open call for whoever submits
+  the next Play release (tracked in REQ-030's own scope, not blocking this split's implementation).
+- **`sam deploy` for REQ-029's `CuratorRole` `execute-api:Invoke` fix:** still pending as of this
+  writing. `training-android/`'s uploads/model-checks will hit the same `execute-api` 403 REQ-029
+  fixed until that deploy happens — this split doesn't change that, it's an existing prerequisite.
 
 ## Acceptance criteria
 
-- [ ] `training-android/` exists as a standalone Gradle project, builds, and reproduces every
-      capability currently in `android/`'s "Contribute data" pipeline end-to-end (sign-in, capture,
+- [x] `training-android/` exists as a standalone Gradle project, builds, and reproduces every
+      capability that was in `android/`'s "Contribute data" pipeline end-to-end (sign-in, capture,
       upload, model auto-update) under its own `applicationId`.
-- [ ] `android/` builds and runs with zero references to Cognito/S3/WorkManager-upload code; no
-      `INTERNET`/`ACCESS_NETWORK_STATE`/`POST_NOTIFICATIONS` permissions in its manifest unless a
-      concrete remaining feature still needs one.
-- [ ] `privacy-policy.md` (the one linked from the Play listing) reverted to the "no data
-      collected" baseline and it is now factually true.
-- [ ] `curation-android/` and `infra/aws/` docs no longer refer to `android/` as the uploads
+- [x] `android/` builds and runs with zero references to Cognito/S3/WorkManager-upload code; no
+      `INTERNET`/`ACCESS_NETWORK_STATE`/`POST_NOTIFICATIONS` permissions in its manifest.
+- [x] `privacy-policy.md` (the one linked from the Play listing) is the "no data collected"
+      baseline and it is now factually true.
+- [x] `curation-android/` and `infra/aws/` docs no longer refer to `android/` as the uploads
       producer.
-- [ ] Root `README.md` hub table and component READMEs updated to describe three apps instead of
+- [x] Root `README.md` hub table and component READMEs updated to describe three apps instead of
       two.

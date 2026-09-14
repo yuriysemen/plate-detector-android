@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Investigate whether the current model and pipeline can detect multiple license plates in the same frame, and define how multi-detection frames are stored.

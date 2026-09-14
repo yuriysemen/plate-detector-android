@@ -1,7 +1,7 @@
 # Roadmap
 
 > This app (`training-android/`) is the unpublished data-collection counterpart split out of
-> `android/` per [REQ-031](../requirements/REQ-031-draft-split-detection-and-training-apps.md).
+> `android/` per [REQ-031](../requirements/REQ-031-done-split-detection-and-training-apps.md).
 > This history is inherited from `android/` as of the split — everything below still applies here;
 > `android/`'s own roadmap now only covers the detection-only app.
 

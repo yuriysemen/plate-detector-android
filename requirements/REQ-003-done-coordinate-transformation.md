@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Define the exact math that converts `Detection` pixel coordinates to YOLO normalized format, and document how image size changes (resolution setting, device rotation) are handled correctly.

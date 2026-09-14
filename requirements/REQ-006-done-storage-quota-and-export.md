@@ -5,6 +5,8 @@ status: done
 priority: medium
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Define limits to prevent the feature from consuming unbounded device storage, how old data is evicted when limits are reached, and how the final dataset is packaged for use with the training pipeline.

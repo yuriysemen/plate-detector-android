@@ -6,6 +6,8 @@ priority: high
 depends_on: REQ-013, REQ-018
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Send the packaged dataset ZIP directly to an AWS S3 bucket using a pre-signed URL obtained from a Lambda-backed API Gateway endpoint. Upload is triggered manually from ContributeScreen (REQ-005) or automatically by `AutoUploadWorker` (REQ-015). On successful upload, both the ZIP and its status sidecar are deleted from the device — no local trace of a completed upload is kept, to minimize the app's storage footprint.

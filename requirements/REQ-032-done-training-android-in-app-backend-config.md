@@ -16,7 +16,7 @@ rebuilding with different `local.properties` values.
 This requirement adds an **in-app screen** to view and edit these four values directly on-device,
 so one generic APK can be installed anywhere and pointed at a backend without a rebuild — a better
 fit for `training-android` than the published app's build-time-only approach, since this one is
-internal tooling potentially used across multiple devices/testers ([REQ-031](REQ-031-draft-split-detection-and-training-apps.md)).
+internal tooling potentially used across multiple devices/testers ([REQ-031](REQ-031-done-split-detection-and-training-apps.md)).
 
 **Scope: `training-android/` only.** `android/` is losing this entire subsystem per REQ-031, so
 this doesn't apply there.

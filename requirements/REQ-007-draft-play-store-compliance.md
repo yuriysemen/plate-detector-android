@@ -5,13 +5,15 @@ status: draft
 priority: high
 ---
 
-> **Scope note (REQ-031):** the plan is now to remove all collection/upload/account code from
-> `android/` entirely rather than fix its Data Safety declarations — see
-> [REQ-031](REQ-031-draft-split-detection-and-training-apps.md). If that ships, this document's
-> Play Store requirements no longer apply to `android/` (it will collect nothing to declare). The
-> underlying privacy/legal considerations here (account deletion, data minimization, GDPR posture)
-> still apply to how `training-android/` is operated day to day — just not as Play Store
-> obligations, since it won't be published.
+> **Scope note (REQ-031):** all collection/upload/account code has been removed from `android/`
+> entirely rather than fixing its Data Safety declarations — see
+> [REQ-031](REQ-031-done-split-detection-and-training-apps.md), now done. This document's Play
+> Store requirements **no longer apply to `android/`** — it collects nothing to declare, and
+> `privacy-policy.md` is back to the "no data collected" baseline and factually true. The
+> underlying privacy/legal considerations described below (account deletion, data minimization,
+> GDPR posture) still apply to how `training-android/` is operated day to day — just not as Play
+> Store obligations, since it isn't published there. The rest of this document is kept as a
+> historical record of the analysis; it does not describe `android/`'s current behavior.
 
 ## Summary
 

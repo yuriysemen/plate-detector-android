@@ -5,40 +5,24 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import java.text.SimpleDateFormat
-import java.util.Date
+import androidx.compose.runtime.getValue
 import java.util.Locale
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.unit.dp
@@ -66,34 +50,15 @@ fun SettingsScreen(
     models: List<ModelSpec>,
     selectedModelId: String,
     onPick: (ModelSpec) -> Unit,
-    onDelete: (ModelSpec) -> Unit,
     confidenceForModel: (modelId: String) -> Float,
     onConfidenceChange: (modelId: String, conf: Float) -> Unit,
-    collectTrainingData: Boolean,
-    isSignedIn: Boolean,
-    onCollectTrainingDataChange: (Boolean) -> Unit,
-    collectFirstTimeShown: Boolean,
-    onCollectFirstTimeShownAck: () -> Unit,
     analysisResolution: AnalysisResolution,
     onAnalysisResolutionChange: (AnalysisResolution) -> Unit,
     scanIntervalMs: Int,
-    onScanIntervalMsChange: (Int) -> Unit,
-    onNavigateToContribute: () -> Unit,
-    onSignIn: () -> Unit,
-    sessionExpired: Boolean = false,
-    latestModelVersion: String = "",
-    compatibleModelVersion: String = "",
-    lastModelCheckTime: Long = 0L,
-    onCheckNow: (suspend () -> Unit)? = null
+    onScanIntervalMsChange: (Int) -> Unit
 ) {
     var selectedId by rememberSaveable(selectedModelId) { mutableStateOf(selectedModelId) }
     var confOverrides by rememberSaveable { mutableStateOf<Map<String, Float>>(emptyMap()) }
-    var showCollectConsentDialog by rememberSaveable { mutableStateOf(false) }
-    val logEntries by ModelUpdateLog.entries.collectAsState()
-    val latestLogEntry = logEntries.lastOrNull()
-    var showLogDialog by remember { mutableStateOf(false) }
-    var isChecking by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     fun confFor(model: ModelSpec): Float = confOverrides[model.id] ?: confidenceForModel(model.id)
 
@@ -115,27 +80,9 @@ fun SettingsScreen(
         ) {
             Text("Settings", style = MaterialTheme.typography.titleLarge)
 
-            if (sessionExpired) {
-                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "Your sign-in has expired. Model updates and uploads are paused until you sign in again.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = onNavigateToContribute) { Text("Sign in") }
-                    }
-                }
-            }
-
             Text("Select model", style = MaterialTheme.typography.titleMedium)
 
-            // Model list + custom model button inside one card
+            // Model list inside one card
             OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 LazyColumn(
                     modifier = Modifier
@@ -157,28 +104,17 @@ fun SettingsScreen(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(m.title, style = MaterialTheme.typography.titleMedium)
-                                val label = if (m.version != null)
-                                    "${sourceLabel(m)} · v${m.version}"
-                                else
-                                    sourceLabel(m)
                                 Text(
-                                    label,
+                                    sourceLabel(m),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
                                 if (selectedId == m.id) {
-                                    val detail = when (m.origin) {
-                                        ModelOrigin.DEFAULT    -> "Bundled with the app · always available"
-                                        ModelOrigin.DOWNLOADED -> "On-device copy · updates automatically when signed in"
-                                        else                   -> null
-                                    }
-                                    if (detail != null) {
-                                        Text(
-                                            detail,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
+                                    Text(
+                                        "Bundled with the app · always available",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                                 if (!m.description.isNullOrBlank()) {
                                     Text(
@@ -189,88 +125,8 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                            if (m.isDeletable) {
-                                IconButton(onClick = { onDelete(m) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete model")
-                                }
-                            }
                         }
                     }
-                }
-            }
-
-            // Model activity — one-line status + Details + Check now
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = latestLogEntry?.message ?: "No model activity since app start",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = when (latestLogEntry?.level) {
-                        ModelUpdateLog.Level.ERROR   -> MaterialTheme.colorScheme.error
-                        ModelUpdateLog.Level.SUCCESS -> Color(0xFF4CAF50)
-                        else -> MaterialTheme.colorScheme.outline
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                if (logEntries.isNotEmpty()) {
-                    TextButton(onClick = { showLogDialog = true }) {
-                        Text("Details", style = MaterialTheme.typography.labelSmall)
-                    }
-                }
-                if (onCheckNow != null) {
-                    if (isChecking) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .padding(start = 8.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        TextButton(onClick = {
-                            scope.launch {
-                                isChecking = true
-                                try { onCheckNow() } catch (_: Exception) {}
-                                isChecking = false
-                            }
-                        }) {
-                            Text("Check now", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-
-            if (lastModelCheckTime > 0L) {
-                val now = System.currentTimeMillis()
-                val agoMs = now - lastModelCheckTime
-                val lastStr = when {
-                    agoMs < 60_000L          -> "just now"
-                    agoMs < 3_600_000L       -> "${agoMs / 60_000} min ago"
-                    agoMs < 86_400_000L      -> "${agoMs / 3_600_000} h ago"
-                    else                     -> "${agoMs / 86_400_000} d ago"
-                }
-                val nextMs = lastModelCheckTime + 3_600_000L - now
-                val nextStr = when {
-                    nextMs <= 0              -> "soon"
-                    nextMs < 3_600_000L      -> "in ${nextMs / 60_000} min"
-                    else                     -> "in ${nextMs / 3_600_000} h"
-                }
-                Text(
-                    "Model check: last $lastStr · next $nextStr",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
-
-            if (latestModelVersion.isNotEmpty() && latestModelVersion != compatibleModelVersion) {
-                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "Model v$latestModelVersion is available but requires a newer app version.",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(12.dp)
-                    )
                 }
             }
 
@@ -279,7 +135,7 @@ fun SettingsScreen(
             if (selected != null) {
                 val currentConf = confFor(selected)
                 Text(
-                    "Confidence threshold: ${"%.2f".format(currentConf)}",
+                    "Confidence threshold: ${"%.2f".format(Locale.ROOT, currentConf)}",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Slider(
@@ -325,124 +181,6 @@ fun SettingsScreen(
                             Text(res.label, style = MaterialTheme.typography.bodyMedium)
                             Text(res.detail, style = MaterialTheme.typography.bodySmall)
                         }
-                    }
-                }
-            }
-
-            if (showLogDialog) {
-                AlertDialog(
-                    onDismissRequest = { showLogDialog = false },
-                    title = { Text("Model update log") },
-                    text = {
-                        Column(
-                            modifier = Modifier
-                                .heightIn(max = 320.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            if (logEntries.isEmpty()) {
-                                Text(
-                                    "No activity recorded yet.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            } else {
-                                logEntries.reversed().forEach { entry ->
-                                    val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
-                                        .format(Date(entry.timeMs))
-                                    val color = when (entry.level) {
-                                        ModelUpdateLog.Level.ERROR   -> MaterialTheme.colorScheme.error
-                                        ModelUpdateLog.Level.SUCCESS -> Color(0xFF4CAF50)
-                                        else -> MaterialTheme.colorScheme.onSurface
-                                    }
-                                    Text(
-                                        "$time  ${entry.message}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = color
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showLogDialog = false }) { Text("Close") }
-                    }
-                )
-            }
-
-            if (showCollectConsentDialog) {
-                AlertDialog(
-                    onDismissRequest = { showCollectConsentDialog = false },
-                    title = { Text("Contribute training data?") },
-                    text = {
-                        Text(
-                            "When enabled and you are signed in, the app will:\n\n" +
-                            "• Save camera frames whenever a plate is detected.\n" +
-                            "• Upload them to a private research server to improve plate detection.\n\n" +
-                            "Frames are held on this device only until the next upload, then deleted. " +
-                            "Nothing is saved while you are signed out."
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            showCollectConsentDialog = false
-                            onCollectFirstTimeShownAck()
-                            onCollectTrainingDataChange(true)
-                        }) { Text("Enable") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showCollectConsentDialog = false }) { Text("Cancel") }
-                    }
-                )
-            }
-
-            // "Contribute data" is only shown to a signed-in user — it's useless without an
-            // account (REQ-026 gates capture on sign-in). When signed out, this row is a plain
-            // "Sign in" entry instead, so authentication is still reachable from Settings.
-            if (isSignedIn) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNavigateToContribute() }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Contribute data", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            if (collectTrainingData) "On — saving and uploading frames"
-                            else "Off — no frames are saved",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    Switch(
-                        checked = collectTrainingData,
-                        onCheckedChange = { enable ->
-                            if (enable && !collectFirstTimeShown) showCollectConsentDialog = true
-                            else onCollectTrainingDataChange(enable)
-                        },
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSignIn() }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Sign in", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            if (sessionExpired) "Session expired — sign in to sync again"
-                            else "Sign in to contribute data and get model updates",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
                     }
                 }
             }

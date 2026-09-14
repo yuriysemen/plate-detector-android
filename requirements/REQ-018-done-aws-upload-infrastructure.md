@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Define, provision, and deploy the server-side AWS infrastructure that supports the cloud dataset upload feature (REQ-014). All infrastructure is declared as code in `infra/aws/` using AWS SAM. The API Gateway endpoint is currently **unauthenticated** — adding SigV4 / Cognito authentication is a future hardening task.

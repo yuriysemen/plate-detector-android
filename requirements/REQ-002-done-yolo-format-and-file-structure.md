@@ -5,6 +5,8 @@ status: done
 priority: high
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 Define exactly how images and annotations are stored on device so the exported dataset can be fed directly into the `training/ultralytics/` pipeline without conversion.

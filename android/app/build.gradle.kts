@@ -155,11 +155,6 @@ android {
         versionName = "0.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField("String", "COGNITO_USER_POOL_ID",   "\"${localProp("COGNITO_USER_POOL_ID")}\"")
-        buildConfigField("String", "COGNITO_APP_CLIENT_ID",  "\"${localProp("COGNITO_APP_CLIENT_ID")}\"")
-        buildConfigField("String", "COGNITO_IDENTITY_POOL_ID","\"${localProp("COGNITO_IDENTITY_POOL_ID")}\"")
-        buildConfigField("String", "UPLOAD_SERVICE_URL",     "\"${localProp("UPLOAD_SERVICE_URL")}\"")
     }
     val releaseSigningConfig = if (hasSigningEnv) {
         signingConfigs.create("release") {
@@ -187,7 +182,6 @@ android {
     }
     buildFeatures {
         compose = true
-        buildConfig = true
     }
     androidResources {
         noCompress.add("tflite")
@@ -212,7 +206,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.camera2)
@@ -221,8 +214,6 @@ dependencies {
 
     implementation(libs.tensorflow.lite)
     implementation(libs.mlkit.text.recognition)
-
-    implementation(libs.aws.cognitoidentityprovider)
 
     testImplementation(libs.junit)
 

@@ -6,6 +6,8 @@ priority: medium
 depends_on: REQ-014, REQ-027
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 "Upload failed" was a dead end: `UploadDatasetWorker` caught the exception, wrote a bare `FAILED`

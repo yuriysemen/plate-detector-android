@@ -4,12 +4,6 @@
 # Location of the Android SDK. This is only used by Gradle.
 sdk.dir=/path/to/Android/sdk
 
-# AWS / Cognito configuration — copy values from `sam deploy` outputs (see infra/aws/README.md)
-COGNITO_USER_POOL_ID=<region>_<pool-id>
-COGNITO_APP_CLIENT_ID=<app-client-id>
-COGNITO_IDENTITY_POOL_ID=<region>:<identity-pool-uuid>
-UPLOAD_SERVICE_URL=<api-gateway-invoke-url>
-
 # Optional: personal access token (repo read scope) to download the bundled
 # default model from a private GitHub Releases repo at build time.
 # MODEL_DOWNLOAD_TOKEN=ghp_<your_personal_access_token>

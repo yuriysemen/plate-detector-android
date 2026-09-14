@@ -6,6 +6,8 @@ priority: high
 depends_on: REQ-014, REQ-016
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 When an authenticated API call (`get-model-url`, `get-upload-url`) is rejected with **HTTP 401/403**

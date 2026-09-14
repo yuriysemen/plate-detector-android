@@ -11,29 +11,32 @@ over time.
 
 | Component | What it demonstrates |
 |---|---|
-| [`android/`](android/README.md) — the published detection app | On-device ML (TFLite YOLO + ML Kit OCR). Being trimmed to detection-only, no storage/upload/accounts — see [REQ-031](requirements/REQ-031-draft-split-detection-and-training-apps.md) |
+| [`android/`](android/README.md) — the published detection app | On-device ML (TFLite YOLO + ML Kit OCR). Detection-only — no storage, no upload, no accounts, no runtime network access — see [REQ-031](requirements/REQ-031-done-split-detection-and-training-apps.md) |
 | [`training-android/`](training-android/README.md) — the data-collection app | Cognito auth, SigV4-signed cloud upload, background work scheduling — everything `android/`'s collection pipeline used to do, now unpublished and internal-only |
 | [`curation-android/`](curation-android/README.md) — the data-curation app | A third, purpose-built Android app for a human-in-the-loop labeling workflow directly against S3 (no backend API) |
 | [`infra/aws/`](infra/aws/README.md) — cloud infrastructure | AWS SAM: S3, Lambda, API Gateway, Cognito User/Identity Pools, scoped IAM roles |
 | [`training/`](training/ultralytics/README.md) / [`experiments/`](experiments/ultralytics/README.md) — model training | Python YOLO training/export pipelines that consume the curated dataset |
 | [`requirements/`](requirements/README.md) | Spec-driven development trail — one `REQ-NNN` doc per feature, from initial detection format through cloud upload, curation workflow, and auth hardening |
 
-## Android app features
+## Android app features (`android/`, published)
 - Real-time license plate detection (on-device, TFLite YOLO)
 - Bounding box overlay with confidence score
 - OCR — reads plate text using ML Kit (always active; text shown in bounding box label)
 - Optional beep alert on detection
-- Training data collection — opt-in "Contribute data" toggle; **captures only while signed in**. Detected frames are saved on device as a YOLO dataset (with the model's predicted boxes) and uploaded to a private server; nothing is written to disk while signed out. Frame files named `<date>_<time>_<seq>`; configurable storage quota (default 500 MB) with 80%/100% banners; manual single-shot capture button for missed plates; **burst collection mode** captures every frame until a configurable count (default 100). On-device review/editing of collected frames was removed — all box curation happens in the separate `curation-android` app.
-- Cloud upload — packages frames into a ZIP and uploads to a private AWS S3 bucket; users register and sign in with email + password (Cognito User Pool); upload requests are SigV4-signed using short-lived STS credentials from a Cognito Identity Pool; AWS configuration is embedded at build time (no in-app URL or key entry); manual upload works on any network; automatic daily upload at a configurable time (default 02:00) respects the Wi-Fi / mobile data preference; on-start catch-up if a scheduled run was missed; notification on successful auto-upload; a persistent "Upload activity" log and per-upload failure reasons are shown in the app. An API 401/403 (authorization/config problem) fails the upload with a clear message but does not sign the user out.
-- Privacy — `android:allowBackup="false"`; nothing the app stores (camera frames, upload ZIPs, auth tokens) leaves the device via cloud Auto Backup or device-to-device transfer
-- Exported `data.yaml` includes device metadata (phone model, Android version, app version, anonymised device ID) for dataset provenance tracking
 - Multiple models selectable in Settings; per-model confidence threshold
-- Model artifacts published via GitHub Releases (tagged `model_v*`) and stored in S3 (`models/v<semver>/`); signed-in users receive automatic in-app model updates — confirmation dialog, then auto-selected immediately; manual "Check now" button in Settings; in-memory activity log shows check and download events per session
+- Detection-only: no accounts, no storage, no upload, no runtime network access —
+  `android:allowBackup="false"` and nothing is ever written that would need excluding from backup
+  in the first place ([REQ-031](requirements/REQ-031-done-split-detection-and-training-apps.md))
+
+The account-creation / frame-capture / cloud-upload / model-auto-update pipeline this app used to
+have now lives entirely in [`training-android/`](training-android/README.md) — an unpublished,
+internal counterpart used to build the training dataset. See its README for that feature list.
 
 ## Getting a model for the Android app
 
-The Gradle build downloads a bundled default model automatically from the latest GitHub Release
-tagged `model_v<x.y.z>`. For a local build you have three options:
+`android/`'s model is **build-time only** — there's no runtime download path. The Gradle build
+downloads a bundled default model automatically from the latest GitHub Release tagged
+`model_v<x.y.z>`. For a local build you have three options:
 
 **Option 1 — GitHub token (recommended):** Add to `android/local.properties` (gitignored):
 ```
@@ -46,18 +49,18 @@ version.
 `android/app/src/main/assets/models/`. The download step is skipped when the file already exists.
 
 **Option 3 — No model at build time:** If neither a token nor a local file is present, the build
-succeeds with a warning. The app installs and shows a "No detection model" screen until a model
-is downloaded at runtime after sign-in.
+succeeds with a warning. The app installs and shows a "No detection model" screen with a Retry
+button — fixable only by rebuilding or manually placing a file and reinstalling.
 
-At runtime, signed-in users automatically receive model updates from S3 (`models/v<semver>/` in
-the dataset bucket). The app checks on startup and every hour; the user confirms before any
-download is applied.
+(`training-android/` additionally supports fetching model updates at runtime for signed-in users —
+see its own docs; that path doesn't exist in the published app.)
 
 ## Notes on the components above
-- `curation-android/` reuses the same Cognito backend as `android/` but talks to S3 directly via
-  a scoped `CuratorRole` (no backend API). A `curators`-group account resolves *both* apps to
-  `CuratorRole` (shared User Pool client), which is why `CuratorRole` is also granted
-  `execute-api:Invoke` — otherwise a curator's own account couldn't use the main app.
+- `curation-android/` reuses the same Cognito backend as `training-android/` but talks to S3
+  directly via a scoped `CuratorRole` (no backend API). A `curators`-group account resolves *both*
+  apps to `CuratorRole` (shared User Pool client), which is why `CuratorRole` is also granted
+  `execute-api:Invoke` — otherwise a curator's own account couldn't use `training-android/`.
+  `android/` doesn't use Cognito at all, so this doesn't affect it.
 - `experiments/` holds exploratory training work; entries may be promoted into `training/` once
   they prove useful, or stay for history and comparison.
 - `datasets/dataset_YOLO/` documents the initial YOLO dataset layout and format expectations.
@@ -111,16 +114,19 @@ When those secrets are set, the workflow produces:
 - Signed APK: `android/app/build/outputs/apk/release/app-release.apk`
 
 ## Roadmap (planned)
-- **Play Store compliance** — Auto Backup exclusion, Data Safety declaration, privacy policy update.
 - **Parking access control** — vehicle-type classifier + access decision overlay (civilian / police / emergency).
 
 See `android/ROADMAP.md` for the full backlog.
 
 ## Privacy
-The app is designed to minimise data leaving the device:
-- Camera frames are processed locally in memory; nothing is uploaded by default.
-- The optional "Contribute data" feature (off by default) saves detected frames locally and can upload them to a private AWS S3 bucket run by the developer. A consent dialog is shown before any upload occurs.
-- No analytics or tracking is used for core functionality.
+`android/` (the published app) is designed to minimise data leaving the device — and since
+[REQ-031](requirements/REQ-031-done-split-detection-and-training-apps.md), there's nothing left to
+minimise:
+- Camera frames are processed locally in memory; nothing is uploaded, ever.
+- No accounts, no analytics or tracking, no runtime network access at all.
+
+`training-android/` (internal, unpublished) is where the optional data-collection pipeline lives
+now — see its own README for what it collects and why it isn't published.
 
 See: [Privacy Policy](privacy-policy.md)
 

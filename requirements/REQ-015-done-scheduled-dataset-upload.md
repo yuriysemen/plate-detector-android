@@ -6,6 +6,8 @@ priority: medium
 depends_on: REQ-005, REQ-014, REQ-018
 ---
 
+> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+
 ## Summary
 
 When contribution is enabled and upload is configured, the app automatically uploads collected frames once per day at a user-configurable time (default 02:00 local time). There is no on/off toggle — auto-upload is always active when the enabling conditions are met. After a successful auto-upload the collected frames are reset so the next run contains only newly collected data.
