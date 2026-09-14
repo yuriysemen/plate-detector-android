@@ -88,7 +88,7 @@ machine). No `navigation-compose` — hand-rolled route/session state.
 | `CurationRepository` | `fetchCategories()` (S3 `config/vehicle-categories.json` → bundled fallback, used only to embed a snapshot at `startPackage` / as a legacy-manifest fallback); `completePackage` regenerates `data.yaml` header from its `categories` param and `check()`s its version matches the manifest's |
 | `BoxGeometry` (REQ-024) | Pure, Compose-free geometry in normalized `[0,1]` box space, unit-tested: `hitTest` (selected box's 8 handles first, else topmost box body), `applyHandle` (move/resize one box, clamped to image bounds + a min size) |
 | `CurationViewModel` (REQ-024) | `currentBoxes()` (boxes, all implicitly `LICENSE_PLATE_CLASS_ID`) / `addBox` / `deleteBox` / `moveBox` (all debounced manifest saves via `withItemBoxes`), `canAcceptCurrent()`, `accept()`/`reject()` |
-| `ReviewScreen` | Image + box overlay (cyan, pink when selected — no more amber/unclassified state), top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject(+reason)/Accept/Next, jump-to-item sheet. Accept blocked only while there are zero boxes. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
+| `ReviewScreen` | Image + box overlay (cyan, pink when selected — no more amber/unclassified state), top-bar **add-box** (drag a rectangle), **drag to move / drag a handle to resize** the selected box, **pinch-zoom/pan** + double-tap reset, Prev/Reject/Accept/Next when pending, Prev/**Change decision**/Next when already decided (REQ-034 — no reason prompt on reject, no confirmation on change-decision), jump-to-item sheet. Accept blocked only while there are zero boxes. Four always-attached `pointerInput` blocks on one `Canvas` (add-box / double-tap / move-resize / pinch-zoom), each a no-op outside its mode — mirrors `android/.../FrameDetailScreen.kt`'s chaining. |
 | `Format` | `nowIso()` (top-level), date/size/subset formatting |
 
 **Auth → credentials flow:** sign-in caches sub + email → `getIdToken()` (SDK auto-refresh,
@@ -134,6 +134,13 @@ sam deploy`. `DeviceAuthRole` (`training-android`) is untouched.
 
 ## Not yet built
 
-Nothing outstanding in REQ-022/023/024/025. Changing an already-decided item's boxes stays out of
-scope for v1 (Release the package to redo); a full on-device run (start → review, incl. move/
+Nothing outstanding in REQ-022/023/024/025. A full on-device run (start → review, incl. move/
 resize/pinch-zoom → complete) against a real uploaded package hasn't been done yet.
+
+**Changing an already-decided item is now supported (REQ-034)** — this was previously out of scope
+for v1 ("Release the package to redo"). `CurationViewModel.undecide()` reverts the current item's
+Accept/Reject back to `PENDING` (clearing `decidedBy`/`decidedAt`/`labelContent`/`reason`, but
+leaving `workingLabel` — the curator's box edits — untouched, so re-opening for edit shows exactly
+what was there before) without advancing the session index, so the curator stays on the item to
+fix it. `ReviewScreen` shows a **"Change decision"** button instead of Accept/Reject on a decided
+item.

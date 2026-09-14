@@ -40,3 +40,4 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [031](REQ-031-done-split-detection-and-training-apps.md) | done | Split android/ into a Detection-Only Published App and a training-android Data-Collection App |
 | [032](REQ-032-done-training-android-in-app-backend-config.md) | done | In-App Backend Configuration Screen (training-android) |
 | [033](REQ-033-done-curation-remove-vehicle-type-classification.md) | done | Curation — Remove Vehicle-Type Classification, Single License-Plate Class |
+| [034](REQ-034-done-curation-simplify-reject-allow-redecide.md) | done | Curation — Drop Reject Reason, Allow Changing an Already-Decided Item |

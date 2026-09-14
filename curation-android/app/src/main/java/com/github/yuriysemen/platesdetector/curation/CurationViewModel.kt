@@ -243,7 +243,7 @@ class CurationViewModel(
         decide(ItemStatus.ACCEPTED, YoloLabel.format(rb.boxes, rb.classes), null)
     }
 
-    fun reject(reason: String?) = decide(ItemStatus.REJECTED, null, reason)
+    fun reject() = decide(ItemStatus.REJECTED, null, null)
 
     /** Accept/reject the current item, persist the manifest, advance to the next pending item. */
     private fun decide(status: ItemStatus, labelContent: String?, reason: String?) {
@@ -259,6 +259,19 @@ class CurationViewModel(
             manifest = updated,
             index = if (nextPending >= 0) nextPending else s.index,
         )
+        manifestSaveJob?.cancel()
+        viewModelScope.launch { runCatchingSession { repo.putManifest(updated) } }
+    }
+
+    /** Revert the current item's Accept/Reject back to PENDING so it can be re-edited and
+     *  re-decided — stays on this item (unlike [decide], which advances to the next pending one).
+     *  Clears the old decidedBy/decidedAt/labelContent/reason; workingLabel (the curator's box
+     *  edits) is untouched, so re-opening for edit shows exactly what was there before. */
+    fun undecide() {
+        val s = session ?: return
+        if (s.currentItem.status == ItemStatus.PENDING) return
+        val updated = s.manifest.withDecision(s.index, ItemStatus.PENDING)
+        session = s.copy(manifest = updated)
         manifestSaveJob?.cancel()
         viewModelScope.launch { runCatchingSession { repo.putManifest(updated) } }
     }

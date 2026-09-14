@@ -43,7 +43,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -107,8 +106,6 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
     var selected by remember(session.index) { mutableStateOf<Int?>(null) }
     var addMode by remember(session.index) { mutableStateOf(false) }
     var showJump by remember { mutableStateOf(false) }
-    var showReject by remember { mutableStateOf(false) }
-    var reason by remember(session.index) { mutableStateOf("") }
 
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var dragStart by remember { mutableStateOf<Offset?>(null) }
@@ -173,19 +170,25 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                         IconButton(onClick = { vm.navigate(-1) }, enabled = session.index > 0) {
                             Icon(Icons.Default.ChevronLeft, contentDescription = "Previous")
                         }
-                        OutlinedButton(
-                            onClick = { showReject = true },
-                            enabled = !decided,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                        ) { Text("Reject") }
-                        Button(
-                            onClick = { vm.accept() },
-                            enabled = !decided && review.allClassified,
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Accept") }
+                        if (decided) {
+                            OutlinedButton(
+                                onClick = { vm.undecide() },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Change decision") }
+                        } else {
+                            OutlinedButton(
+                                onClick = { vm.reject() },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) { Text("Reject") }
+                            Button(
+                                onClick = { vm.accept() },
+                                enabled = review.allClassified,
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Accept") }
+                        }
                         IconButton(
                             onClick = { vm.navigate(1) },
                             enabled = session.index < session.items.size - 1,
@@ -387,28 +390,6 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
         }
     }
 
-    if (showReject) {
-        AlertDialog(
-            onDismissRequest = { showReject = false },
-            title = { Text("Reject image") },
-            text = {
-                Column {
-                    Text("Optional reason:")
-                    OutlinedTextField(
-                        value = reason,
-                        onValueChange = { reason = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = false,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showReject = false; vm.reject(reason) }) { Text("Reject") }
-            },
-            dismissButton = { TextButton(onClick = { showReject = false }) { Text("Cancel") } },
-        )
-    }
-
     if (showJump) {
         ModalBottomSheet(onDismissRequest = { showJump = false }) {
             LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -477,9 +458,9 @@ private fun BoxPanel(
 /** `(message, isError)` for the bottom-bar hint, or null when nothing needs saying. */
 private fun reviewHint(item: ManifestItem, boxes: List<YoloBox>): Pair<String, Boolean>? =
     when {
-        item.status == ItemStatus.ACCEPTED -> "Accepted — read-only (Release the package to redo)" to false
+        item.status == ItemStatus.ACCEPTED -> "Accepted — tap Change decision to edit or re-reject" to false
         item.status == ItemStatus.REJECTED ->
-            ("Rejected${item.reason?.let { ": $it" } ?: ""} — read-only") to false
+            ("Rejected${item.reason?.let { ": $it" } ?: ""} — tap Change decision to edit or re-accept") to false
         boxes.isEmpty() -> "No boxes — this image must be Rejected, not Accepted." to true
         else -> null
     }
