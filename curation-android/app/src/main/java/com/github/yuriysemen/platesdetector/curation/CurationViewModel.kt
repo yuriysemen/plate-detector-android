@@ -30,7 +30,11 @@ data class ReviewSession(
     val currentItem: ManifestItem get() = manifest.items[index]
 }
 
-/** The current item's boxes and the curator's chosen class per box (`null` = unclassified). */
+/** Vehicle-type classification removed — every box is this one class, assigned automatically. */
+const val LICENSE_PLATE_CLASS_ID = 0
+
+/** The current item's boxes and their class per box (always [LICENSE_PLATE_CLASS_ID] now, except
+ *  for an already-decided item from before vehicle-type classification was removed). */
 data class ReviewBoxes(val boxes: List<YoloBox>, val classes: List<Int?>) {
     val allClassified: Boolean get() = boxes.isNotEmpty() && boxes.indices.all { classes.getOrNull(it) != null }
 }
@@ -174,9 +178,11 @@ class CurationViewModel(
         if (index in s.items.indices) session = s.copy(index = index)
     }
 
-    // ── REQ-025: per-box class picking + add/delete ────────────────────────
+    // ── Box add/delete. Vehicle-type classification removed (was REQ-025) — every
+    // box is the single "license_plate" class (id 0) automatically, not curator-chosen. ──
 
-    /** Boxes and chosen classes for the current item. Decided items show their baked-in classes. */
+    /** Boxes for the current item, all implicitly class 0 (license_plate). Decided items show
+     *  their baked-in classes, which may still be non-zero for a package reviewed before this. */
     fun currentBoxes(): ReviewBoxes {
         val s = session ?: return ReviewBoxes(emptyList(), emptyList())
         val item = s.currentItem
@@ -188,27 +194,16 @@ class CurationViewModel(
                 ?: item.labelContent
                 ?: s.current.labelFile.takeIf { it.exists() }?.readText()
             val boxes = YoloLabel.parse(text)
-            ReviewBoxes(boxes, boxes.indices.map { item.boxClasses.getOrNull(it) })
+            ReviewBoxes(boxes, boxes.indices.map { LICENSE_PLATE_CLASS_ID })
         }
     }
 
-    fun setBoxClass(boxIndex: Int, classId: Int) {
-        val s = session ?: return
-        if (s.currentItem.status != ItemStatus.PENDING) return
-        val rb = currentBoxes()
-        if (boxIndex !in rb.boxes.indices) return
-        val classes = rb.boxes.indices.map { if (it == boxIndex) classId else rb.classes.getOrNull(it) }
-        val updated = s.manifest.withItemBoxes(s.index, s.currentItem.workingLabel, classes)
-        session = s.copy(manifest = updated)
-        saveManifestDebounced(updated)
-    }
-
-    fun addBox(box: YoloBox, classId: Int) {
+    fun addBox(box: YoloBox) {
         val s = session ?: return
         if (s.currentItem.status != ItemStatus.PENDING) return
         val rb = currentBoxes()
         val boxes = rb.boxes + box
-        val classes = rb.classes + classId
+        val classes = rb.classes + LICENSE_PLATE_CLASS_ID
         val updated = s.manifest.withItemBoxes(s.index, YoloLabel.format(boxes, classes), classes)
         session = s.copy(manifest = updated)
         saveManifestDebounced(updated)

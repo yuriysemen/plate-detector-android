@@ -1,11 +1,6 @@
 {
-  "version": 1,
+  "version": 2,
   "classes": [
-    { "id": 0, "key": "license_plate", "label": "License plate" },
-    { "id": 1, "key": "civil",   "label": "Civil car" },
-    { "id": 2, "key": "police",  "label": "Police car" },
-    { "id": 3, "key": "fire",    "label": "Fire car" },
-    { "id": 4, "key": "medical", "label": "Medical car" },
-    { "id": 5, "key": "other",   "label": "Other" }
+    { "id": 0, "key": "license_plate", "label": "License plate" }
   ]
 }

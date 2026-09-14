@@ -39,3 +39,4 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [030](REQ-030-draft-google-play-release-readiness.md) | draft | Google Play Release Readiness — Next Production Release |
 | [031](REQ-031-done-split-detection-and-training-apps.md) | done | Split android/ into a Detection-Only Published App and a training-android Data-Collection App |
 | [032](REQ-032-done-training-android-in-app-backend-config.md) | done | In-App Backend Configuration Screen (training-android) |
+| [033](REQ-033-done-curation-remove-vehicle-type-classification.md) | done | Curation — Remove Vehicle-Type Classification, Single License-Plate Class |

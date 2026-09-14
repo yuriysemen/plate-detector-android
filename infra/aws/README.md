@@ -66,18 +66,22 @@ The `curation-android` app also needs `DatasetBucketName` from the stack outputs
 `curation-android/local.properties` as `DATASET_BUCKET_NAME` (the `COGNITO_*` values are the same
 as `training-android`).
 
-### Vehicle-category list (REQ-025)
+### Category list (was vehicle-type classification, REQ-025 — now a single class)
 
-The curation app labels each detection with a vehicle-type class, read from
-`s3://<bucket>/config/vehicle-categories.json`. `CuratorRole` can read `config/*` but not write it.
-Seed / update the list (a copy is bundled in the APK as a fallback):
+Vehicle-type classification was rolled back to focus purely on plate detection; every detection is
+now just `license_plate` (class id `0`). The underlying config mechanism is unchanged — the app
+still reads its class list from `s3://<bucket>/config/vehicle-categories.json` (with a bundled
+fallback in the APK), it's just a one-entry list now. Seed / update it:
 
 ```bash
 aws s3 cp curation-android/app/src/main/assets/vehicle-categories.json \
   s3://plate-dataset-uploads/config/vehicle-categories.json
 ```
 
-Class `id` is the YOLO class id and must stay stable — append new classes, never reorder.
+`CuratorRole` can read `config/*` but not write it. Class `id` is the YOLO class id and must stay
+stable — append new classes, never reorder or reuse an id, if vehicle-type classification is ever
+reintroduced. A package already in progress keeps using whichever category-list version was live
+when it was started (embedded in its own manifest snapshot), so bumping this doesn't disrupt one.
 
 ---
 

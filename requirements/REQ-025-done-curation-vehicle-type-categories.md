@@ -6,6 +6,11 @@ priority: high
 depends_on: REQ-022, REQ-023
 ---
 
+> **Rolled back (2026-09-14) by [REQ-033](REQ-033-done-curation-remove-vehicle-type-classification.md):**
+> per-box vehicle-type classification (the dropdown, the all-classified Accept gate) was removed to
+> focus purely on plate detection. The category-list infrastructure described below was kept, not
+> deleted, and is now a single `license_plate` class — see REQ-033 for what changed and why.
+
 > **Status — done (2026-09-07).** Category list (`VehicleCategories`, S3 `config/` with bundled
 > fallback), per-box class dropdown, add-box, and Accept's all-classified gate are implemented on
 > `ReviewScreen`. `done/` output carries class ids, a regenerated `data.yaml`, and `class_counts`.

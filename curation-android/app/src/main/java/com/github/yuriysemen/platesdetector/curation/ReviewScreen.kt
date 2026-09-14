@@ -37,8 +37,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,8 +79,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private val UNCLASSIFIED = Color(0xFFFFC107)   // amber
-private val CLASSIFIED = Color(0xFF00E5FF)      // cyan
+private val BOX_COLOR = Color(0xFF00E5FF)       // cyan
 private val SELECTED = Color(0xFFFF4081)        // pink
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,12 +91,10 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
     val item = session.currentItem
     val cached = session.current
     val decided = item.status != ItemStatus.PENDING
-    val categories = vm.sessionCategories
 
     // Recomputed on every session change (each box edit copies the session).
     val review = remember(session) { vm.currentBoxes() }
     val boxes = review.boxes
-    val classes = review.classes
 
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(session.index) {
@@ -127,9 +122,6 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
     var panOffsetY by remember(session.index) { mutableStateOf(0f) }
     val density = LocalDensity.current
     val handleRadiusPx = with(density) { 14.dp.toPx() }
-
-    val defaultNewClass = categories?.classes?.firstOrNull { it.key != "license_plate" }?.id
-        ?: categories?.classes?.firstOrNull()?.id ?: 1
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -164,7 +156,7 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                     Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    reviewHint(item, boxes, review.allClassified)?.let { (msg, isError) ->
+                    reviewHint(item, boxes)?.let { (msg, isError) ->
                         Text(
                             msg, Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.bodySmall,
@@ -228,7 +220,7 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                                     if (s != null && e != null) {
                                         val rect = fitRect(canvasSize, bmp.width, bmp.height)
                                         toNormalizedBox(s, e, rect)?.let { (xc, yc, w, h) ->
-                                            vm.addBox(YoloBox(defaultNewClass, xc, yc, w, h), defaultNewClass)
+                                            vm.addBox(YoloBox(LICENSE_PLATE_CLASS_ID, xc, yc, w, h))
                                             selected = boxes.size
                                         }
                                     }
@@ -326,11 +318,7 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
                                 boxes.mapIndexed { i, b -> if (i == selected) liveBox!! else b }
                             } else boxes
                             shown.forEachIndexed { i, b ->
-                                val color = when {
-                                    i == selected -> SELECTED
-                                    classes.getOrNull(i) == null -> UNCLASSIFIED
-                                    else -> CLASSIFIED
-                                }
+                                val color = if (i == selected) SELECTED else BOX_COLOR
                                 drawRect(
                                     color = color,
                                     topLeft = Offset(
@@ -391,12 +379,9 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
 
             BoxPanel(
                 boxes = boxes,
-                classes = classes,
-                categories = categories,
                 editable = !decided,
                 selected = selected,
                 onSelect = { selected = if (selected == it) null else it },
-                onPick = { i, classId -> vm.setBoxClass(i, classId) },
                 onDelete = { vm.deleteBox(it); if (selected == it) selected = null },
             )
         }
@@ -453,12 +438,9 @@ fun ReviewScreen(vm: CurationViewModel, onBack: () -> Unit) {
 @Composable
 private fun BoxPanel(
     boxes: List<YoloBox>,
-    classes: List<Int?>,
-    categories: VehicleCategories?,
     editable: Boolean,
     selected: Int?,
     onSelect: (Int) -> Unit,
-    onPick: (Int, Int) -> Unit,
     onDelete: (Int) -> Unit,
 ) {
     if (boxes.isEmpty()) {
@@ -481,12 +463,7 @@ private fun BoxPanel(
                     Text("Box ${i + 1}${if (i == selected) " •" else ""}")
                 }
                 Spacer(Modifier.weight(1f))
-                ClassDropdown(
-                    categories = categories,
-                    selectedId = classes.getOrNull(i),
-                    enabled = editable,
-                    onPick = { onPick(i, it) },
-                )
+                Text("License plate", style = MaterialTheme.typography.bodyMedium)
                 if (editable) {
                     IconButton(onClick = { onDelete(i) }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete box ${i + 1}")
@@ -497,38 +474,13 @@ private fun BoxPanel(
     }
 }
 
-@Composable
-private fun ClassDropdown(
-    categories: VehicleCategories?,
-    selectedId: Int?,
-    enabled: Boolean,
-    onPick: (Int) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { open = true }, enabled = enabled) {
-            Text(
-                selectedId?.let { categories?.labelFor(it) ?: "Class $it" } ?: "Choose type…",
-                color = if (selectedId == null) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurface,
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            categories?.classes?.forEach { c ->
-                DropdownMenuItem(text = { Text(c.label) }, onClick = { onPick(c.id); open = false })
-            }
-        }
-    }
-}
-
 /** `(message, isError)` for the bottom-bar hint, or null when nothing needs saying. */
-private fun reviewHint(item: ManifestItem, boxes: List<YoloBox>, allClassified: Boolean): Pair<String, Boolean>? =
+private fun reviewHint(item: ManifestItem, boxes: List<YoloBox>): Pair<String, Boolean>? =
     when {
         item.status == ItemStatus.ACCEPTED -> "Accepted — read-only (Release the package to redo)" to false
         item.status == ItemStatus.REJECTED ->
             ("Rejected${item.reason?.let { ": $it" } ?: ""} — read-only") to false
         boxes.isEmpty() -> "No boxes — this image must be Rejected, not Accepted." to true
-        !allClassified -> "Choose a type for every box before accepting." to true
         else -> null
     }
 
