@@ -5,7 +5,7 @@ status: done
 priority: high
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Partially split by [REQ-031](REQ-031-done-split-detection-and-training-apps.md):** the detection pixel pipeline below (camera → rotate → `PlateDetector`) is unchanged and still exactly how `android/` works today. Only the YOLO-normalized annotation conversion ("Conversion to YOLO format" below, `TrainingDataSaver.saveFrame()`) is `training-android/`-only now — `android/` has no annotation-saving code at all.
 
 ## Summary
 

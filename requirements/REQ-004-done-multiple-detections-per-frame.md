@@ -5,7 +5,7 @@ status: done
 priority: high
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Partially split by [REQ-031](REQ-031-done-split-detection-and-training-apps.md):** the detection capability itself ("Current capability" below — `PlateDetector.detectAll()` returning every detection above threshold, no early exit) is unchanged and still exactly how `android/` works today; multiple plates per frame are still detected and drawn in the live overlay. Only "Saving multi-detection frames" (writing multiple YOLO lines to a `.txt`) is `training-android/`-only now.
 
 ## Summary
 
