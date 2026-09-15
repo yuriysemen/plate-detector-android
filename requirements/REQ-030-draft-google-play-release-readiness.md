@@ -29,13 +29,13 @@ concrete, one-time checklist to get the *next* release published safely. It assu
 - [ ] REQ-007 acceptance criteria all checked, in particular the account-deletion mechanism (§2)
       and the rewritten `privacy-policy.md` (§4), both re-deployed and live at the listing's
       privacy-policy URL.
-- [ ] `infra/aws`'s `CuratorRole` `execute-api:Invoke` fix (REQ-029) has been `sam deploy`ed to
+- [ ] `aws-training-infra/aws`'s `CuratorRole` `execute-api:Invoke` fix (REQ-029) has been `sam deploy`ed to
       production, and REQ-026–029 have had at least one real on-device pass (sign-in, capture,
       upload, forced-401 recovery) — not just unit tests.
 
 ## 1. Versioning
 
-Current: `versionCode = 11`, `versionName = "0.0.11"` (`android/app/build.gradle.kts`).
+Current: `versionCode = 11`, `versionName = "0.0.11"` (`android-end-user-app/app/build.gradle.kts`).
 
 - [ ] Bump `versionCode` (must strictly increase; Play rejects a re-used or lower code).
 - [ ] Bump `versionName`. Given the scope of changes (accounts, cloud upload, OCR, curation

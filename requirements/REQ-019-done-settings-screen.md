@@ -5,7 +5,7 @@ status: done
 priority: high
 ---
 
-> **Partially split by [REQ-031](REQ-031-done-split-detection-and-training-apps.md):** sections 1–4 below (model selection, confidence threshold, scan interval, analysis resolution) are unchanged and still exactly how `android/`'s `SettingsScreen` works today. Only section 5 ("Contribute data row") and later, describing sign-in and data-collection controls, are `training-android/`-only now.
+> **Partially split by [REQ-031](REQ-031-done-split-detection-and-training-apps.md):** sections 1–4 below (model selection, confidence threshold, scan interval, analysis resolution) are unchanged and still exactly how `android-end-user-app/`'s `SettingsScreen` works today. Only section 5 ("Contribute data row") and later, describing sign-in and data-collection controls, are `android-training-data-collection-app/`-only now.
 
 ## Summary
 

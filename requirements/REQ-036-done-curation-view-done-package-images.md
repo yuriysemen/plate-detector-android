@@ -43,7 +43,7 @@ from the archive instead of the working cache.
   necessary just to browse.
 - **Cleanup:** delete the temp download+unzip when the viewer closes. Nothing about viewing a Done
   package should leave a lasting local copy — matches the "no local trace" pattern already used
-  elsewhere in this app and in `training-android`.
+  elsewhere in this app and in `android-training-data-collection-app`.
 - **A fully-rejected package has no images to view.** If `doneZipKey` is null (nothing was
   accepted), the viewer should say so plainly rather than trying to download a zip that doesn't
   exist.

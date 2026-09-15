@@ -1,13 +1,13 @@
 ---
 id: REQ-032
-title: In-App Backend Configuration Screen (training-android)
+title: In-App Backend Configuration Screen (android-training-data-collection-app)
 status: done
 priority: medium
 ---
 
 ## Summary
 
-`training-android/` currently gets its Cognito/API backend pointer (`COGNITO_USER_POOL_ID`,
+`android-training-data-collection-app/` currently gets its Cognito/API backend pointer (`COGNITO_USER_POOL_ID`,
 `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `UPLOAD_SERVICE_URL`) only at **build time**,
 via `local.properties` → `BuildConfig` → seeded once into `UploadPrefs` (SharedPreferences).
 Pointing a device at a different backend, or handing the app to a tester, currently means
@@ -15,10 +15,10 @@ rebuilding with different `local.properties` values.
 
 This requirement adds an **in-app screen** to view and edit these four values directly on-device,
 so one generic APK can be installed anywhere and pointed at a backend without a rebuild — a better
-fit for `training-android` than the published app's build-time-only approach, since this one is
+fit for `android-training-data-collection-app` than the published app's build-time-only approach, since this one is
 internal tooling potentially used across multiple devices/testers ([REQ-031](REQ-031-done-split-detection-and-training-apps.md)).
 
-**Scope: `training-android/` only.** `android/` is losing this entire subsystem per REQ-031, so
+**Scope: `android-training-data-collection-app/` only.** `android-end-user-app/` is losing this entire subsystem per REQ-031, so
 this doesn't apply there.
 
 ## What these four values actually are
@@ -27,7 +27,7 @@ For the in-app helper text and for anyone configuring this by hand:
 
 | Value | What it is | Where it comes from |
 |---|---|---|
-| `COGNITO_USER_POOL_ID` | The Cognito **User Pool**'s ID (format `<region>_<id>`, e.g. `us-east-1_3kjy9Uu7z`). The pool of email+password accounts used to sign in. | `infra/aws` stack output `UserPoolId` |
+| `COGNITO_USER_POOL_ID` | The Cognito **User Pool**'s ID (format `<region>_<id>`, e.g. `us-east-1_3kjy9Uu7z`). The pool of email+password accounts used to sign in. | `aws-training-infra/aws` stack output `UserPoolId` |
 | `COGNITO_APP_CLIENT_ID` | The User Pool's **App Client** ID. Identifies this app to Cognito for SRP sign-in (no client secret — it's a public/mobile client). | Stack output `UserPoolClientId` |
 | `COGNITO_IDENTITY_POOL_ID` | The Cognito **Identity Pool** ID (format `<region>:<uuid>`). Exchanges a signed-in user's ID token for short-lived AWS STS credentials used to SigV4-sign upload/API requests. **The AWS region for every AWS call is derived from this value's `<region>:` prefix** — there's no separate region field. | Stack output `IdentityPoolId` |
 | `UPLOAD_SERVICE_URL` | The base URL of the API Gateway HTTP API fronting the `get-upload-url` and `get-model-url` Lambdas (e.g. `https://xxxx.execute-api.<region>.amazonaws.com/prod`). | Stack output `UploadServiceUrl` |
@@ -91,7 +91,7 @@ first pass — if someone needs to un-pin, that's a manual `Clear storage` for n
       instead of the current dead end.
 - [x] A manually-edited field is never overwritten by `seedPrefsIfNeeded()` again, even after a
       rebuild with different `local.properties` values.
-- [x] `training-android/README.md` / `CLAUDE.md` updated to describe in-app configuration as an
+- [x] `android-training-data-collection-app/README.md` / `CLAUDE.md` updated to describe in-app configuration as an
       alternative to `local.properties`.
 
 ## Implementation notes

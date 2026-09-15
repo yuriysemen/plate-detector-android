@@ -7,7 +7,7 @@ priority: medium
 
 ## Summary
 
-Two related simplifications to `curation-android`'s review workflow:
+Two related simplifications to `android-training-data-reviewing-app`'s review workflow:
 
 1. **No more reject-reason prompt.** Tapping Reject used to open a dialog asking for an optional
    reason before rejecting. That's gone — Reject now happens immediately, no dialog.
@@ -68,4 +68,4 @@ for a single wrong tap.
       with box editing and Reject/Accept immediately available again for that item.
 - [x] The item's box state (workingLabel) after reverting matches what it was right before the
       original decision — no boxes are lost or reset.
-- [x] `curation-android/CLAUDE.md` updated (the old "out of scope for v1" note removed / replaced).
+- [x] `android-training-data-reviewing-app/CLAUDE.md` updated (the old "out of scope for v1" note removed / replaced).

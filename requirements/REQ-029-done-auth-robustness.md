@@ -7,7 +7,7 @@ depends_on: REQ-014, REQ-016, REQ-022, REQ-027, REQ-028
 supersedes_partial: REQ-016
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Implemented in `android-end-user-app/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `android-training-data-collection-app/`, not `android-end-user-app/`.**
 
 ## Summary
 
@@ -19,12 +19,12 @@ Two parts, from one investigation into a `get-model-url HTTP 403` / "session exp
    `get-upload-url` calls got 403, then the app looped on "sign in again" forever with no fix.
    → `CuratorRole` now also grants `execute-api:Invoke` on the two API routes.
 
-2. **App-side hardening.** A full review of every login/logout path in `android/` turned up 13
+2. **App-side hardening.** A full review of every login/logout path in `android-end-user-app/` turned up 13
    failure points (silent infinite retries, traps, races). All fixed below.
 
 ---
 
-## Part 1 — `CuratorRole` API access (`infra/aws/template.yaml`)
+## Part 1 — `CuratorRole` API access (`aws-training-infra/aws/template.yaml`)
 
 Added an `InvokeUploadApi` inline policy to `CuratorRole` mirroring `DeviceAuthRole`:
 
@@ -44,7 +44,7 @@ and model endpoints is acceptable. The stricter alternative — a separate User 
 curation app so the role mapping can distinguish them — is a much larger change (curation-app
 rebuild + reconfig) and deferred.
 
-**Deploy:** `cd infra/aws && sam build && sam deploy`. No app change needed; after deploy a
+**Deploy:** `cd aws-training-infra/aws && sam build && sam deploy`. No app change needed; after deploy a
 curator signs in again in the main app and the 403s stop.
 
 ---
@@ -73,7 +73,7 @@ Now:
 
 ---
 
-## Part 2 — `android/` login/logout hardening
+## Part 2 — `android-end-user-app/` login/logout hardening
 
 ### Bugs
 

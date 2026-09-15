@@ -67,7 +67,7 @@ meaningful. The class picker works on **any box**:
   labels. Adding a class = append with the next id.
 - Lives in the dataset bucket at `config/vehicle-categories.json`. The curator app **fetches** it
   on entering the workflow; a byte-identical copy is bundled at
-  `curation-android/app/src/main/assets/vehicle-categories.json` as the offline fallback.
+  `android-training-data-reviewing-app/app/src/main/assets/vehicle-categories.json` as the offline fallback.
 - **Read-only from the app.** The operator seeds / edits it:
   `aws s3 cp vehicle-categories.json s3://<bucket>/config/vehicle-categories.json`. An in-app editor
   is out of scope.
@@ -129,7 +129,7 @@ to a freshly-fetched/bundled list for review and Complete, same risk as before t
 
 ---
 
-## Infra — `infra/aws/template.yaml`
+## Infra — `aws-training-infra/aws/template.yaml`
 
 `CuratorRole` `ReadDatasetPrefixes`: add `arn:aws:s3:::${BucketName}/config/*` to the
 `s3:GetObject` resources. No write grant — the app never edits the list.
@@ -142,7 +142,7 @@ to a freshly-fetched/bundled list for review and Complete, same risk as before t
 - The access decision + gate UI (REQ-010).
 - An in-app editor for the category list.
 - Move / resize of existing boxes (REQ-024).
-- Changing the main `android/` collector — it keeps writing class `0`; the curator assigns real
+- Changing the main `android-end-user-app/` collector — it keeps writing class `0`; the curator assigns real
   types.
 
 ---

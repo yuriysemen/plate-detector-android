@@ -6,7 +6,7 @@ priority: high
 note: REQ-029 changes the sign-out cleanup — the downloaded model is now KEPT on sign-out and removed only on a different-user sign-in or a backend reconfigure. "Sign-out deletes filesDir/models/downloaded/" no longer holds.
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Implemented in `android-end-user-app/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `android-training-data-collection-app/`, not `android-end-user-app/`.**
 
 ## Summary
 

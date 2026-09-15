@@ -116,7 +116,7 @@ kept alive by periodic pings.
 
 ## Implementation notes
 
-All in `curation-android/app/src/main/java/.../curation/`:
+All in `android-training-data-reviewing-app/app/src/main/java/.../curation/`:
 
 - **`BoxGeometry.kt`** (new, pure Kotlin, no Compose runtime dependency beyond the `Offset` value
   type — unit-tested via `BoxGeometryTest`): `DragHandle` (`MOVE`/4 corners/4 edges), `hitTest`
@@ -129,7 +129,7 @@ All in `curation-android/app/src/main/java/.../curation/`:
   `deleteBox`: replaces one box's geometry, re-serializes via `YoloLabel.format`, writes through
   `manifest.withItemBoxes`, debounced save. No new manifest fields.
 - **`ReviewScreen`** — the `Canvas`'s pointer handling is four always-attached `pointerInput`
-  blocks that each no-op unless their mode is active (mirrors `android/.../FrameDetailScreen.kt`'s
+  blocks that each no-op unless their mode is active (mirrors `android-end-user-app/.../FrameDetailScreen.kt`'s
   chaining): add-box drag (REQ-025, unchanged), double-tap-to-reset-zoom, move/resize drag (hit-
   tests via `BoxGeometry`, live-previews the dragged box in local state, commits once via
   `moveBox` on drag end so the manifest gets one write per gesture, not per frame), and an

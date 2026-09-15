@@ -3,10 +3,10 @@ id: REQ-011
 title: Dataset Editor and Configurable Storage Quota
 status: done
 priority: high
-note: Dataset Editor + Frame Detail sections removed by REQ-026 (all editing moved to curation-android). The configurable storage-quota section remains in force.
+note: Dataset Editor + Frame Detail sections removed by REQ-026 (all editing moved to android-training-data-reviewing-app). The configurable storage-quota section remains in force.
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Implemented in `android-end-user-app/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `android-training-data-collection-app/`, not `android-end-user-app/`.**
 
 ## Summary
 

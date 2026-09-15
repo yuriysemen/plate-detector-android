@@ -19,7 +19,7 @@ Add an opt-in mode to the app that saves detected frames and their bounding-box 
 ## Non-goals
 
 - ~~Automatic upload to any server~~ — now in scope as REQ-014 (cloud upload) and REQ-015 (scheduled upload).
-- In-app annotation correction — briefly implemented in REQ-011, **removed again in REQ-026**. The generic app only captures and uploads; all box editing lives in `curation-android` (REQ-024/REQ-025).
+- In-app annotation correction — briefly implemented in REQ-011, **removed again in REQ-026**. The generic app only captures and uploads; all box editing lives in `android-training-data-reviewing-app` (REQ-024/REQ-025).
 - Video recording.
 - Collecting frames with zero detections (background-only samples) — out of scope for now.
 

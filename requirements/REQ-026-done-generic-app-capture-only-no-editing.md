@@ -7,14 +7,14 @@ depends_on: REQ-005, REQ-011, REQ-014, REQ-022
 supersedes_partial: REQ-011, REQ-012
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Implemented in `android-end-user-app/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `android-training-data-collection-app/`, not `android-end-user-app/`.**
 
 ## Summary
 
 The generic `plate-detector-android` app currently collects training frames **and** lets the
 user review, correct, prune, and re-annotate them on-device (Dataset Editor + Frame Detail
 editor, REQ-011/REQ-012) before they are uploaded. All curation now happens exclusively in the
-`curation-android` app (REQ-022–REQ-025).
+`android-training-data-reviewing-app` app (REQ-022–REQ-025).
 
 This requirement strips the generic app down to its collection role: **capture frames and upload
 them to the research server**. There is no on-device editing, box manipulation, thumbnail grid,
@@ -55,7 +55,7 @@ condition is not met, the detection/OCR pipeline runs normally but no frame is w
 
 - The upload ZIP format, split, `data.yaml`, `UploadDatasetWorker`, pre-signed URL flow,
   auth infra, `AutoUploadWorker` scheduling (REQ-014/REQ-015/REQ-018) — **no change**.
-- The `curation-android` app — it keeps consuming the identical package format (REQ-023). No
+- The `android-training-data-reviewing-app` app — it keeps consuming the identical package format (REQ-023). No
   curation-side change is required by this requirement.
 - Detection, OCR, model management, model auto-update (REQ-016).
 
@@ -277,7 +277,7 @@ implied durable on-device retention. Self-service reset still exists on `Contrib
       (`TrainingDataSaver` unchanged).
 - [x] Manual-shutter frames still ship an empty `.txt`.
 - [x] The uploaded ZIP is byte-for-byte the same format the curation app consumes today
-      (train/val/test split + `data.yaml`); `DatasetExporter` unchanged, `curation-android` untouched.
+      (train/val/test split + `data.yaml`); `DatasetExporter` unchanged, `android-training-data-reviewing-app` untouched.
 
 ### ContributeScreen
 

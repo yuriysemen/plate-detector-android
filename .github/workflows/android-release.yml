@@ -33,7 +33,7 @@ jobs:
           ls -la "$RUNNER_TEMP/release.jks"
 
       - name: Build Release artifacts
-        working-directory: android
+        working-directory: android-end-user-app
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -47,7 +47,7 @@ jobs:
         with:
           body_path: .github/release-notes/android-delivery.md
           files: |
-            android/app/build/outputs/bundle/release/app-release.aab
-            android/app/build/outputs/apk/release/app-release.apk
+            android-end-user-app/app/build/outputs/bundle/release/app-release.aab
+            android-end-user-app/app/build/outputs/apk/release/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

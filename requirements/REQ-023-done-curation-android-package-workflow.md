@@ -194,7 +194,7 @@ showing `accepted: 0`. This is not blocked — an all-rejected source package is
 
 ## Implementation notes
 
-All in `curation-android/app/src/main/java/.../curation/`:
+All in `android-training-data-reviewing-app/app/src/main/java/.../curation/`:
 
 - **Data / logic** (unit-tested, `CurationWorkflowTest`): `PackageId` (`packageIdOf`), `UploadRef`
   (`parseUploadKey`), `YoloLabel` (parse/format), `CurationManifest` (+ `withDecision`, `reviewers`,

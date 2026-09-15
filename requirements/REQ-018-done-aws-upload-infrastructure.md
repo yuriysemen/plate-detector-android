@@ -5,18 +5,18 @@ status: done
 priority: high
 ---
 
-> **Implemented in `android/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `training-android/`, not `android/`.**
+> **Implemented in `android-end-user-app/` originally; as of [REQ-031](REQ-031-done-split-detection-and-training-apps.md) this functionality lives in `android-training-data-collection-app/`, not `android-end-user-app/`.**
 
 ## Summary
 
-Define, provision, and deploy the server-side AWS infrastructure that supports the cloud dataset upload feature (REQ-014). All infrastructure is declared as code in `infra/aws/` using AWS SAM. The API Gateway endpoint is currently **unauthenticated** — adding SigV4 / Cognito authentication is a future hardening task.
+Define, provision, and deploy the server-side AWS infrastructure that supports the cloud dataset upload feature (REQ-014). All infrastructure is declared as code in `aws-training-infra/aws/` using AWS SAM. The API Gateway endpoint is currently **unauthenticated** — adding SigV4 / Cognito authentication is a future hardening task.
 
 ---
 
 ## Repository structure
 
 ```
-infra/
+aws-training-infra/
   aws/
     README.md           ← deployment instructions
     template.yaml       ← AWS SAM template (S3 + Lambda + API Gateway)
@@ -118,10 +118,10 @@ Logic:
 
 | Output | Description |
 |---|---|
-| `UploadServiceUrl` | API Gateway invoke URL — set as `UPLOAD_SERVICE_URL` in `android/local.properties` |
-| `UserPoolId` | Cognito User Pool ID — set as `COGNITO_USER_POOL_ID` in `android/local.properties` |
-| `UserPoolClientId` | Cognito App Client ID — set as `COGNITO_APP_CLIENT_ID` in `android/local.properties` |
-| `IdentityPoolId` | Cognito Identity Pool ID — set as `COGNITO_IDENTITY_POOL_ID` in `android/local.properties` |
+| `UploadServiceUrl` | API Gateway invoke URL — set as `UPLOAD_SERVICE_URL` in `android-end-user-app/local.properties` |
+| `UserPoolId` | Cognito User Pool ID — set as `COGNITO_USER_POOL_ID` in `android-end-user-app/local.properties` |
+| `UserPoolClientId` | Cognito App Client ID — set as `COGNITO_APP_CLIENT_ID` in `android-end-user-app/local.properties` |
+| `IdentityPoolId` | Cognito Identity Pool ID — set as `COGNITO_IDENTITY_POOL_ID` in `android-end-user-app/local.properties` |
 
 ---
 
@@ -130,7 +130,7 @@ Logic:
 ### First deploy
 
 ```bash
-cd infra/aws
+cd aws-training-infra/aws
 pip install aws-sam-cli          # one-time
 sam build
 sam deploy --guided
@@ -140,7 +140,7 @@ sam deploy --guided
 ### Subsequent deploys
 
 ```bash
-cd infra/aws
+cd aws-training-infra/aws
 sam build && sam deploy
 ```
 

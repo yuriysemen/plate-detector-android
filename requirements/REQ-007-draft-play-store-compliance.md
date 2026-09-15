@@ -5,21 +5,21 @@ status: draft
 priority: high
 ---
 
-> **Scope note (REQ-031):** all collection/upload/account code has been removed from `android/`
+> **Scope note (REQ-031):** all collection/upload/account code has been removed from `android-end-user-app/`
 > entirely rather than fixing its Data Safety declarations — see
 > [REQ-031](REQ-031-done-split-detection-and-training-apps.md), now done. This document's Play
-> Store requirements **no longer apply to `android/`** — it collects nothing to declare, and
+> Store requirements **no longer apply to `android-end-user-app/`** — it collects nothing to declare, and
 > `privacy-policy.md` is back to the "no data collected" baseline and factually true. The
 > underlying privacy/legal considerations described below (account deletion, data minimization,
-> GDPR posture) still apply to how `training-android/` is operated day to day — just not as Play
+> GDPR posture) still apply to how `android-training-data-collection-app/` is operated day to day — just not as Play
 > Store obligations, since it isn't published there. The rest of this document is kept as a
-> historical record of the analysis; it does not describe `android/`'s current behavior.
+> historical record of the analysis; it does not describe `android-end-user-app/`'s current behavior.
 
 ## Summary
 
 The app's live Play Store listing (`privacy-policy.md`, effective 2026-01-29) still describes the
 **original, pre-collection baseline**: no upload, no personal data collected. The app as it exists
-in `android/` today no longer matches that description — it has opt-in local frame collection
+in `android-end-user-app/` today no longer matches that description — it has opt-in local frame collection
 (REQ-002–REQ-006), opt-in cloud upload to S3 (REQ-014, REQ-015, REQ-018), **email/password account
 creation via Cognito** (REQ-018), and always-on on-device OCR (reads plate text, shown in the
 label — not uploaded separately, but the images it's derived from are). This requirement defines
@@ -182,7 +182,7 @@ listing, and confirm the Play Console "Privacy policy" field still points at the
 | `POST_NOTIFICATIONS` | Declared (added since original REQ-007 draft) | Runtime-requested on Android 13+ for auto-upload success notification (REQ-015). Not a Data Safety data type — no declaration needed beyond the permission itself. |
 | `WRITE_EXTERNAL_STORAGE` / `READ_EXTERNAL_STORAGE` / `READ_MEDIA_IMAGES` | Not declared, not needed | `filesDir` (app-private internal storage) used throughout |
 
-No Advertising ID: confirmed no ads/analytics SDK in `android/app/build.gradle.kts`, so the Play
+No Advertising ID: confirmed no ads/analytics SDK in `android-end-user-app/app/build.gradle.kts`, so the Play
 Console "Advertising ID" declaration should be **No**.
 
 ---

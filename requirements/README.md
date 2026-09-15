@@ -37,8 +37,8 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [028](REQ-028-done-upload-diagnostics.md) | done | Upload Diagnostics — Failure Reasons and a Persistent Activity Log |
 | [029](REQ-029-done-auth-robustness.md) | done | Auth Robustness — Curator API Access + Login/Logout Failure-Path Hardening |
 | [030](REQ-030-draft-google-play-release-readiness.md) | draft | Google Play Release Readiness — Next Production Release |
-| [031](REQ-031-done-split-detection-and-training-apps.md) | done | Split android/ into a Detection-Only Published App and a training-android Data-Collection App |
-| [032](REQ-032-done-training-android-in-app-backend-config.md) | done | In-App Backend Configuration Screen (training-android) |
+| [031](REQ-031-done-split-detection-and-training-apps.md) | done | Split android-end-user-app/ into a Detection-Only Published App and a android-training-data-collection-app Data-Collection App |
+| [032](REQ-032-done-training-android-in-app-backend-config.md) | done | In-App Backend Configuration Screen (android-training-data-collection-app) |
 | [033](REQ-033-done-curation-remove-vehicle-type-classification.md) | done | Curation — Remove Vehicle-Type Classification, Single License-Plate Class |
 | [034](REQ-034-done-curation-simplify-reject-allow-redecide.md) | done | Curation — Drop Reject Reason, Allow Changing an Already-Decided Item |
 | [035](REQ-035-done-curation-done-folder-structure-and-completion-button.md) | done | Curation — Mirror Upload Folder Structure in done/, Surface Complete in ReviewScreen |

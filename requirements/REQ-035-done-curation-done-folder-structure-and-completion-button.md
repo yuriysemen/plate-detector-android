@@ -26,7 +26,7 @@ Three related gaps found by actually using the review workflow end to end:
    every accepted item's image *and* its label (two requests per item — 200+ requests for a
    100-image package). You want the curated output uploaded as a **single compressed archive**
    instead — which also happens to be exactly how the *original* `uploads/<sub>/<device>/<file>.zip`
-   already works, and how `training-android` already packages its own uploads. This resolves gap 2
+   already works, and how `android-training-data-collection-app` already packages its own uploads. This resolves gap 2
    more precisely than my first draft did: since `uploads/` itself is a single `.zip` file at that
    nested path, not a folder, the truly parallel shape for `done/` is a single `.zip` file too.
 
@@ -68,7 +68,7 @@ done/<sub>/<device>/<filename-stem>-curated-<YYYYMMDD>_<HHmmss>._manifest.json  
   `.deviceId` / `.filename` — no new data needed, just used as three path segments instead of
   concatenated into one.
 - `<YYYYMMDD>_<HHmmss>` (the completion timestamp, UTC) matches the date/time format already used
-  elsewhere in this codebase for filenames (frame capture naming in `android/`/`training-android`)
+  elsewhere in this codebase for filenames (frame capture naming in `android-end-user-app/`/`android-training-data-collection-app`)
   rather than introducing a new convention.
 - This keeps a completed package traceable straight back to exactly which raw upload it came from
   by just reading the path — no need to open `_manifest.json` to find `sourceKey`.
@@ -137,7 +137,7 @@ A: Completion time.
       sidecars, never needs to open an archive.
 - [x] Existing `done/`/`rejected/` output from before this ships is untouched — no migration, each
       already-completed package remains exactly as it is.
-- [x] `curation-android/CLAUDE.md` updated to describe the new `done/`/`rejected/` path shapes and
+- [x] `android-training-data-reviewing-app/CLAUDE.md` updated to describe the new `done/`/`rejected/` path shapes and
       why the manifest stays a sidecar instead of living inside the zip.
 
 ## Implementation notes

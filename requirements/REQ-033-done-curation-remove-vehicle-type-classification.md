@@ -9,7 +9,7 @@ supersedes: REQ-025
 ## Summary
 
 [REQ-025](REQ-025-done-curation-vehicle-type-categories.md) added per-box vehicle-type
-classification to `curation-android` (civil / police / fire / medical / other / license_plate,
+classification to `android-training-data-reviewing-app` (civil / police / fire / medical / other / license_plate,
 curator-chosen from a dropdown, required before Accept). This requirement rolls that back to
 focus purely on license-plate detection: every box is now automatically the single
 `license_plate` class, and there is no way to change it.
@@ -23,7 +23,7 @@ could be re-expanded later without rebuilding that plumbing from scratch.
 
 - **`app/src/main/assets/vehicle-categories.json`** bumped to `version: 2`, trimmed to one class:
   `{"id": 0, "key": "license_plate", "label": "License plate"}`. The S3 copy needs the same update
-  — see `infra/aws/README.md`'s "Category list" section for the `aws s3 cp` command.
+  — see `aws-training-infra/aws/README.md`'s "Category list" section for the `aws s3 cp` command.
 - **`CurationViewModel.currentBoxes()`** — for a `PENDING` item, every box's class is now always
   `LICENSE_PLATE_CLASS_ID` (`0`), not read from `item.boxClasses`. `setBoxClass()` was removed
   (nothing calls it anymore). `addBox()` no longer takes a `classId` parameter.
@@ -57,7 +57,7 @@ if this comes back."
 - [x] `data.yaml` for a newly-started package declares `nc: 1, names: ['license_plate']`.
 - [x] A package already In Progress under the old 6-class snapshot is unaffected — it completes
       against its own snapshot, not the new one.
-- [x] `curation-android/CLAUDE.md` and `infra/aws/README.md` updated to describe the rollback and
+- [x] `android-training-data-reviewing-app/CLAUDE.md` and `aws-training-infra/aws/README.md` updated to describe the rollback and
       the still-live category-list mechanism.
 - [ ] Operator has re-run `aws s3 cp .../vehicle-categories.json s3://.../config/vehicle-categories.json`
       so newly-*started* packages pick up the single-class list from S3 too (the bundled fallback

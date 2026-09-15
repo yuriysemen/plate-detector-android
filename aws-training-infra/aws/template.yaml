@@ -1,0 +1,422 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Plate Detector dataset upload infrastructure — S3, Lambda, API Gateway, Cognito
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique S3 bucket name for dataset uploads
+  AdminPrincipalArn:
+    Type: String
+    Description: IAM user or role ARN that receives full S3 access to the bucket
+  PresignedUrlExpirySeconds:
+    Type: Number
+    Default: 3600
+    Description: Validity period of pre-signed upload URLs in seconds
+  StageName:
+    Type: String
+    Default: prod
+    Description: API Gateway stage name
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 128
+    Architectures:
+      - x86_64
+
+Resources:
+
+  # ── IAM role for the Lambda function ──────────────────────────────────────
+  # Defined explicitly so the bucket policy can reference its ARN without
+  # relying on SAM's auto-generated role name (which is not stable).
+  UploadLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3PutUpload
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── Cognito User Pool ──────────────────────────────────────────────────────
+  # Email is the sign-in identifier. Users self-register; email verification
+  # is required before the account becomes active.
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: PlateDetectorUsers
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationSubject: "Plate Detector — verify your email"
+      EmailVerificationMessage: "Your verification code is {####}"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+
+  # ── Cognito User Pool App Client ───────────────────────────────────────────
+  # No client secret — mobile apps cannot keep secrets safe.
+  # SRP auth is used instead of plain-text password exchange.
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: PlateDetectorAndroid
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # ── Cognito Identity Pool ──────────────────────────────────────────────────
+  # Exchanges a valid User Pool ID token for short-lived STS credentials.
+  # Unauthenticated access is disabled — a signed-in account is required.
+  DeviceIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: PlateDetectorDevices
+      AllowUnauthenticatedIdentities: false
+      AllowClassicFlow: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+          ServerSideTokenCheck: true
+
+  # ── IAM role assumed by authenticated Cognito identities ──────────────────
+  # Grants only the minimum needed: invoke the single API Gateway route that
+  # requests a pre-signed S3 upload URL. No direct S3 access granted.
+  DeviceAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref DeviceIdentityPool
+              ForAnyValue:StringLike:
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: InvokeUploadApi
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource:
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/GET/get-model-url"
+
+  # ── IAM role assumed by a curator (member of the `curators` group) ────────
+  # Direct, tightly-scoped S3 access from the android-training-data-reviewing-app device (REQ-022):
+  # list/read uploads + curation working files, write/read done + rejected, and
+  # delete only the per-package curation manifest. Never writes or deletes under
+  # uploads/, never deletes under done/ or rejected/.
+  #
+  # Also grants execute-api:Invoke on the upload API's two routes. The Identity
+  # Pool's Token role mapping resolves ANY member of the `curators` group to this
+  # role — in the main plate-detector-android app too, since both apps share one
+  # User Pool client. Without this, a curator signing into the main app gets
+  # CuratorRole credentials that API Gateway then rejects with HTTP 403 on
+  # /get-upload-url and /get-model-url (REQ-029). A curator is a trusted superset
+  # user, so mirroring DeviceAuthRole's API access here is acceptable.
+  CuratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref DeviceIdentityPool
+              ForAnyValue:StringLike:
+                "cognito-identity.amazonaws.com:amr": authenticated
+      Policies:
+        - PolicyName: CuratorS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListDatasetBucket
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${BucketName}"
+              - Sid: ReadDatasetPrefixes
+                Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/curation/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/done/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/rejected/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/config/*"   # REQ-025 vehicle-category list (read-only)
+              - Sid: WriteCurationOutputs
+                Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}/curation/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/done/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/rejected/*"
+              - Sid: DeleteCurationManifestOnly
+                Effect: Allow
+                Action: s3:DeleteObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/curation/*"
+        - PolicyName: InvokeUploadApi
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource:
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/POST/get-upload-url"
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${UploadApi}/${StageName}/GET/get-model-url"
+
+  # ── Cognito group gating curator access ──────────────────────────────────
+  # Membership is provisioned manually (no self-service):
+  #   aws cognito-idp admin-add-user-to-group \
+  #     --user-pool-id <UserPoolId> --username <email> --group-name curators
+  # The group's RoleArn drives the Identity Pool's token-based role mapping below.
+  CuratorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: curators
+      UserPoolId: !Ref UserPool
+      Description: Trusted dataset curators — direct scoped S3 access via CuratorRole
+      Precedence: 1
+      RoleArn: !GetAtt CuratorRole.Arn
+
+  # ── Attach roles to the Identity Pool ────────────────────────────────────
+  # Default authenticated role is unchanged (DeviceAuthRole — the main android-end-user-app/
+  # app). RoleMappings adds token-based resolution: an ID token carrying the
+  # `curators` group resolves to CuratorRole via the group's RoleArn; a token
+  # with no group role claim falls back to the default authenticated role.
+  DeviceIdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref DeviceIdentityPool
+      Roles:
+        authenticated: !GetAtt DeviceAuthRole.Arn
+      RoleMappings:
+        CognitoUserPool:
+          IdentityProvider: !Sub "cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}:${UserPoolClient}"
+          Type: Token
+          AmbiguousRoleResolution: AuthenticatedRole
+
+  # ── S3 bucket ──────────────────────────────────────────────────────────────
+  DatasetBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Suspended
+
+  # ── S3 bucket policy ───────────────────────────────────────────────────────
+  DatasetBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DatasetBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPutUpload
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt UploadLambdaRole.Arn
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${BucketName}/uploads/*"
+          - Sid: ModelLambdaGetModels
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt ModelLambdaRole.Arn
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${BucketName}/models/*"
+          - Sid: AdminFullAccess
+            Effect: Allow
+            Principal:
+              AWS: !Ref AdminPrincipalArn
+            Action: s3:*
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketName}"
+              - !Sub "arn:aws:s3:::${BucketName}/*"
+
+  # ── HTTP API (API Gateway v2) — IAM-authenticated ─────────────────────────
+  # All routes require a valid SigV4 signature. Devices sign requests using
+  # short-lived STS credentials obtained from the Cognito Identity Pool.
+  UploadApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref StageName
+      Auth:
+        EnableIamAuthorizer: true
+        DefaultAuthorizer: AWS_IAM
+
+  # ── IAM role for the model Lambda function ───────────────────────────────────
+  ModelLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ListAndGetModels
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${BucketName}"
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - "models/*"
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${BucketName}/models/*"
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── Lambda function (upload URL) ───────────────────────────────────────────
+  GetUploadUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/get_upload_url/
+      Handler: handler.handler
+      Role: !GetAtt UploadLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          URL_EXPIRY_SECONDS: !Ref PresignedUrlExpirySeconds
+      Events:
+        GetUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UploadApi
+            Path: /get-upload-url
+            Method: POST
+
+  # ── Lambda function (model download URL) ──────────────────────────────────
+  GetModelUrlFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/get_model_url/
+      Handler: handler.handler
+      Role: !GetAtt ModelLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          URL_EXPIRY_SECONDS: !Ref PresignedUrlExpirySeconds
+      Events:
+        GetModelUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref UploadApi
+            Path: /get-model-url
+            Method: GET
+
+Outputs:
+  UploadServiceUrl:
+    Description: >
+      API Gateway invoke URL — paste into Android app
+      Settings → Export → Upload server URL
+    Value: !Sub "https://${UploadApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+
+  UserPoolId:
+    Description: >
+      Cognito User Pool ID — used by the Android app to authenticate users
+    Value: !Ref UserPool
+
+  UserPoolClientId:
+    Description: >
+      Cognito User Pool App Client ID — used by the Android app (no secret)
+    Value: !Ref UserPoolClient
+
+  IdentityPoolId:
+    Description: >
+      Cognito Identity Pool ID — paste into Android app
+      Settings → Export → Identity Pool ID
+    Value: !Ref DeviceIdentityPool
+
+  DatasetBucketName:
+    Description: >
+      S3 dataset bucket name — paste into android-training-data-reviewing-app local.properties
+      as DATASET_BUCKET_NAME
+    Value: !Ref BucketName
+
+  CuratorRoleArn:
+    Description: >
+      IAM role assumed by android-training-data-reviewing-app devices whose sign-in token carries
+      the `curators` group
+    Value: !GetAtt CuratorRole.Arn

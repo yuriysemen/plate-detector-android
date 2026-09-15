@@ -21,6 +21,9 @@ are intentionally not tracked by git.
    pip install -r requirements.txt
    ```
 3. Prepare a YOLOv11 dataset outside of the repository (datasets are typically large and should not be committed).
+   Today this means manually downloading the curator-reviewed `done/` packages from S3 (see
+   [`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md)) and merging them into one
+   dataset yourself — there's no automated consolidation step yet.
 4. Run training in python implementation:
    ```bash
    python train.py --data <path_to_dataset>/data.yaml --model yolo11n.pt --epochs 20 --device cpu
@@ -43,7 +46,7 @@ are intentionally not tracked by git.
    The script saves a `best.ptlite` file next to the checkpoint unless `--output` is provided.
    Copy the resulting `.ptlite` into the Android app assets (or wherever your app expects model assets)
    and update the app-side model name accordingly. If you keep assets in the repo, this is usually
-   under `android/app/src/main/assets/`.
+   under `android-end-user-app/app/src/main/assets/`.
 
 > If you want to use a device other than CPU, pass `--device` explicitly (for example, `cuda` or `mps`).
 

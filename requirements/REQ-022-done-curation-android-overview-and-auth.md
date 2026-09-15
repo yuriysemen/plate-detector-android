@@ -6,16 +6,16 @@ priority: high
 depends_on: REQ-013, REQ-018
 ---
 
-> **Status — done (2026-08-30).** Standalone `curation-android/` Gradle project scaffolded;
+> **Status — done (2026-08-30).** Standalone `android-training-data-reviewing-app/` Gradle project scaffolded;
 > Cognito SRP sign-in, `curators`-group gate, direct `CuratorRole` S3 access, and a placeholder
-> home screen with a live `ListObjectsV2` check. Infra (`infra/aws/template.yaml`) gained
+> home screen with a live `ListObjectsV2` check. Infra (`aws-training-infra/aws/template.yaml`) gained
 > `CuratorRole`, the `curators` Cognito group, and a token-based Identity Pool role mapping;
 > deployed to the `plate-detector-upload` stack. Package workflow (REQ-023) and review editor
 > (REQ-024) remain draft. See "Implementation notes" at the end.
 
 ## Summary
 
-A new standalone Android app, `curation-android/`, internal-only and never published to an app
+A new standalone Android app, `android-training-data-reviewing-app/`, internal-only and never published to an app
 store, used by a trusted curator (not end users) to turn raw uploaded YOLO packages sitting in S3
 `uploads/` into a verified, training-ready dataset in S3 `done/`. The app uses **direct,
 IAM-scoped S3 access from the device** rather than a Lambda-mediated backend API — a deliberate
@@ -40,7 +40,7 @@ Package lifecycle is specified in **REQ-023**; the per-image review editor is sp
 - Make review progress durable enough to survive an app kill, phone reboot, or reinstall — a
   package's state is never lost as long as the original ZIP and its manifest still exist in S3
   ("restart the process").
-- Ship as a fully standalone Gradle/Android project — no build-time dependency on `android/`.
+- Ship as a fully standalone Gradle/Android project — no build-time dependency on `android-end-user-app/`.
 
 ## Non-goals
 
@@ -51,7 +51,7 @@ Package lifecycle is specified in **REQ-023**; the per-image review editor is sp
 - Merging completed packages into one physical combined dataset directory — `done/` accumulates
   curated packages individually; consolidating them for training is a downstream/training-pipeline
   concern (existing `training/` tooling), out of scope here.
-- Any change to the existing `android/` app or its Lambda endpoints (`get-upload-url`,
+- Any change to the existing `android-end-user-app/` app or its Lambda endpoints (`get-upload-url`,
   `get-model-url`).
 
 ---
@@ -106,7 +106,7 @@ Note there is **no** full `<subset>/{images,labels}/` working tree under `curati
 ### Sign-in
 
 Same mechanism as the main app (REQ-014): email + password, Cognito SRP via
-`aws-android-sdk-cognitoidentityprovider` (already used by `android/`'s `CognitoAuthManager`). The
+`aws-android-sdk-cognitoidentityprovider` (already used by `android-end-user-app/`'s `CognitoAuthManager`). The
 ID token is exchanged for short-lived STS credentials via the existing Identity Pool.
 
 ### New Cognito group: `curators`
@@ -121,7 +121,7 @@ ID token is exchanged for short-lived STS credentials via the existing Identity 
 - New role mapping on the existing `DeviceIdentityPool`: requests whose ID token contains
   `curators` in `cognito:groups` assume `CuratorRole` instead of the existing `DeviceAuthRole`
   (token-based role mapping).
-- `DeviceAuthRole` (used by the main `android/` app) is unchanged.
+- `DeviceAuthRole` (used by the main `android-end-user-app/` app) is unchanged.
 
 `CuratorRole` S3 permissions, scoped to the dataset bucket:
 
@@ -147,7 +147,7 @@ in this app can remove it (manual operator action only).
 Own `local.properties`-backed `BuildConfig` fields — `COGNITO_USER_POOL_ID`,
 `COGNITO_APP_CLIENT_ID`, `COGNITO_IDENTITY_POOL_ID`, `DATASET_BUCKET_NAME`, `AWS_REGION`. Same
 underlying IDs as the main app's config (shared backend), entered independently since this is a
-standalone Gradle project with no build dependency on `android/`.
+standalone Gradle project with no build dependency on `android-end-user-app/`.
 
 ---
 
@@ -167,7 +167,7 @@ Discard / Take over when a curator next opens the app). Neither is a concurrency
 
 ---
 
-## Infra changes required (`infra/aws/template.yaml`)
+## Infra changes required (`aws-training-infra/aws/template.yaml`)
 
 - New `curators` Cognito group.
 - New `CuratorRole` with the policy above.
@@ -181,7 +181,7 @@ Discard / Take over when a curator next opens the app). Neither is a concurrency
 
 - **Access model:** direct, IAM-scoped S3 access from the device, not a Lambda-mediated API —
   justified by the single-trusted-curator, unpublished-app threat model (confirmed).
-- **Project structure:** standalone Gradle project, no shared module with `android/` (confirmed) —
+- **Project structure:** standalone Gradle project, no shared module with `android-end-user-app/` (confirmed) —
   box-editing UI and YOLO label parsing are reimplemented rather than shared.
 - **Concurrency:** single curator/session at a time for v1 (confirmed) — no claim/lock markers.
 - **Working copy:** lives on-device, not mirrored into an S3 `curation/` working tree; only
@@ -207,22 +207,22 @@ Discard / Take over when a curator next opens the app). Neither is a concurrency
       explicit negative call not yet run.
 - [ ] `CuratorRole` cannot delete under `done/` or `rejected/`. — same; explicit negative call not
       yet run.
-- [x] `DeviceAuthRole` permissions (used by the main `android/` app) are unchanged — regression
+- [x] `DeviceAuthRole` permissions (used by the main `android-end-user-app/` app) are unchanged — regression
       check. — deploy changeset showed only `Add CuratorRole`, `Add CuratorGroup`,
       `Modify DeviceIdentityPoolRoleAttachment`; `authenticated` role still `DeviceAuthRole`.
 - [x] Curator sign-out clears cached STS credentials from device memory/storage. —
       `CuratorAuthManager.signOut()` calls `CognitoCachingCredentialsProvider.clear()` and
       `CuratorPrefs.clear()`.
-- [x] The app builds and runs as a standalone Gradle project with no dependency on `android/`. —
-      `curation-android/` builds via its own Gradle wrapper; no `:android` include.
+- [x] The app builds and runs as a standalone Gradle project with no dependency on `android-end-user-app/`. —
+      `android-training-data-reviewing-app/` builds via its own Gradle wrapper; no `:android` include.
 - [x] The original ZIP in `uploads/` is byte-for-byte unchanged after any curation activity. —
       REQ-022 wires no write path at all; `CuratorRole` has no `PutObject`/`DeleteObject` on
       `uploads/*`.
 
 ## Implementation notes
 
-- **Project:** `curation-android/` — package `com.github.yuriysemen.platesdetector.curation`,
-  standalone Gradle project mirroring `android/`'s toolchain (AGP, Kotlin, Compose BOM, JVM 17).
+- **Project:** `android-training-data-reviewing-app/` — package `com.github.yuriysemen.platesdetector.curation`,
+  standalone Gradle project mirroring `android-end-user-app/`'s toolchain (AGP, Kotlin, Compose BOM, JVM 17).
   Its own committed `local.properties` (`COGNITO_*` shared with the main app,
   `DATASET_BUCKET_NAME`); AWS region is derived from the Identity Pool ID prefix.
 - **Auth:** `CuratorAuthManager` — a trimmed copy of the main app's `CognitoAuthManager` (no
