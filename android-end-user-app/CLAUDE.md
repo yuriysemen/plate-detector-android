@@ -18,6 +18,10 @@ its history is what most of this app's `ROADMAP.md` used to describe.
 The working directory for the Android project is `android-end-user-app/` (this folder); Gradle commands must
 be run from here.
 
+See `../requirements/REQ-039-done-end-user-app-scope-and-deployment.md` for this app's
+purpose/scope/deployment-status summary (one of three separate apps in this repo — this is the one
+actually published to Google Play).
+
 ## Build commands
 
 ```bash

@@ -13,6 +13,8 @@ reimplemented here, not shared.
 Requirements: **REQ-022** (foundation), **REQ-023** (package workflow), **REQ-024** (precise box
 geometry editing + pinch-zoom/pan) — all done, all in `../requirements/`. **REQ-025** (vehicle-type
 categories + typed boxes) shipped but was rolled back — see below, "Vehicle classification removed".
+See **REQ-041** for this app's purpose/scope/deployment-status summary (one of three separate
+apps in this repo — never published to Google Play, and why).
 
 Key design decisions (see REQ-022 / REQ-023):
 - **Direct S3 access from the device** via a scoped IAM role (`CuratorRole`), not a Lambda-mediated

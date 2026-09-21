@@ -1,19 +1,21 @@
 ---
 id: REQ-007
 title: Google Play Compliance and Privacy Policy Changes
-status: draft
+status: superseded
 priority: high
 ---
 
-> **Scope note (REQ-031):** all collection/upload/account code has been removed from `android-end-user-app/`
-> entirely rather than fixing its Data Safety declarations — see
-> [REQ-031](REQ-031-done-split-detection-and-training-apps.md), now done. This document's Play
-> Store requirements **no longer apply to `android-end-user-app/`** — it collects nothing to declare, and
-> `privacy-policy.md` is back to the "no data collected" baseline and factually true. The
-> underlying privacy/legal considerations described below (account deletion, data minimization,
-> GDPR posture) still apply to how `android-training-data-collection-app/` is operated day to day — just not as Play
-> Store obligations, since it isn't published there. The rest of this document is kept as a
-> historical record of the analysis; it does not describe `android-end-user-app/`'s current behavior.
+> **Scope note:** this document is superseded — its compliance checklist doesn't apply to either
+> app it could plausibly describe today. See
+> [REQ-039](REQ-039-done-end-user-app-scope-and-deployment.md) (`android-end-user-app/` — collects
+> nothing to declare, per [REQ-031](REQ-031-done-split-detection-and-training-apps.md)) and
+> [REQ-040](REQ-040-done-collection-app-scope-and-deployment.md)
+> (`android-training-data-collection-app/` — internal-only, never published, so no Play Store
+> obligation regardless of what it collects). The underlying privacy/data-minimization practices
+> described below (opt-in consent, storage quota, Auto Backup exclusion) still apply to how
+> `android-training-data-collection-app/` is operated day to day — they're just not *Play Store*
+> obligations. The rest of this document is kept as a historical record of the analysis (and of
+> what would be required if the never-publish decision ever changed), not as active work.
 
 ## Summary
 

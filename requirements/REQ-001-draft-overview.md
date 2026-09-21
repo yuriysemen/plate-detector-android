@@ -5,6 +5,19 @@ status: draft
 priority: high
 ---
 
+> **Current-state note:** this document predates the three-app split (REQ-031) and describes the
+> original single-app design. For what actually exists today — three separate apps, their
+> purposes, and where each is deployed — see
+> [REQ-039](REQ-039-done-end-user-app-scope-and-deployment.md) (`android-end-user-app/`),
+> [REQ-040](REQ-040-done-collection-app-scope-and-deployment.md)
+> (`android-training-data-collection-app/`), and
+> [REQ-041](REQ-041-done-reviewing-app-scope-and-deployment.md)
+> (`android-training-data-reviewing-app/`). This document remains useful as the original
+> feature-scope tracker for the collection pipeline's history (table below), but its Goals section
+> below no longer matches current deployment reality (see "Be safe to publish on Google Play" —
+> that goal applied when this was all one app; the app that now carries this functionality,
+> `android-training-data-collection-app/`, is deliberately never published).
+
 ## Summary
 
 Add an opt-in mode to the app that saves detected frames and their bounding-box annotations in YOLO format to device storage. The saved dataset can be used to fine-tune the existing model or to train a new model from scratch using the existing `training/ultralytics/` pipeline.

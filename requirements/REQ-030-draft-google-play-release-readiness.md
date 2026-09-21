@@ -21,7 +21,7 @@ priority: high
 new behavior — cloud upload, Cognito accounts, OCR, model auto-update, auth-failure recovery,
 upload diagnostics — none of which has been reflected in a production release yet. This is the
 concrete, one-time checklist to get the *next* release published safely. It assumes
-[REQ-007](REQ-007-draft-play-store-compliance.md) (privacy/compliance content) is completed first
+[REQ-007](REQ-007-superseded-play-store-compliance.md) (privacy/compliance content) is completed first
 — this doc is about the release *mechanics*, not the disclosures themselves.
 
 ## Preconditions (do not start this checklist before these are true)

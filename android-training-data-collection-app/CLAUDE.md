@@ -16,6 +16,10 @@ because capture decisions depend on it, not because this app is meant to be used
 itself. The working directory for this Android project is `android-training-data-collection-app/` (this folder);
 Gradle commands must be run from here.
 
+See `../requirements/REQ-040-done-collection-app-scope-and-deployment.md` for this app's
+purpose/scope/deployment-status summary (one of three separate apps in this repo — never published
+to Google Play, and why).
+
 ## Build commands
 
 ```bash

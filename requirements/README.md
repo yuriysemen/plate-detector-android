@@ -13,7 +13,7 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [004](REQ-004-done-multiple-detections-per-frame.md) | done | Multiple Detections Per Frame — Investigation and Handling |
 | [005](REQ-005-done-settings-and-controls.md) | done | Settings UI and Preference Keys for Data Collection |
 | [006](REQ-006-done-storage-quota-and-export.md) | done | Storage Quota, LRU Eviction, and Dataset Export |
-| [007](REQ-007-draft-play-store-compliance.md) | draft | Google Play Compliance and Privacy Policy Changes |
+| [007](REQ-007-superseded-play-store-compliance.md) | superseded | Google Play Compliance and Privacy Policy Changes |
 | [008](REQ-008-superseded-local-vs-cloud-storage.md) | superseded | Local-Only vs. Cloud Upload — Analysis and Decision |
 | [009](REQ-009-draft-vehicle-type-detection.md) | draft | Vehicle Type Detection — Police, Medical, Fire vs Civilian |
 | [010](REQ-010-draft-access-control-decision.md) | draft | Parking Access Control — Decision Logic and UI |
@@ -43,3 +43,7 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [034](REQ-034-done-curation-simplify-reject-allow-redecide.md) | done | Curation — Drop Reject Reason, Allow Changing an Already-Decided Item |
 | [035](REQ-035-done-curation-done-folder-structure-and-completion-button.md) | done | Curation — Mirror Upload Folder Structure in done/, Surface Complete in ReviewScreen |
 | [036](REQ-036-done-curation-view-done-package-images.md) | done | Curation — View a Done Package's Images |
+| [038](REQ-038-done-collection-app-capture-guidelines-onboarding.md) | done | Collection App — Capture Guidelines Shown Before First Camera Use |
+| [039](REQ-039-done-end-user-app-scope-and-deployment.md) | done | android-end-user-app — Purpose, Scope, and Deployment |
+| [040](REQ-040-done-collection-app-scope-and-deployment.md) | done | android-training-data-collection-app — Purpose, Scope, and Deployment |
+| [041](REQ-041-done-reviewing-app-scope-and-deployment.md) | done | android-training-data-reviewing-app — Purpose, Scope, and Deployment |
