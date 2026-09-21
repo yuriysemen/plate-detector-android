@@ -80,7 +80,7 @@ Every module has its own README with the full description, setup, and design not
   pinch-zoom, resumable sessions, and workflow state derived entirely from storage.
 - **ML pipeline thinking** — dataset spec, training, and export to a mobile format, tied back to the
   app that consumes the model.
-- **Engineering discipline** — spec-driven development (40 numbered requirement documents),
+- **Engineering discipline** — spec-driven development (41 numbered requirement documents),
   unit tests on Android and Lambda code, and signed release builds through GitHub Actions.
 
 ## Tech stack

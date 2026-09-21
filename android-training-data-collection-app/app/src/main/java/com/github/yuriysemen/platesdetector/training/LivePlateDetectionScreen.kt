@@ -25,6 +25,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -158,7 +159,7 @@ private object ModelPrefs {
             AnalysisResolution.valueOf(
                 prefs(context).getString(KEY_ANALYSIS_RESOLUTION, null) ?: ""
             )
-        }.getOrDefault(AnalysisResolution.DEFAULT)
+        }.getOrDefault(AnalysisResolution.LOW)
 
     fun setAnalysisResolution(context: Context, res: AnalysisResolution) {
         prefs(context).edit { putString(KEY_ANALYSIS_RESOLUTION, res.name) }
@@ -1897,30 +1898,32 @@ private fun CameraPreviewWithAnalysis(
         val listener = Runnable {
             val cameraProvider = cameraProviderFuture.get()
 
-            val preview = Preview.Builder().build().also {
-                it.surfaceProvider = previewView.surfaceProvider
-            }
+            // Pin aspect ratio as well as size: with only a bound size CameraX prefers 4:3, so "HD"
+            // would come back as 1280×960. Preview shares the ratio because the detection overlay
+            // is mapped onto it assuming the same aspect as the analysis frame.
+            val aspectRatio = if (analysisResolution.isWide) AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+            else AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
+
+            val preview = Preview.Builder()
+                .setResolutionSelector(
+                    ResolutionSelector.Builder().setAspectRatioStrategy(aspectRatio).build()
+                )
+                .build()
+                .also { it.surfaceProvider = previewView.surfaceProvider }
 
             val imageAnalysisBuilder = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-
-            if (analysisResolution != AnalysisResolution.DEFAULT) {
-                val targetSize = when (analysisResolution) {
-                    AnalysisResolution.LOW -> android.util.Size(640, 480)
-                    AnalysisResolution.HD -> android.util.Size(1280, 720)
-                    AnalysisResolution.DEFAULT -> error("unreachable")
-                }
-                imageAnalysisBuilder.setResolutionSelector(
+                .setResolutionSelector(
                     ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(aspectRatio)
                         .setResolutionStrategy(
                             ResolutionStrategy(
-                                targetSize,
+                                android.util.Size(analysisResolution.width, analysisResolution.height),
                                 ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
                             )
                         )
                         .build()
                 )
-            }
 
             val imageAnalysis = imageAnalysisBuilder.build()
 

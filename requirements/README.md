@@ -47,3 +47,4 @@ mirrors the `status:` field in the doc's own frontmatter — `draft` (proposed, 
 | [039](REQ-039-done-end-user-app-scope-and-deployment.md) | done | android-end-user-app — Purpose, Scope, and Deployment |
 | [040](REQ-040-done-collection-app-scope-and-deployment.md) | done | android-training-data-collection-app — Purpose, Scope, and Deployment |
 | [041](REQ-041-done-reviewing-app-scope-and-deployment.md) | done | android-training-data-reviewing-app — Purpose, Scope, and Deployment |
+| [042](REQ-042-done-collection-frame-size-restriction.md) | done | Collection App — Restrict Captured Frames to 640×480 and 1280×720 |

@@ -73,7 +73,7 @@ Pattern: `frame_<seq8>.jpg`
 
 - **Format:** JPEG, quality 90.
 - **Content:** the `rotated` Bitmap — the frame after YUV→Bitmap conversion and rotation correction. This is the same coordinate space as the `Detection` pixel values.
-- **Resolution:** whatever the current analysis resolution setting produces (HAL default, 640×480, or 1280×720). The YOLO annotation is normalized, so resolution changes do not invalidate existing labels — see REQ-003.
+- **Resolution:** 640×480 or 1280×720 (either orientation) per the analysis resolution setting — the HAL-default option was removed by REQ-042. The YOLO annotation is normalized, so resolution changes do not invalidate existing labels — see REQ-003.
 
 ## Export screen
 

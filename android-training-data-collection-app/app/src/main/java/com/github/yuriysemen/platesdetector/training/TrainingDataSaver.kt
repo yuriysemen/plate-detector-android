@@ -2,6 +2,7 @@ package com.github.yuriysemen.platesdetector.training
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -64,6 +65,7 @@ class TrainingDataSaver(context: Context) {
         }
         if (lines.isEmpty()) return
 
+        warnIfUnexpectedSize(bitmap)
         val seq = nextSeq++
         val captureTime = Date()
         val name = "${filenameDateFormat.format(captureTime)}_${"%06d".format(seq)}"
@@ -94,6 +96,7 @@ class TrainingDataSaver(context: Context) {
     /** Saves a frame with an empty label file — used for manually captured missed-plate cases. */
     fun saveFrameManual(bitmap: Bitmap, appVersion: String, modelId: String) {
         ensureInit()
+        warnIfUnexpectedSize(bitmap)
         val seq = nextSeq++
         val captureTime = Date()
         val name = "${filenameDateFormat.format(captureTime)}_${"%06d".format(seq)}"
@@ -117,6 +120,13 @@ class TrainingDataSaver(context: Context) {
         json.put("multi_detection_frames", multiDetectionFrames)
         json.put("next_seq", nextSeq)
         manifestFile.writeText(json.toString(2))
+    }
+
+    /** Frames are kept regardless; the size lands in `data.yaml` (`frame_sizes`) for the admin to filter on. */
+    private fun warnIfUnexpectedSize(bitmap: Bitmap) {
+        if (!AnalysisResolution.isAllowedFrameSize(bitmap.width, bitmap.height)) {
+            Log.w("TrainingDataSaver", "Frame ${bitmap.width}x${bitmap.height} is not 640x480 / 1280x720")
+        }
     }
 
     fun reset() {

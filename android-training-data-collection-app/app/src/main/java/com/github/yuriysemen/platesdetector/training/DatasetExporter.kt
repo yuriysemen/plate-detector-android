@@ -1,6 +1,7 @@
 package com.github.yuriysemen.platesdetector.training
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.provider.Settings
 import org.json.JSONObject
@@ -31,7 +32,9 @@ class DatasetExporter(context: Context) {
         val collectedFrom: String?,
         val collectedTo: String?,
         val modelId: String?,
-        val appVersion: String?
+        val appVersion: String?,
+        /** Frames per "WxH", measured at export time (REQ-042). */
+        val frameSizes: Map<String, Int> = emptyMap()
     )
 
     data class ExportFile(
@@ -125,7 +128,7 @@ class DatasetExporter(context: Context) {
                 "test" to allImages.subList(trainCount + valCount, total)
             )
 
-            val stats = readStats()
+            val stats = readStats().copy(frameSizes = countFrameSizes(allImages))
             val rawAndroidId = Settings.Secure.getString(
                 appContext.contentResolver, Settings.Secure.ANDROID_ID
             ) ?: ""
@@ -166,6 +169,20 @@ class DatasetExporter(context: Context) {
             runCatching { zipFile.delete() }
             throw e
         }
+    }
+
+    /** Frames per "WxH", read from each JPEG's header so it reflects the files actually shipped. */
+    private fun countFrameSizes(images: List<File>): Map<String, Int> {
+        val counts = sortedMapOf<String, Int>()
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        for (img in images) {
+            BitmapFactory.decodeFile(img.path, opts)
+            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                val key = "${opts.outWidth}x${opts.outHeight}"
+                counts[key] = (counts[key] ?: 0) + 1
+            }
+        }
+        return counts
     }
 
     fun resetCollectedData() {
@@ -271,6 +288,10 @@ class DatasetExporter(context: Context) {
                 appendLine("  device_id: \"${meta.deviceId}\"")
                 appendLine("  total_frames: ${stats.totalFrames}")
                 appendLine("  total_detections: ${stats.totalDetections}")
+                if (stats.frameSizes.isNotEmpty()) {
+                    appendLine("  frame_sizes:")
+                    stats.frameSizes.toSortedMap().forEach { (size, count) -> appendLine("    \"$size\": $count") }
+                }
                 if (stats.collectedFrom != null) appendLine("  collected_from: \"${stats.collectedFrom}\"")
                 if (stats.collectedTo != null) appendLine("  collected_to: \"${stats.collectedTo}\"")
             }

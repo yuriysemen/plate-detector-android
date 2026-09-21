@@ -20,7 +20,7 @@
 - [x] Torch toggle (flashlight button in top bar; auto-off on background; hidden when no flash unit)
 - [x] Zoom shortcut buttons — 1×/2×/3× pill buttons at bottom center; filtered to camera's max zoom; highlights active level
 - [x] Exposure compensation — EV slider above zoom buttons; reads `ExposureState` range; shows computed EV value; hidden when unsupported
-- [x] Analysis resolution control — `DEFAULT`/`LOW (640×480)`/`HD (1280×720)` picker in Settings; uses `ResolutionSelector`; camera rebinds on change
+- [x] Analysis resolution control — `LOW (640×480)`/`HD (1280×720)` picker in Settings (no "Default"; REQ-042); uses `ResolutionSelector` with pinned aspect ratio; camera rebinds on change; export `data.yaml` records `frame_sizes`
 - [x] Scan interval control — RadioButton list in Settings; options: 5 s / 2 s / 1 s / ½ s / No delay (default 1 s); throttle applied per-frame via `rememberUpdatedState`; takes effect immediately without camera rebind
 
 ### Detection

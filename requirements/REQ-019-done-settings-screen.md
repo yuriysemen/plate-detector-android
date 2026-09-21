@@ -57,6 +57,8 @@ An `OutlinedCard` containing a scrollable list of all available models followed 
 
 ### 4. Analysis resolution
 
+> **Amended by [REQ-042](REQ-042-done-collection-frame-size-restriction.md)** for the collection app: the `Default` option is removed and the stored default is `LOW`. Text below is the original spec.
+
 - Label: `"Analysis resolution"` in `titleMedium`.
 - RadioButton list with one row per `AnalysisResolution` entry:
   - Primary text: `res.label` (e.g. `"Default"`, `"Low (640×480)"`, `"HD (1280×720)"`).

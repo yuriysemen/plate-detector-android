@@ -3,7 +3,7 @@
 ## Why this module exists
 
 This is the contract between data curation and model training: one place that states exactly what a
-compatible dataset looks like (YOLO format, 640×640, a single `License_Plate` class, train/valid/test
+compatible dataset looks like (YOLO format, 640×640 training size, a single `License_Plate` class, train/valid/test
 splits), so that packages produced by
 [`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md) or
 downloaded from public sources can be used by [`training/`](../../training/ultralytics/README.md) and
@@ -21,7 +21,7 @@ This document explains the expected dataset layout and how to obtain/build a com
 
 ## Expected image size and split sizes
 
-- **Image resolution**: **640 × 640** (RGB)
+- **Image resolution**: **640 × 640** (RGB) for the *training* dataset. Frames captured by the collection app are **640×480 or 1280×720** (either orientation, [REQ-042](../../requirements/REQ-042-done-collection-frame-size-restriction.md)); YOLO letterboxes them to `imgsz=640` at training time. Each package's `data.yaml` lists its `device.frame_sizes` so an administrator can filter by size when organizing a dataset.
 - **Splits**:
   - **train**: **5000+** images
   - **valid**: **1000+** images
