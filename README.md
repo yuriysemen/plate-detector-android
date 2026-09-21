@@ -105,6 +105,19 @@ Every module has its own README with the full description, setup, and design not
 **Planned next:** automated dataset consolidation and retraining, and a vehicle-type classifier for
 parking access control. See the [end-user app roadmap](android-end-user-app/ROADMAP.md).
 
+## Note: why the image size is 640×480
+
+The original idea was to train on larger images. The only training dataset that could be found,
+however, was 640×480, so the pipeline was built around those sizes. The collection app was then
+given the ability to build new datasets at larger sizes (HD, 1280×720), and after that it became
+possible to switch the model to a larger input.
+
+That experiment did not go well: even at 640×480, recognition already takes a relatively long time
+on a phone, and a larger input made it slower still. So the project did not continue in that
+direction and stays at 640×480 (with 1280×720 kept as a capture option). See
+[REQ-042](requirements/REQ-042-done-collection-frame-size-restriction.md) for how frame sizes are
+restricted and recorded.
+
 ## Privacy
 
 The published app processes camera frames in memory and never stores or transmits them. The
