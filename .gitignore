@@ -1,2 +1,18 @@
 # Claude Code auto-memory (assistant working notes; not project documentation)
 memory/
+
+# IDE / OS files
+.idea/
+.DS_Store
+
+# Machine-specific and secret config — never commit
+local.properties
+*.jks
+*.keystore
+*.base64
+samconfig.toml
+
+# Python environments and local training artifacts
+.venv/
+__pycache__/
+.pytest_cache/

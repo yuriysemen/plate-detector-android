@@ -40,7 +40,7 @@ Provided interactively on first deploy (`sam deploy --guided` prompts for them):
 | Parameter | Description | Example |
 |---|---|---|
 | `BucketName` | Globally unique S3 bucket name | `plate-dataset-uploads` |
-| `AdminPrincipalArn` | IAM user or role ARN with full S3 access for data review | `arn:aws:iam::826077735947:user/plate-detector-admin` |
+| `AdminPrincipalArn` | IAM user or role ARN with full S3 access for data review | `arn:aws:iam::123456789012:user/plate-detector-admin` |
 
 Optional parameters (defaults shown, override if needed):
 
@@ -119,7 +119,7 @@ aws sts get-caller-identity --query Arn --output text
 
 Example output:
 ```
-arn:aws:iam::826077735947:user/plate-detector-admin
+arn:aws:iam::123456789012:user/plate-detector-admin
 ```
 
 Use this value as `AdminPrincipalArn` during deploy.

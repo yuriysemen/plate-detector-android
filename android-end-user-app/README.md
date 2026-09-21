@@ -81,6 +81,10 @@ The token needs read access to the repository's releases. The build picks the la
 release by semantic version. It is also read from the Gradle property or the environment variables
 `MODEL_DOWNLOAD_TOKEN` / `GITHUB_TOKEN` (set automatically in GitHub Actions).
 
+The repository the release is fetched from defaults to `yuriysemen/plate-detector-android`. Override
+it with `MODEL_REPO=<owner>/<repo>` in `local.properties` (or as a Gradle property) if you fork or
+rename the repo. In GitHub Actions it follows `GITHUB_REPOSITORY` automatically.
+
 **2. Manual placement.** Copy a compatible `.tflite` and its `.txt` sidecar into
 `app/src/main/assets/models/`. The download step is skipped when the file already exists.
 

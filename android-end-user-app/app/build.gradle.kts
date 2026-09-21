@@ -48,8 +48,16 @@ val modelDownloadToken =
 data class GithubAsset(val name: String, val url: String)
 data class GithubRelease(val tagName: String, val assets: List<GithubAsset>)
 
+// "owner/repo" whose GitHub Releases (tag model_v<x.y.z>) hold the default model. In GitHub Actions
+// GITHUB_REPOSITORY is set automatically, so a fork or renamed repo needs no edit here.
+val modelRepo =
+    localProp("MODEL_REPO").takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty("MODEL_REPO").orNull
+        ?: System.getenv("GITHUB_REPOSITORY")
+        ?: "yuriysemen/plate-detector-android"
+
 fun findLatestModelRelease(token: String?): GithubRelease? {
-    val apiUrl = "https://api.github.com/repos/yuriysemen/plate-detector-android/releases"
+    val apiUrl = "https://api.github.com/repos/$modelRepo/releases"
     val conn = URI(apiUrl).toURL().openConnection() as HttpURLConnection
     conn.setRequestProperty("Accept", "application/vnd.github+json")
     conn.setRequestProperty("User-Agent", "PlateDetector-Gradle")

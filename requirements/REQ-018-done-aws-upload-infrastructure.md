@@ -36,7 +36,7 @@ aws-training-infra/
 | Parameter | Description | Example |
 |---|---|---|
 | `BucketName` | Globally unique S3 bucket name | `plate-dataset-uploads` |
-| `AdminPrincipalArn` | IAM user or role ARN that gets full S3 access | `arn:aws:iam::826077735947:user/plate-detector-admin` |
+| `AdminPrincipalArn` | IAM user or role ARN that gets full S3 access | `arn:aws:iam::123456789012:user/plate-detector-admin` |
 
 Optional parameters (defaults in template):
 

@@ -27,7 +27,7 @@ For the in-app helper text and for anyone configuring this by hand:
 
 | Value | What it is | Where it comes from |
 |---|---|---|
-| `COGNITO_USER_POOL_ID` | The Cognito **User Pool**'s ID (format `<region>_<id>`, e.g. `us-east-1_3kjy9Uu7z`). The pool of email+password accounts used to sign in. | `aws-training-infra/aws` stack output `UserPoolId` |
+| `COGNITO_USER_POOL_ID` | The Cognito **User Pool**'s ID (format `<region>_<id>`, e.g. `us-east-1_XXXXXXXXX`). The pool of email+password accounts used to sign in. | `aws-training-infra/aws` stack output `UserPoolId` |
 | `COGNITO_APP_CLIENT_ID` | The User Pool's **App Client** ID. Identifies this app to Cognito for SRP sign-in (no client secret — it's a public/mobile client). | Stack output `UserPoolClientId` |
 | `COGNITO_IDENTITY_POOL_ID` | The Cognito **Identity Pool** ID (format `<region>:<uuid>`). Exchanges a signed-in user's ID token for short-lived AWS STS credentials used to SigV4-sign upload/API requests. **The AWS region for every AWS call is derived from this value's `<region>:` prefix** — there's no separate region field. | Stack output `IdentityPoolId` |
 | `UPLOAD_SERVICE_URL` | The base URL of the API Gateway HTTP API fronting the `get-upload-url` and `get-model-url` Lambdas (e.g. `https://xxxx.execute-api.<region>.amazonaws.com/prod`). | Stack output `UploadServiceUrl` |
