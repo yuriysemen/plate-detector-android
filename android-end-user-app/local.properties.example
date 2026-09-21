@@ -1,9 +1,0 @@
-## Copy this file to local.properties and fill in your own values.
-## local.properties is gitignored — never commit it.
-
-# Location of the Android SDK. This is only used by Gradle.
-sdk.dir=/path/to/Android/sdk
-
-# Optional: personal access token (repo read scope) to download the bundled
-# default model from a private GitHub Releases repo at build time.
-# MODEL_DOWNLOAD_TOKEN=ghp_<your_personal_access_token>
