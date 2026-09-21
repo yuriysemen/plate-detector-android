@@ -1,5 +1,16 @@
 # Dataset (Detection) — License Plate Detection
 
+## Why this module exists
+
+This is the contract between data curation and model training: one place that states exactly what a
+compatible dataset looks like (YOLO format, 640×640, a single `License_Plate` class, train/valid/test
+splits), so that packages produced by
+[`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md) or
+downloaded from public sources can be used by [`training/`](../../training/ultralytics/README.md) and
+[`experiments/`](../../experiments/ultralytics/README.md) without guesswork.
+
+This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions, and images of real vehicles raise privacy concerns.
+
 This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions.
 
 This document explains the expected dataset layout and how to obtain/build a compatible dataset for *detection* experiments (starting with YOLO). Future OCR experiments may introduce additional datasets and formats. Store the dataset under the `dataset_YOLO/` folder at the repository root.

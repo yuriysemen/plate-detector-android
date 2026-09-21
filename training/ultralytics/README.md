@@ -1,4 +1,12 @@
-# Training (Ultralytics Experiment)
+# Training (Ultralytics YOLO)
+
+## Why this module exists
+
+This closes the loop of the project: it takes the curated dataset (see
+[`datasets/`](../../datasets/dataset_YOLO/README.md)) and produces the detection model that ships
+in [`android-end-user-app`](../../android-end-user-app/README.md). It covers training, export to
+TFLite for the Android apps, and a PyTorch Lite export. For quick, throwaway trials use
+[`experiments/`](../../experiments/ultralytics/README.md) instead.
 
 This folder hosts a ready-to-run training process implemented in Python for the license-plate detector model using Ultralytics YOLO. It is the first option in the repository, with additional training approaches planned.
 Training artifacts (runs/, weights/, exported models) are generated locally and

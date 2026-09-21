@@ -1,5 +1,13 @@
 # Ultralytics YOLO Experiments
 
+## Why this module exists
+
+A sandbox for fast, low-ceremony model experiments: a notebook and three small scripts to train,
+export, and eyeball a YOLO model before committing to a longer run. Anything that proves useful can
+be promoted into the reproducible pipeline in [`../../training/`](../../training/ultralytics/README.md);
+the rest stays here for history and comparison. The scripts default to a one-epoch smoke run, so
+they verify the pipeline end to end rather than produce a shippable model.
+
 This folder contains Python scripts and a Jupyter notebook that train a YOLOv11 model on the local dataset, export a TFLite model, and optionally validate predictions for Android usage. It is the first experiment track in the repository, with more approaches planned over time.
 
 ## Prerequisites

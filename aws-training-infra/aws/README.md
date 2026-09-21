@@ -1,4 +1,24 @@
-# Plate Detector — AWS Upload Infrastructure
+# Plate Detector — AWS Infrastructure
+
+## Why this module exists
+
+The collection and reviewing apps need somewhere to send data and a safe way to reach it. This
+stack is that backbone, defined as code so it can be deployed and torn down repeatably. Its central
+design goal is that **no app ever holds a long-lived AWS key**: users sign in with Cognito, receive
+short-lived credentials, and each role can do only what its job requires.
+
+| Who | How they reach AWS | What they can do |
+|---|---|---|
+| Collection app user | Cognito → Identity Pool → `DeviceAuthRole` → signed API call | Request a pre-signed upload URL and a model download URL. No direct S3 access. |
+| Curator | Cognito `curators` group → `CuratorRole` | Scoped direct S3 access to review and curate packages. Cannot destroy raw uploads. |
+| Operator | An IAM principal named at deploy time | Full access to the bucket. |
+
+Stack: AWS SAM · S3 · Lambda (Python 3.12) · API Gateway HTTP API (IAM-authenticated) · Cognito ·
+IAM. It is used by
+[`android-training-data-collection-app`](../../android-training-data-collection-app/README.md) and
+[`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md).
+
+---
 
 AWS SAM stack that backs the cloud dataset upload feature (REQ-014, REQ-018) and the internal
 dataset-curation app (REQ-022). Creates an S3 bucket, two Lambda functions, an API Gateway HTTP
