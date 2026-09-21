@@ -106,7 +106,8 @@
 ### Settings
 - [ ] **Per-model class filter** — let user pin detection to a specific class ID (e.g. class 0 = plates only)
 
-### Training data collection (requirements: REQ-007, REQ-030)
+### Training data collection (requirements: REQ-007, REQ-030, REQ-038)
+- [x] **Capture guidelines onboarding** — one-time, full-screen "Capture guidelines" shown before the camera is ever enabled (gates `LiveDetectionUi` ahead of the CAMERA permission prompt): use Manual Capture for what auto-capture misses, vary angle/distance, seek out hard cases, favor more vehicles over duplicate shots, stay public/respectful. Persisted via `ModelPrefs.capture_guidelines_shown` (REQ-038)
 - [ ] **Play Store compliance** — Privacy Policy rewrite, Data Safety declaration (incl. the
       Personal info/email data type), and an account-deletion mechanism (REQ-007). Auto Backup
       exclusion: **done** (`allowBackup="false"`).

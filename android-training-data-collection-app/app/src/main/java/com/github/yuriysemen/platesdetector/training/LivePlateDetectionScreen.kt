@@ -192,6 +192,15 @@ private object ModelPrefs {
         prefs(context).edit { putBoolean(KEY_COLLECT_FIRST_TIME_SHOWN, shown) }
     }
 
+    private const val KEY_CAPTURE_GUIDELINES_SHOWN = "capture_guidelines_shown"
+
+    fun getCaptureGuidelinesShown(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAPTURE_GUIDELINES_SHOWN, false)
+
+    fun setCaptureGuidelinesShown(context: Context, shown: Boolean) {
+        prefs(context).edit { putBoolean(KEY_CAPTURE_GUIDELINES_SHOWN, shown) }
+    }
+
     private const val KEY_STORAGE_QUOTA_MB = "training_data_quota_mb"
     const val DEFAULT_QUOTA_MB = 500
 
@@ -1144,6 +1153,22 @@ private fun LiveDetectionUi(
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Shown once, before the camera is ever enabled (i.e. before the permission request below
+    // runs) — not tied to collectTrainingData/signed-in state, since it applies to anyone about
+    // to point the camera at cars, not just contributors uploading data.
+    var guidelinesAcknowledged by rememberSaveable {
+        mutableStateOf(ModelPrefs.getCaptureGuidelinesShown(context))
+    }
+    if (!guidelinesAcknowledged) {
+        CaptureGuidelinesScreen(
+            onAcknowledge = {
+                ModelPrefs.setCaptureGuidelinesShown(context, true)
+                guidelinesAcknowledged = true
+            }
+        )
+        return
+    }
 
     val trainingSaver = remember { TrainingDataSaver(context) }
     val exporter = remember { DatasetExporter(context) }
