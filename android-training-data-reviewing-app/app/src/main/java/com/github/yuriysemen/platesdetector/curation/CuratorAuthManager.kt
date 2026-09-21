@@ -107,8 +107,14 @@ class CuratorAuthManager(private val context: Context) {
                 }
                 override fun getAuthenticationDetails(
                     authContinuation: AuthenticationContinuation,
-                    userId: String
+                    userId: String?
                 ) {
+                    // The SDK calls back here (instead of onSuccess) whenever it has no valid
+                    // cached session to hand back — including with a null userId when it has no
+                    // authenticated user at all (e.g. our cached "signed in" state in CuratorPrefs
+                    // is stale relative to the SDK's own session cache). A non-null `String`
+                    // parameter here would make Kotlin's generated null-check crash the app before
+                    // this line ever runs, instead of surfacing the intended SessionExpiredException.
                     cont.resumeWithException(SessionExpiredException("Session expired — please sign in again"))
                 }
                 override fun getMFACode(mfaContinuation: MultiFactorAuthenticationContinuation) {
