@@ -14,21 +14,19 @@ model → ship it back to the app.*
 ## How the pieces fit
 
 ```mermaid
-flowchart LR
-    U["android-end-user-app<br/>(published on Google Play)"]
-    C["android-training-data-collection-app<br/>(internal)"]
-    A[("aws-training-infra<br/>S3 · Lambda · Cognito")]
-    R["android-training-data-reviewing-app<br/>(internal)"]
-    D[("datasets")]
-    T["training / experiments<br/>(Python · YOLO)"]
+flowchart TD
+    C["<b>Collection app</b><br/>android-training-data-collection-app<br/>(internal)"]
+    A[("<b>AWS backend</b><br/>aws-training-infra<br/>S3 · Lambda · Cognito")]
+    R["<b>Reviewing app</b><br/>android-training-data-reviewing-app<br/>(internal)"]
+    D[("<b>Verified dataset</b><br/>datasets")]
+    T["<b>Model training</b><br/>training · experiments<br/>(Python · YOLO)"]
+    U["<b>End-user app</b><br/>android-end-user-app<br/>(published on Google Play)"]
 
-    C -- "SigV4-signed upload" --> A
-    A -- "raw packages" --> R
-    R -- "verified labels" --> A
-    A -- "curated packages" --> D
+    C -->|"upload frames"| A
+    A <-->|"review and correct"| R
+    A -->|"curated packages"| D
     D --> T
-    T -- "TFLite model" --> U
-    T -- "model update" --> C
+    T -->|"TFLite model"| U
 ```
 
 ## Modules
