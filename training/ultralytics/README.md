@@ -29,6 +29,7 @@ are intentionally not tracked by git.
    pip install -r requirements.txt
    ```
 3. Prepare a YOLOv11 dataset outside of the repository (datasets are typically large and should not be committed).
+   Organizing a new dataset is an administrator task.
    Today this means manually downloading the curator-reviewed `done/` packages from S3 (see
    [`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md)) and merging them into one
    dataset yourself — there's no automated consolidation step yet.

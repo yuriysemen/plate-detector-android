@@ -9,6 +9,10 @@ splits), so that packages produced by
 downloaded from public sources can be used by [`training/`](../../training/ultralytics/README.md) and
 [`experiments/`](../../experiments/ultralytics/README.md) without guesswork.
 
+**Who organizes a dataset:** this is a multi-user platform, but only administrators can organize a
+new dataset. Collectors upload and curators review; an administrator then consolidates the curated
+`done/` packages into the layout described here.
+
 This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions, and images of real vehicles raise privacy concerns.
 
 This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions.

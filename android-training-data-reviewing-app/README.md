@@ -1,9 +1,13 @@
 # Plate Detector — Data Reviewing App (Android)
 
-Internal-only Android app for a single trusted curator to review the packages uploaded by the
-collection app and turn them into a verified, training-ready dataset.
+Internal-only Android app for trusted curators to review the packages uploaded by the collection
+app and turn them into verified, training-ready packages.
 
 **Never published to an app store**; installed by sideloading the APK.
+
+Part of a **multi-user platform**: curators are accounts an administrator adds to the `curators`
+group. Curators review and correct packages, but **only administrators organize a new dataset** from
+the finished `done/` packages.
 
 ## Why this module exists
 
@@ -37,7 +41,7 @@ Its scope and deployment summary is in
 
 - **Direct S3 access, no backend API.** The app gets short-lived credentials for a scoped
   `CuratorRole` through the Cognito Identity Pool and talks to S3 itself. For a single trusted
-  curator using an unpublished APK, this removes an entire API layer. The role can read `uploads/`,
+  trusted curator using an unpublished APK, this removes an entire API layer. The role can read `uploads/`,
   write `curation/`, `done/` and `rejected/`, and delete only inside `curation/` — it can never
   destroy raw uploads.
 - **Workflow state lives in storage, not in a database.** Fewer moving parts, and the bucket is

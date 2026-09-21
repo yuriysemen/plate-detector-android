@@ -6,6 +6,10 @@ frame capture, and scheduled cloud upload.
 
 **Not published to Google Play.**
 
+This app is the contributor-facing part of a **multi-user platform**: many collectors each sign in
+with their own account and upload from their own device. Collectors only add data. Reviewing it is
+for curators, and organizing new datasets from it is restricted to administrators.
+
 ## Why this module exists
 
 A detection model is only as good as the data it was trained on, and the best data is real footage

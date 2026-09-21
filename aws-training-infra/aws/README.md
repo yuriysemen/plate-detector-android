@@ -11,7 +11,11 @@ short-lived credentials, and each role can do only what its job requires.
 |---|---|---|
 | Collection app user | Cognito → Identity Pool → `DeviceAuthRole` → signed API call | Request a pre-signed upload URL and a model download URL. No direct S3 access. |
 | Curator | Cognito `curators` group → `CuratorRole` | Scoped direct S3 access to review and curate packages. Cannot destroy raw uploads. |
-| Operator | An IAM principal named at deploy time | Full access to the bucket. |
+| Administrator (operator) | An IAM principal named at deploy time (`AdminPrincipalArn`) | Full access to the bucket. The only role that can organize a new dataset from the curated `done/` packages and publish models. |
+
+This is a **multi-user platform**: any number of collectors self-register and upload (namespaced as
+`uploads/<user_sub>/<device_id>/…`), an administrator-managed set of curators reviews the uploads,
+and only administrators organize new datasets.
 
 Stack: AWS SAM · S3 · Lambda (Python 3.12) · API Gateway HTTP API (IAM-authenticated) · Cognito ·
 IAM. It is used by

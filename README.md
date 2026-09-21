@@ -9,6 +9,10 @@ The interesting part isn't any single component — it's that the whole lifecycl
 wired together: *collect real-world data → store it securely → review and correct it → train a new
 model → ship it back to the app.*
 
+The data side is a **multi-user platform**: many collectors upload from their own devices, several
+curators review, and a small number of administrators own the resulting dataset (see
+[Who does what](#who-does-what)).
+
 <!-- Add here: a short demo GIF/video of the end-user app and the reviewing app. -->
 
 ## How the pieces fit
@@ -28,6 +32,24 @@ flowchart TD
     D --> T
     T -->|"TFLite model"| U
 ```
+
+## Who does what
+
+The data-collection side is multi-user. Uploads are namespaced per user and device
+(`uploads/<user_sub>/<device_id>/…`), so contributions from many people stay separate and
+attributable.
+
+| Role | How they get access | What they can do |
+|---|---|---|
+| **Collector** | Self-registers in the collection app (email + password) | Capture frames and upload their own packages; receive model updates. Cannot read anyone's data. |
+| **Curator** | Added to the Cognito `curators` group by an administrator (not self-service) | Review, correct, accept, or reject uploaded packages in the reviewing app. Cannot delete raw uploads. |
+| **Administrator** | The IAM principal named at deploy time (`AdminPrincipalArn`) | Everything above, plus **organizing new datasets**: consolidating the curated `done/` packages into a training set, and publishing models. |
+
+**Only administrators can organize a new dataset.** Collectors and curators feed and clean the data,
+and neither role has write access outside its own area (curators write only `curation/`, `done/`
+and `rejected/`), so no one but an administrator can publish a training set or a model.
+
+The published end-user app is outside this model: it has no accounts and no network access.
 
 ## Modules
 
