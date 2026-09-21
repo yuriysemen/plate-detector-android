@@ -32,7 +32,9 @@ are intentionally not tracked by git.
    Organizing a new dataset is an administrator task.
    Today this means manually downloading the curator-reviewed `done/` packages from S3 (see
    [`android-training-data-reviewing-app`](../../android-training-data-reviewing-app/README.md)) and merging them into one
-   dataset yourself — there's no automated consolidation step yet.
+   dataset yourself. There's no automated consolidation step yet: it is manual on purpose, to keep the time to
+   the next version of the training material short, and the packages are laid out so a web or desktop tool could
+   do it later.
 4. Run training in python implementation:
    ```bash
    python train.py --data <path_to_dataset>/data.yaml --model yolo11n.pt --epochs 20 --device cpu

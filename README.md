@@ -100,7 +100,15 @@ Every module has its own README with the full description, setup, and design not
 | Collection app | Working, internal use only |
 | Reviewing app | Working, internal use only |
 | AWS infrastructure | Deployed and in use |
-| Training pipeline | Working; consolidating curated packages into one training set is still a manual step |
+| Training pipeline | Working; consolidating curated packages into one training set is a deliberate manual step (see below) |
+
+**Dataset consolidation is manual on purpose.** There is no tool yet that gathers all the finished
+(`done/`) packages into one training set; an administrator does it by hand. The rest of the
+pipeline is designed so that this step can be completed as a web or desktop application: each
+finished package is a self-contained archive in YOLO layout with its own `data.yaml`, plus a small
+manifest (counts, class counts, who reviewed it) that can be listed without unzipping anything. It
+was left manual only to minimize the time needed to prepare the next version of the training
+material.
 
 **Planned next:** automated dataset consolidation and retraining, and a vehicle-type classifier for
 parking access control. See the [end-user app roadmap](android-end-user-app/ROADMAP.md).

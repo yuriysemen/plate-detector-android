@@ -50,7 +50,9 @@ Package lifecycle is specified in **REQ-023**; the per-image review editor is sp
 - Automated quality scoring or ML-assisted review.
 - Merging completed packages into one physical combined dataset directory — `done/` accumulates
   curated packages individually; consolidating them for training is a downstream/training-pipeline
-  concern (existing `training/` tooling), out of scope here.
+  concern (existing `training/` tooling), out of scope here. Today an administrator does it by hand,
+  deliberately, to keep preparing the next training version quick; the `done/` layout (REQ-035) is
+  designed so a web or desktop tool can automate it later.
 - Any change to the existing `android-end-user-app/` app or its Lambda endpoints (`get-upload-url`,
   `get-model-url`).
 

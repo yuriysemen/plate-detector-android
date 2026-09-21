@@ -11,7 +11,9 @@ downloaded from public sources can be used by [`training/`](../../training/ultra
 
 **Who organizes a dataset:** this is a multi-user platform, but only administrators can organize a
 new dataset. Collectors upload and curators review; an administrator then consolidates the curated
-`done/` packages into the layout described here.
+`done/` packages into the layout described here. Today that is a manual step (chosen to keep preparing
+the next training version quick); each `done/` package is already a self-contained YOLO archive with a
+`data.yaml` and a manifest, so the step is designed to be automated later as a web or desktop application.
 
 This repository does **not** include the dataset files (images/labels) because datasets from external sources (e.g., Roboflow, Kaggle, etc.) may have licensing and redistribution restrictions, and images of real vehicles raise privacy concerns.
 
