@@ -68,10 +68,14 @@ Run these from this folder. A model is required to run detection — see below.
 ## Getting a model
 
 The model is **build-time only**; there is no runtime download path. The Gradle build downloads a
-default model from the latest GitHub Release tagged `model_v<x.y.z>`. For a local build you have
-three options:
+default model from the latest GitHub Release tagged `model_v<x.y.z>` — currently
+[`model_v1.0.0`](https://github.com/yuriysemen/plate-detector-android/releases/tag/model_v1.0.0).
+Since this repo is public, that release is fetched with **no token needed** for a default build
+(`git clone` + `./gradlew :app:assembleRelease` bundles a model out of the box). Options, in order
+of precedence:
 
-**1. GitHub token (recommended).** Add to `local.properties` (gitignored):
+**1. GitHub token (optional).** Only needed for a private fork, or to raise the unauthenticated
+GitHub API rate limit. Add to `local.properties` (gitignored):
 
 ```
 MODEL_DOWNLOAD_TOKEN=ghp_<your_personal_access_token>
@@ -79,7 +83,8 @@ MODEL_DOWNLOAD_TOKEN=ghp_<your_personal_access_token>
 
 The token needs read access to the repository's releases. The build picks the latest `model_v*`
 release by semantic version. It is also read from the Gradle property or the environment variables
-`MODEL_DOWNLOAD_TOKEN` / `GITHUB_TOKEN` (set automatically in GitHub Actions).
+`MODEL_DOWNLOAD_TOKEN` / `GITHUB_TOKEN` (set automatically in GitHub Actions, where it's used to
+avoid the lower unauthenticated rate limit).
 
 The repository the release is fetched from defaults to `yuriysemen/plate-detector-android`. Override
 it with `MODEL_REPO=<owner>/<repo>` in `local.properties` (or as a Gradle property) if you fork or
@@ -90,7 +95,13 @@ rename the repo. In GitHub Actions it follows `GITHUB_REPOSITORY` automatically.
 
 **3. No model.** If neither is available the build succeeds with a warning. The app installs and
 shows a "No detection model" screen with a Retry button. This can only be fixed by rebuilding or
-placing a file and reinstalling.
+placing a file and reinstalling. The release workflow (`android-release.yml`) treats this as fatal:
+it unzips the built APK/AAB and fails the job if `assets/models/plate_numbers.tflite` is missing,
+so a model-less build can never reach a tagged GitHub Release.
+
+To publish a new model version, create a GitHub Release tagged `model_v<x.y.z>` (higher semver than
+the current one) with `plate_numbers.tflite` and `plate_numbers.txt` attached — the next build picks
+it up automatically.
 
 Models come from the [`training/`](../training/ultralytics/README.md) pipeline.
 

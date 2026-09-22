@@ -42,6 +42,19 @@ jobs:
           MODEL_DOWNLOAD_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew clean :app:bundleRelease :app:assembleRelease
 
+      - name: Verify bundled model
+        working-directory: android-end-user-app
+        run: |
+          apk="app/build/outputs/apk/release/app-release.apk"
+          aab="app/build/outputs/bundle/release/app-release.aab"
+          for f in "$apk" "$aab"; do
+            if ! unzip -l "$f" | grep -q "assets/models/plate_numbers.tflite"; then
+              echo "::error::$f does not contain assets/models/plate_numbers.tflite - refusing to publish a model-less build."
+              exit 1
+            fi
+          done
+          echo "Bundled model verified in both artifacts."
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
