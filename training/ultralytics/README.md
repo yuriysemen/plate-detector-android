@@ -20,6 +20,42 @@ are intentionally not tracked by git.
 - [`training-report.html`](training-report.html) - a self-contained report of every training run
   to date (metrics, per-epoch curves, sample detections). Open it directly in a browser.
 
+## Where the current model came from
+
+The model shipping in the end-user app today (`plates_y11n5`, YOLOv11n, 640px) was **not** trained
+on Ukrainian plates specifically. The dataset was a generic, multi-country plate-detection set
+pulled from Roboflow Universe, with a slice of the project's own curated uploads mixed in (see
+[`datasets/`](../../datasets/dataset_YOLO/README.md) for the exact mix and the Roboflow reference).
+The idea was to get a detector accurate enough to bootstrap the collection app with — it finds
+rectangular plate shapes in general, not Ukrainian plates in particular — and then retrain on real,
+curator-reviewed Ukrainian uploads once enough of them existed.
+
+**How training was run:** `yolo detect train ... model=yolo11n.pt epochs=250 patience=100`, run
+name `plates_y11n5`. Ultralytics' early stopping halted it at epoch 150 (100 epochs with no further
+validation gain), but it had already auto-saved its best checkpoint back at **epoch 116** (mAP50
+0.976) — that's the weights file that got exported, not the epoch-150 snapshot. Letting it run all
+the way to 150 instead of stopping around 116 cost extra wall-clock time for nothing; not ideal, but
+harmless, since Ultralytics always keeps `best.pt` regardless of how much further training goes. See
+[`training-report.html`](training-report.html) for the full per-epoch curves and the two earlier
+runs. Training itself ran locally on a MacBook (Apple M4), not in the cloud — that's what
+`--device mps` above is for.
+
+**How "done" was decided:** there's no held-out human eval yet. After `export_tflite.py`, the
+resulting `.tflite` was copied into `android-end-user-app`'s assets, the app was rebuilt, installed
+on a device, and checked by eye against a handful of real frames. That's the extent of verification
+today — no automated on-device benchmark yet.
+
+## What's next
+
+A second, much more targeted batch of curated uploads — real Ukrainian plates captured and
+corrected through this project's own collection/review pipeline, instead of a generic public
+dataset — is what the next training run should use. The infrastructure for that loop (collection
+app → S3 → reviewing app → `done/` packages) is already built and working; what's missing is time
+spent consolidating those packages into one clean dataset (dedup, split, sanity-check labels), which
+is a deliberate manual step today (see [`datasets/`](../../datasets/dataset_YOLO/README.md)). That
+consolidation, not compute or tooling, is the actual bottleneck before the model gets retrained on
+data that matches what it actually needs to recognize.
+
 ## Quick start (local or Colab)
 1. Prepare python virtual environment:
    ```bash

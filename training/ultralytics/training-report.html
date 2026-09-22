@@ -257,7 +257,7 @@ flowchart LR
 
   <section>
     <h2>04 &middot; The production run, epoch by epoch</h2>
-    <p class="lead"><span class="runname mono">plates_y11n5</span> &mdash; 250 epochs planned, 100-epoch early-stopping patience. It stopped at epoch 150 after 100 epochs with no further gain; Ultralytics had already saved its best snapshot back at epoch 116.</p>
+    <p class="lead"><span class="runname mono">plates_y11n5</span> &mdash; 250 epochs planned, 100-epoch early-stopping patience. It stopped at epoch 150 after 100 epochs with no further gain; Ultralytics had already saved its best snapshot back at epoch 116. Running on to 150 instead of stopping there cost extra wall-clock time for no benefit, but did no harm &mdash; Ultralytics always keeps the best checkpoint regardless. Trained locally on a MacBook (Apple M4), not in the cloud.</p>
 
     <div class="chart-block">
       <div class="chart-head">
@@ -312,12 +312,20 @@ flowchart LR
     <p class="lead">None of the above ships as-is. A checkpoint is exported to TensorFlow Lite with NMS baked in, and only that file travels any further:</p>
     <pre class="code">yolo export model=best.pt format=tflite imgsz=640 nms=True conf=0.25 iou=0.45 max_det=300</pre>
     <p style="margin-top:14px; font-size:13px;">The resulting <span class="mono">best_float16.tflite</span> &mdash; a few megabytes, not the dataset or the checkpoints behind it &mdash; is copied into the Android app's assets and picked up by an on-device TFLite interpreter at runtime. The training run, this page's raw data, and every intermediate checkpoint stay local and out of version control.</p>
+    <p style="margin-top:10px; font-size:13px;">Verification at this stage is manual, not a benchmark suite: rebuild <span class="mono">android-end-user-app</span> with the new checkpoint in its assets, install it on a device, and check detection by eye against real frames. That's the extent of "done" for now &mdash; there's no automated on-device regression suite yet.</p>
+  </section>
+
+  <section>
+    <h2>07 &middot; What's next</h2>
+    <p class="lead">This checkpoint is a bootstrap, not the destination.</p>
+    <p>The collection and reviewing apps have since produced a second, much more targeted batch of curated uploads &mdash; real Ukrainian plates captured and corrected through this project's own pipeline, instead of a generic public dataset. The infrastructure for that loop is already built and working end to end; what's missing is time spent consolidating those packages into one clean training set (dedup, split, sanity-check labels), which is a deliberate manual step today (see <a href="../../datasets/dataset_YOLO/README.md">datasets/</a>). That consolidation, not compute or tooling, is the actual bottleneck before the next training run.</p>
+    <p style="margin-top:10px;">Real-world, on-device examples of what this checkpoint catches and misses belong here too &mdash; to be added once there's field evidence to show.</p>
   </section>
 
   <footer>
     <p>Plate Detector is a portfolio project: a full ML product loop, from a data-collection app through human review to this training pipeline and a published, network-free Android detector.</p>
     <div class="stack">
-      <span>Ultralytics YOLOv11n</span><span>TensorFlow Lite</span><span>Kotlin &middot; Jetpack Compose</span><span>ML Kit OCR</span><span>AWS SAM</span>
+      <span>Ultralytics YOLOv11n</span><span>TensorFlow Lite</span><span>Kotlin &middot; Jetpack Compose</span><span>ML Kit OCR</span><span>AWS SAM</span><span>Trained on MacBook M4</span>
     </div>
     <p style="margin-top:16px;">Source: <a href="https://github.com/yuriysemen/plate-detector-android">github.com/yuriysemen/plate-detector-android</a></p>
   </footer>
