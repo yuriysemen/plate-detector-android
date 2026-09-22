@@ -53,6 +53,15 @@
       entirely (moved to `android-training-data-collection-app/`); no `INTERNET`/`ACCESS_NETWORK_STATE`/
       `POST_NOTIFICATIONS` permissions; `privacy-policy.md` reverted to (and now factually
       matches) the original "no data collected" baseline.
+- [x] **16 KB page size compliance** — Play Console rejected versionCode 13 because
+      `libtensorflowlite_jni.so` (from the now-unmaintained `org.tensorflow:tensorflow-lite:2.17.0`,
+      last published Jan 2025) shipped a 4 KB-only `x86_64` slice. Switched to
+      `com.google.ai.edge.litert:litert:1.4.2` (Google's actively-maintained TFLite successor,
+      same `org.tensorflow.lite.Interpreter`/`DataType` API, so `PlateDetector.kt` needed no
+      changes) — verified 16 KB-aligned (`p_align=16384`) on both `arm64-v8a` and `x86_64` for
+      every bundled `.so`. Pinned to `1.4.2` rather than the newer `2.x` line: `litert` and
+      `litert-api` 2.x both ship an AndroidManifest with `package="com.google.ai.edge.litert"`,
+      which AGP rejects as a duplicate-namespace conflict.
 
 ---
 

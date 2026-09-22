@@ -7,7 +7,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 
 camerax = "1.6.1"
-tflite = "2.17.0"
+litert = "1.4.2"
 mlkitTextRecognition = "16.0.1"
 
 composeBom = "2026.06.00"
@@ -52,7 +52,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit4" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
-tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 
 aws-cognitoidentityprovider = { group = "com.amazonaws", name = "aws-android-sdk-cognitoidentityprovider", version.ref = "awsAndroidSdk" }

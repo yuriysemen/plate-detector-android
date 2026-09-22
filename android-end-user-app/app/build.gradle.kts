@@ -220,7 +220,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view) // PreviewView
 
-    implementation(libs.tensorflow.lite)
+    implementation(libs.litert)
     implementation(libs.mlkit.text.recognition)
 
     testImplementation(libs.junit)
