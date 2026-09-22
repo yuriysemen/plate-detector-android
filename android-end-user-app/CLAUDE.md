@@ -97,6 +97,7 @@ See `training/ultralytics/` for the Python training pipeline (YOLOv11 → TFLite
 
 Export command to produce a compatible TFLite file:
 ```bash
-yolo export model=runs/detect/<name>/weights/best.pt format=tflite imgsz=640 nms=True conf=0.25 iou=0.45 max_det=300
+python export_tflite.py --weights runs/detect/<name>/weights/best.pt --imgsz 640
 ```
-The exported `best_float16.tflite` is the file to copy into the Android assets.
+This wraps `yolo export ... format=tflite`, picks the float16 variant, and saves `best.tflite` next
+to the checkpoint. Copy it into the Android assets.

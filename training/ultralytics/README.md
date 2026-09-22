@@ -4,8 +4,8 @@
 
 This closes the loop of the project: it takes the curated dataset (see
 [`datasets/`](../../datasets/dataset_YOLO/README.md)) and produces the detection model that ships
-in [`android-end-user-app`](../../android-end-user-app/README.md). It covers training, export to
-TFLite for the Android apps, and a PyTorch Lite export. For quick, throwaway trials use
+in [`android-end-user-app`](../../android-end-user-app/README.md). It covers training and export to
+TFLite for the Android app. For quick, throwaway trials use
 [`experiments/`](../../experiments/ultralytics/README.md) instead.
 
 This folder hosts a ready-to-run training process implemented in Python for the license-plate detector model using Ultralytics YOLO. It is the first option in the repository, with additional training approaches planned.
@@ -15,8 +15,10 @@ are intentionally not tracked by git.
 ## Contents
 - `train.py` - minimal training entrypoint for YOLO.
 - `requirements.txt` - Python dependencies for training.
-- `export_ptlite.py` - helper script to convert a trained `.pt` checkpoint into
-  a mobile-friendly `.ptlite` file for the PyTorch Lite runtime.
+- `export_tflite.py` - helper script to convert a trained `.pt` checkpoint into
+  a `.tflite` file for the TensorFlow Lite runtime (what the Android app uses).
+- [`training-report.html`](training-report.html) - a self-contained report of every training run
+  to date (metrics, per-epoch curves, sample detections). Open it directly in a browser.
 
 ## Quick start (local or Colab)
 1. Prepare python virtual environment:
@@ -43,21 +45,16 @@ are intentionally not tracked by git.
    ```bash
    yolo detect train data=<path_to_dataset>/data.yaml model=yolo11n.pt imgsz=640 epochs=20 batch=16 name=<training-model-name>
    ```
-5. Export it in *.tflite format (for TensorFlow Lite runtime):
+5. Export it in *.tflite format (for TensorFlow Lite runtime, what the Android app uses):
    ```bash
-   yolo export model=runs/detect/<training-model-name>/weights/best.pt format=tflite imgsz=640 nms=True conf=0.25 iou=0.45 max_det=300
+   python export_tflite.py --weights runs/detect/<training-model-name>/weights/best.pt --imgsz 640
    ```
-   The export writes artifacts under `runs/detect/<training-model-name>/weights/best_saved_model/` and produces a
-   `best_float16.tflite` (or similar) file that is compatible with the Android app.
+   The script saves a `best.tflite` file next to the checkpoint unless `--output` is provided
+   (`--conf`, `--iou`, and `--max-det` are also available and default to `0.25`, `0.45`, and `300`).
+   It's a thin wrapper around `yolo export ... format=tflite`, picking the float16 variant and
+   copying it out of the `best_saved_model/` directory the export leaves behind.
    Rename the file to reflect the model and copy it into the Android app assets. After rebuilding the app, you can select it.
-6. Export it in *.ptlite format (for PyTorch Lite runtime):
-   ```bash
-   python export_ptlite.py --weights runs/detect/<training-model-name>/weights/best.pt --imgsz 640
-   ```
-   The script saves a `best.ptlite` file next to the checkpoint unless `--output` is provided.
-   Copy the resulting `.ptlite` into the Android app assets (or wherever your app expects model assets)
-   and update the app-side model name accordingly. If you keep assets in the repo, this is usually
-   under `android-end-user-app/app/src/main/assets/`.
+   If you keep assets in the repo, this is usually under `android-end-user-app/app/src/main/assets/models/`.
 
 > If you want to use a device other than CPU, pass `--device` explicitly (for example, `cuda` or `mps`).
 
