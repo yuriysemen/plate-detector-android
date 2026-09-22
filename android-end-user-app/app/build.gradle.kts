@@ -146,9 +146,9 @@ val downloadDefaultModels = tasks.register("downloadDefaultModels") {
 
 val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
 val keystorePassword: String? = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-val keyAlias: String? = System.getenv("ANDROID_KEY_ALIAS")
-val keyPassword: String? = System.getenv("ANDROID_KEY_PASSWORD")
-val hasSigningEnv = listOf(keystorePath, keystorePassword, keyAlias, keyPassword)
+val releaseKeyAlias: String? = System.getenv("ANDROID_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("ANDROID_KEY_PASSWORD")
+val hasSigningEnv = listOf(keystorePath, keystorePassword, releaseKeyAlias, releaseKeyPassword)
     .all { !it.isNullOrBlank() }
 
 android {
@@ -168,8 +168,8 @@ android {
         signingConfigs.create("release") {
             storeFile = file(keystorePath!!)
             storePassword = keystorePassword
-            this.keyAlias = keyAlias
-            this.keyPassword = keyPassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
         }
     } else {
         null
