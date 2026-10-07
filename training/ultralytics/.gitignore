@@ -1,6 +1,0 @@
-# training_ultralytics outputs
-runs/
-__pycache__/
-*.pt
-/calibration_image_sample_data_20x128x128x3_float32.npy
-/.venv/

@@ -1,4 +1,0 @@
-ultralytics==8.4.0
-torch==2.9.1
-tensorflow==2.20.0
-sng4onnx==1.0.4
